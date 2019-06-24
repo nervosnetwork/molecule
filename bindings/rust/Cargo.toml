@@ -1,0 +1,23 @@
+[package]
+name = "molecule"
+version = "0.0.0"
+authors = ["Boyu Yang <yangby@cryptape.com>"]
+edition = "2018"
+description = "Rust bindings for molecule."
+homepage = "https://github.com/yangby-cryptape/molecule"
+repository = "https://github.com/yangby-cryptape/molecule"
+keywords = ["serialization"]
+categories = ["encoding", "data-structures"]
+license = "MIT"
+
+[dependencies]
+
+[build-dependencies]
+codegen = { package ="molecule-codegen", version = "=0.0.0", path = "../../tools/codegen" }
+
+[features]
+default = ["extra-types"]
+extra-types = []
+
+[badges]
+maintenance = { status = "experimental" }

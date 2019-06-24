@@ -1,0 +1,28 @@
+[package]
+name = "moleculec"
+version = "0.0.0"
+authors = ["Boyu Yang <yangby@cryptape.com>"]
+edition = "2018"
+description = "Schema compiler for molecule."
+homepage = "https://github.com/yangby-cryptape/molecule"
+repository = "https://github.com/yangby-cryptape/molecule"
+keywords = ["molecule", "code-generation", "serialization"]
+categories = [
+    "parser-implementations",
+    "development-tools",
+    "encoding",
+    "data-structures"
+]
+license = "MIT"
+
+[dependencies]
+
+[dependencies.codegen]
+package ="molecule-codegen"
+version = "=0.0.0"
+path = "../codegen"
+default-features = false
+features = ["lang-all"]
+
+[badges]
+maintenance = { status = "experimental" }

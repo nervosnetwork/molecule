@@ -1,0 +1,27 @@
+[package]
+name = "molecule-codegen"
+version = "0.0.0"
+authors = ["Boyu Yang <yangby@cryptape.com>"]
+edition = "2018"
+description = "Code generator for molecule."
+homepage = "https://github.com/yangby-cryptape/molecule"
+repository = "https://github.com/yangby-cryptape/molecule"
+keywords = ["molecule", "code-generation", "serialization"]
+categories = [
+    "parser-implementations",
+    "development-tools::build-utils",
+    "encoding",
+    "data-structures"
+]
+license = "MIT"
+
+[dependencies]
+
+[features]
+default = ["lang-rust"]
+lang-all = ["lang-rust", "lang-c"]
+lang-rust = []
+lang-c = []
+
+[badges]
+maintenance = { status = "experimental" }
