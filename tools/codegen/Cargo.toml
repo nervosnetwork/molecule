@@ -16,6 +16,8 @@ categories = [
 license = "MIT"
 
 [dependencies]
+pest = "~2.1"
+pest_derive = "~2.1"
 
 [features]
 default = ["lang-rust"]

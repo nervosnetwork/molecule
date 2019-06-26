@@ -1,0 +1,67 @@
+zero            =   _{ "0" }
+nonzero         =   _{ '1'..'9' }
+digit           =   _{ zero | nonzero }
+lowercase       =   _{ 'a'..'z' }
+uppercase       =   _{ 'A'..'Z' }
+letter          =   _{ lowercase | uppercase }
+ifs             =   _{ " " | "\t" }
+newline         =   _{ "\n" | "\r\n" }
+
+identifier      =   @{ letter ~ (letter | digit | "_")* }
+number          =   @{ nonzero ~ digit* }
+
+block_comment   =   _{ "/*" ~ (block_comment | !"*/" ~ ANY)* ~ "*/" }
+line_comment    =   _{ ("//" | "#") ~(!newline ~ ANY)* }
+
+whitespace      =   _{ ifs | newline }
+comment         =   _{ block_comment | line_comment }
+brk             =   _{ whitespace | comment }
+
+stmt_end        =   _{ ";" }
+
+field_decl      =   {
+                        identifier ~ (brk)* ~ ":" ~ (brk)* ~
+                        identifier ~ (brk)* ~
+                        stmt_end
+                    }
+array_decl      =   {
+                        "array" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "[" ~ (brk)* ~
+                            identifier ~ (brk)* ~ ";" ~ (brk)* ~ number ~ (brk)* ~
+                        "]" ~ (brk)* ~
+                        stmt_end
+                    }
+struct_decl     =   {
+                        "struct" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "{" ~ (brk)* ~
+                            (field_decl ~ (brk)*)+ ~
+                        "}" ~ (brk)* ~
+                        stmt_end
+                    }
+vector_decl     =   {
+                        "vector" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "<" ~ (brk)* ~
+                            identifier ~ (brk)* ~
+                        ">" ~ (brk)* ~
+                        stmt_end
+                    }
+table_decl      =   {
+                        "table" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "{" ~ (brk)* ~
+                            (field_decl ~ (brk)*)+ ~
+                        "}" ~ (brk)* ~
+                        stmt_end
+                    }
+decl_stmt       =   _{ array_decl | struct_decl | vector_decl | table_decl }
+
+path_super      =   @{ "../" }
+path            =   { path_super* ~ (identifier ~ "/")* ~ identifier }
+import_stmt     =   { "import" ~ (brk)+ ~ path ~ (brk)* ~ stmt_end }
+
+grammar         =   {
+                        SOI ~ (brk)* ~
+                            (import_stmt ~ (brk)*)* ~
+                                decl_stmt ~
+                            ((brk)* ~ decl_stmt)* ~ (brk)* ~
+                        EOI
+                    }
