@@ -3,12 +3,12 @@ use pest::{error::Error as PestError, Parser as _};
 use crate::{ast, utils::PairsUtils as _};
 
 mod inner;
-pub use inner::Rule;
+pub(crate) use inner::Rule;
 
-pub struct Parser;
+pub(crate) struct Parser;
 
 impl Parser {
-    pub fn parse(input: &str) -> ast::verified::Ast {
+    pub(crate) fn parse(input: &str) -> ast::verified::Ast {
         let ast_raw = Self::preprocess(input).unwrap();
         ast::verified::Ast::new(ast_raw)
     }

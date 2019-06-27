@@ -5,22 +5,22 @@ use std::{
 
 use super::raw::{Ast as RawAst, TopDecl as RawTopDecl};
 
-pub const ATOM_NAME: &str = "byte";
-pub const ATOM_SIZE: usize = 1;
+pub(crate) const ATOM_NAME: &str = "byte";
+pub(crate) const ATOM_SIZE: usize = 1;
 
-#[derive(Debug, Default)]
-pub struct Ast {
-    decls: Vec<Rc<TopDecl>>,
+#[derive(Debug)]
+pub(crate) struct Ast {
+    pub(crate) decls: Vec<Rc<TopDecl>>,
 }
 
 #[derive(Debug)]
-pub struct TopDecl {
+pub(crate) struct TopDecl {
     pub(crate) name: String,
     pub(crate) typ: TopDeclType,
 }
 
 #[derive(Debug)]
-pub enum TopDeclType {
+pub(crate) enum TopDeclType {
     Atom,
     Array(Array),
     Struct(Struct),
@@ -30,36 +30,36 @@ pub enum TopDeclType {
 }
 
 #[derive(Debug)]
-pub struct Array {
+pub(crate) struct Array {
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
     pub(crate) typ: Rc<TopDecl>,
 }
 
 #[derive(Debug)]
-pub struct Struct {
+pub(crate) struct Struct {
     pub(crate) field_size: Vec<usize>,
     pub(crate) inner: Vec<FieldDecl>,
 }
 
 #[derive(Debug)]
-pub struct FixedVector {
+pub(crate) struct FixedVector {
     pub(crate) item_size: usize,
     pub(crate) typ: Rc<TopDecl>,
 }
 
 #[derive(Debug)]
-pub struct DynamicVector {
+pub(crate) struct DynamicVector {
     pub(crate) typ: Rc<TopDecl>,
 }
 
 #[derive(Debug)]
-pub struct Table {
+pub(crate) struct Table {
     pub(crate) inner: Vec<FieldDecl>,
 }
 
 #[derive(Debug)]
-pub struct FieldDecl {
+pub(crate) struct FieldDecl {
     pub(crate) name: String,
     pub(crate) typ: Rc<TopDecl>,
 }
@@ -92,6 +92,13 @@ impl TopDecl {
         TopDecl {
             name: ATOM_NAME.to_owned(),
             typ: TopDeclType::Atom,
+        }
+    }
+
+    pub(crate) fn is_atom(&self) -> bool {
+        match self.typ {
+            TopDeclType::Atom => true,
+            _ => false,
         }
     }
 
@@ -202,7 +209,6 @@ impl TopDecl {
 
 impl Ast {
     pub(crate) fn new(raw: RawAst) -> Self {
-        let ast = Self::default();
         let mut decls_idx = HashMap::new();
         let mut decls_keys = HashSet::new();
         for decl in &raw.decls[..] {
@@ -214,8 +220,8 @@ impl Ast {
                 panic!("the name `{}` is used more than once", name);
             };
         }
-        let mut decls = HashMap::new();
-        decls.insert(ATOM_NAME, Rc::new(TopDecl::atom()));
+        let mut decls_result = HashMap::new();
+        decls_result.insert(ATOM_NAME, Rc::new(TopDecl::atom()));
         loop {
             if decls_keys.is_empty() {
                 break;
@@ -223,8 +229,8 @@ impl Ast {
             let incompleted = decls_keys.len();
             decls_keys.retain(|&name| {
                 let decl_raw = decls_idx.get(name).unwrap();
-                if let Some(decl) = TopDecl::complete(decl_raw, &decls) {
-                    decls.insert(name, Rc::new(decl));
+                if let Some(decl) = TopDecl::complete(decl_raw, &decls_result) {
+                    decls_result.insert(name, Rc::new(decl));
                     false
                 } else {
                     true
@@ -237,6 +243,11 @@ impl Ast {
                 );
             }
         }
-        ast
+        let mut decls = Vec::with_capacity(raw.decls.len());
+        for decl in &raw.decls[..] {
+            let result = decls_result.get(decl.name()).unwrap();
+            decls.push(Rc::clone(result));
+        }
+        Self { decls }
     }
 }

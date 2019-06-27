@@ -18,6 +18,9 @@ license = "MIT"
 [dependencies]
 pest = "~2.1"
 pest_derive = "~2.1"
+quote = "~0.6"
+proc-macro2 = "~0.4"
+case = "~1.0"
 
 [features]
 default = ["lang-rust"]
