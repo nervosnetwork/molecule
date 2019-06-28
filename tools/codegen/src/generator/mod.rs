@@ -6,12 +6,12 @@ mod lang_c;
 mod lang_rust;
 
 #[derive(Debug)]
-pub struct Generator {
+pub(crate) struct Generator {
     ast: Ast,
 }
 
 impl Generator {
-    pub fn new(input: &str) -> Self {
+    pub(crate) fn new(input: &str) -> Self {
         let ast = Parser::parse(input);
         Self { ast }
     }
