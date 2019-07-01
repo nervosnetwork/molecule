@@ -1,13 +1,14 @@
 use std::io;
 
+use crate::error::VerificationResult;
+
 pub trait Reader<'r>: Sized + Verifiable {
     fn as_slice(&self) -> &[u8];
-    // TODO return Result<Self, _>
-    fn from_slice<'a: 'r>(slice: &'a [u8]) -> Option<Self>;
+    fn from_slice<'a: 'r>(slice: &'a [u8]) -> VerificationResult<Self>;
 }
 
 pub trait Verifiable {
-    fn verify(slice: &[u8]) -> bool;
+    fn verify(slice: &[u8]) -> VerificationResult<()>;
 }
 
 pub trait Builder {

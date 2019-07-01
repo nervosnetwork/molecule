@@ -122,13 +122,9 @@ where
             fn as_slice(&self) -> &[u8] {
                 &self.0[..]
             }
-            fn from_slice<'a: 'm>(slice: &'a [u8]) -> Option<Self> {
+            fn from_slice<'a: 'm>(slice: &'a [u8]) -> molecule::error::VerificationResult<Self> {
                 use molecule::prelude::Verifiable;
-                if Self::verify(slice) {
-                    Some(#name(slice))
-                } else {
-                    None
-                }
+                Self::verify(slice).map(|_| #name(slice))
             }
         }
     );
@@ -177,8 +173,15 @@ where
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
-                fn verify(slice: &[u8]) -> bool {
-                    slice.len() == Self::TOTAL_SIZE
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
+                    if slice.len() == Self::TOTAL_SIZE {
+                        Ok(())
+                    } else {
+                        let err = VerificationError::TotalSizeNotMatch(
+                            stringify!(#name).to_owned(), Self::TOTAL_SIZE, slice.len());
+                        Err(err)
+                    }
                 }
             }
         );
@@ -230,8 +233,15 @@ where
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
-                fn verify(slice: &[u8]) -> bool {
-                    slice.len() == Self::TOTAL_SIZE
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
+                    if slice.len() == Self::TOTAL_SIZE {
+                        Ok(())
+                    } else {
+                        let err = VerificationError::TotalSizeNotMatch(
+                            stringify!(#name).to_owned(), Self::TOTAL_SIZE, slice.len());
+                        Err(err)
+                    }
                 }
             }
         );
@@ -293,14 +303,24 @@ where
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
-                fn verify(slice: &[u8]) -> bool {
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
                     let len = slice.len();
-                    if len >= 4 {
+                    if len < 4 {
+                        let err = VerificationError::HeaderIsBroken(
+                            stringify!(#name).to_owned(), 4, len);
+                        Err(err)
+                    } else {
                         let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                         let item_count = u32::from_le(ptr[0]) as usize;
-                        len == 4 + Self::ITEM_SIZE * item_count
-                    } else {
-                        false
+                        let expected = 4 + Self::ITEM_SIZE * item_count;
+                        if len == expected {
+                            let err = VerificationError::TotalSizeNotMatch(
+                                stringify!(#name).to_owned(), expected, len);
+                            Err(err)
+                        } else {
+                            Ok(())
+                        }
                     }
                 }
             }
@@ -358,32 +378,46 @@ where
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
-                fn verify(slice: &[u8]) -> bool {
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
                     let len = slice.len();
                     if len < 4 {
-                        return false;
+                        let err = VerificationError::HeaderIsBroken(
+                            stringify!(#name).to_owned(), 4, len);
+                        Err(err)?;
                     }
                     let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                     let total_size = u32::from_le(ptr[0]) as usize;
-                    if total_size != slice.len() {
-                        return false;
+                    if total_size != len {
+                        let err = VerificationError::TotalSizeNotMatch(
+                            stringify!(#name).to_owned(), total_size, len);
+                        Err(err)?;
                     }
                     if total_size == 4 {
-                        return true;
+                        return Ok(());
                     }
                     if total_size < 4 + 4 {
-                        return false;
+                        let err = VerificationError::DataIsShort(
+                            stringify!(#name).to_owned(), 8, total_size);
+                        Err(err)?;
                     }
                     let offset_first = u32::from_le(ptr[1]) as usize;
                     if offset_first % 4 != 0 {
-                        return false;
+                        let err = VerificationError::FirstOffsetIsBroken(
+                            stringify!(#name).to_owned(), offset_first);
+                        Err(err)?;
                     }
                     if offset_first < 4 + 4 {
-                        return false;
+                        let err = VerificationError::FirstOffsetIsShort(
+                            stringify!(#name).to_owned(), 8, offset_first);
+                        Err(err)?;
                     }
                     let item_count = offset_first / 4 - 1;
-                    if total_size < 4 + 4 * item_count {
-                        return false;
+                    let expected = 4 + 4 * item_count;
+                    if total_size < expected {
+                        let err = VerificationError::DataIsShort(
+                            stringify!(#name).to_owned(), expected, total_size);
+                        Err(err)?;
                     }
                     let mut offsets: Vec<usize> = ptr[1..(item_count+1)]
                         .iter()
@@ -391,12 +425,13 @@ where
                         .collect();
                     offsets.push(total_size);
                     if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
-                        return false;
+                        let err = VerificationError::OffsetsNotMatch(stringify!(#name).to_owned());
+                        Err(err)?;
                     }
-                    if offsets.windows(2).any(|i| !#inner::verify(&slice[i[0]..i[1]])) {
-                        return false;
+                    for i in 0..=(offsets.len()-2) {
+                        #inner::verify(&slice[offsets[i]..offsets[i+1]])?;
                     }
-                    true
+                    Ok(())
                 }
             }
         );
@@ -462,46 +497,57 @@ where
             let code = if field.typ.is_atom() {
                 quote!(
                     if offsets[#start] + 1 != offsets[#end] {
-                        return false;
+                        let err = VerificationError::FieldIsBroken(
+                            stringify!(#name).to_owned(), #start);
+                        Err(err)?;
                     }
                 )
             } else {
                 quote!(
-                    if !#field_type::verify(&slice[offsets[#start]..offsets[#end]]) {
-                        return false;
-                    }
+                    #field_type::verify(&slice[offsets[#start]..offsets[#end]])?;
                 )
             };
             verify_fields.push(code);
         }
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
-                fn verify(slice: &[u8]) -> bool {
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
                     let len = slice.len();
                     if len < 4 {
-                        return false;
+                        let err = VerificationError::HeaderIsBroken(
+                            stringify!(#name).to_owned(), 4, len);
+                        Err(err)?;
                     }
                     let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                     let total_size = u32::from_le(ptr[0]) as usize;
-                    if total_size != slice.len() {
-                        return false;
+                    if total_size != len {
+                        let err = VerificationError::TotalSizeNotMatch(
+                            stringify!(#name).to_owned(), total_size, len);
+                        Err(err)?;
                     }
-                    if total_size < 4 + 4 * Self::FIELD_COUNT {
-                        return false;
+                    let expected = 4 + 4 * Self::FIELD_COUNT;
+                    if total_size < expected {
+                        let err = VerificationError::HeaderIsBroken(
+                            stringify!(#name).to_owned(), expected, total_size);
+                        Err(err)?;
                     }
                     let mut offsets: Vec<usize> = ptr[1..(Self::FIELD_COUNT+1)]
                         .iter()
                         .map(|x| u32::from_le(*x) as usize)
                         .collect();
-                    if offsets[0] != 4 + 4 * Self::FIELD_COUNT {
-                        return false;
+                    if offsets[0] != expected {
+                        let err = VerificationError::FirstOffsetIsShort(
+                            stringify!(#name).to_owned(), expected, offsets[0]);
+                        Err(err)?;
                     }
                     offsets.push(total_size);
-                    if offsets.windows(2).any(|i| i[0] >= i[1]) {
-                        return false;
+                    if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
+                        let err = VerificationError::OffsetsNotMatch(stringify!(#name).to_owned());
+                        Err(err)?;
                     }
                     #( #verify_fields )*
-                    true
+                    Ok(())
                 }
             }
         );
