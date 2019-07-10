@@ -578,17 +578,10 @@ where
     let inner = builder_name(&info.typ.name);
     let item_count = usize_lit(info.item_count);
     {
-        let code = if info.typ.is_atom() {
-            quote!(
-                #[derive(Debug)]
-                pub struct #name<'m> ([#inner; #item_count], ::std::marker::PhantomData<&'m #inner>);
-            )
-        } else {
-            quote!(
-                #[derive(Debug)]
-                pub struct #name<'m> ([#inner<'m>; #item_count]);
-            )
-        };
+        let code = quote!(
+            #[derive(Debug)]
+            pub struct #name ([#inner; #item_count]);
+        );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
@@ -596,7 +589,7 @@ where
         let code = if info.typ.is_atom() {
             quote!(
                 pub fn empty() -> Self {
-                    #name([0; #item_count], ::std::marker::PhantomData)
+                    #name([0; #item_count])
                 }
             )
         } else {
@@ -614,30 +607,21 @@ where
     for idx in 0..info.item_count {
         let index = usize_lit(idx);
         let func = func_name(&format!("nth{}", idx));
-        let code = if info.typ.is_atom() {
-            quote!(
-                pub fn #func(mut self, v: #inner) -> Self {
-                    self.0[#index] = v;
-                    self
-                }
-            )
-        } else {
-            quote!(
-                pub fn #func<'n: 'm>(mut self, v: #inner<'n>) -> Self {
-                    self.0[#index] = v;
-                    self
-                }
-            )
-        };
+        let code = quote!(
+            pub fn #func(mut self, v: #inner) -> Self {
+                self.0[#index] = v;
+                self
+            }
+        );
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    def_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let total_size = usize_lit(info.item_size * info.item_count);
         let code = if info.typ.is_atom() {
             quote!(
-                impl<'m> molecule::prelude::Builder for #name<'m> {
+                impl molecule::prelude::Builder for #name {
                     type Output = #owned;
                     fn calc_len(&self) -> usize {
                         #total_size
@@ -657,7 +641,7 @@ where
         } else {
             let idx = (0..info.item_count).map(usize_lit).collect::<Vec<_>>();
             quote!(
-                impl<'m> molecule::prelude::Builder for #name<'m> {
+                impl molecule::prelude::Builder for #name {
                     type Output = #owned;
                     fn calc_len(&self) -> usize {
                         #total_size
@@ -690,16 +674,12 @@ where
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
             let field_type = builder_name(&field.typ.name);
-            let code = if field.typ.is_atom() {
-                quote!(#field_name: #field_type,)
-            } else {
-                quote!(#field_name: #field_type<'m>,)
-            };
+            let code = quote!(#field_name: #field_type,);
             fields.push(code);
         }
         let code = quote!(
             #[derive(Debug)]
-            pub struct #name<'m> {
+            pub struct #name {
                 #( #fields )*
             }
         );
@@ -731,25 +711,16 @@ where
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
             let field_type = builder_name(&field.typ.name);
-            let code = if field.typ.is_atom() {
-                quote!(
-                    pub fn #field_name(mut self, v: #field_type) -> Self {
-                        self.#field_name = v;
-                        self
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn #field_name<'n:'m>(mut self, v: #field_type<'n>) -> Self {
-                        self.#field_name = v;
-                        self
-                    }
-                )
-            };
+            let code = quote!(
+                pub fn #field_name(mut self, v: #field_type) -> Self {
+                    self.#field_name = v;
+                    self
+                }
+            );
             defuns.push(code);
         }
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    def_funcs(writer, &name, defuns)?;
     {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         for field in info.inner.iter() {
@@ -764,7 +735,7 @@ where
         let owned = owned_name(origin_name);
         let total_size = usize_lit(info.field_size.iter().sum());
         let code = quote!(
-            impl<'m> molecule::prelude::Builder for #name<'m> {
+            impl molecule::prelude::Builder for #name {
                 type Output = #owned;
                 fn calc_len(&self) -> usize {
                     #total_size
@@ -793,61 +764,37 @@ where
     let name = builder_name(origin_name);
     let inner = builder_name(&info.typ.name);
     {
-        let code = if info.typ.is_atom() {
-            quote!(
-                #[derive(Debug)]
-                pub struct #name<'m> (Vec<#inner>, ::std::marker::PhantomData<&'m #inner>);
-            )
-        } else {
-            quote!(
-                #[derive(Debug)]
-                pub struct #name<'m> (Vec<#inner<'m>>);
-            )
-        };
+        let code = quote!(
+            #[derive(Debug)]
+            pub struct #name (Vec<#inner>);
+        );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
     {
-        let code = if info.typ.is_atom() {
-            quote!(
-                pub fn empty() -> Self {
-                    #name(Vec::new(), ::std::marker::PhantomData)
-                }
-            )
-        } else {
-            quote!(
-                pub fn empty() -> Self {
-                    #name(Vec::new())
-                }
-            )
-        };
+        let code = quote!(
+            pub fn empty() -> Self {
+                #name(Vec::new())
+            }
+        );
         defuns.push(code);
     }
     {
-        let code = if info.typ.is_atom() {
-            quote!(
-                pub fn push(mut self, v: #inner) -> Self {
-                    self.0.push(v);
-                    self
-                }
-            )
-        } else {
-            quote!(
-                pub fn push<'n: 'm>(mut self, v: #inner<'n>) -> Self {
-                    self.0.push(v);
-                    self
-                }
-            )
-        };
+        let code = quote!(
+            pub fn push(mut self, v: #inner) -> Self {
+                self.0.push(v);
+                self
+            }
+        );
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    def_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let item_size = usize_lit(info.item_size);
         let code = if info.typ.is_atom() {
             quote!(
-                impl<'m> molecule::prelude::Builder for #name<'m> {
+                impl molecule::prelude::Builder for #name {
                     type Output = #owned;
                     fn calc_len(&self) -> usize {
                         4 + self.0.len()
@@ -868,7 +815,7 @@ where
             )
         } else {
             quote!(
-                impl<'m> molecule::prelude::Builder for #name<'m> {
+                impl molecule::prelude::Builder for #name {
                     type Output = #owned;
                     fn calc_len(&self) -> usize {
                         4 + #item_size * self.0.len()
@@ -903,7 +850,7 @@ where
     {
         let code = quote!(
             #[derive(Debug)]
-            pub struct #name<'m> (Vec<#inner<'m>>);
+            pub struct #name (Vec<#inner>);
         );
         write!(writer, "{}", code)?;
     }
@@ -918,18 +865,18 @@ where
     }
     {
         let code = quote!(
-            pub fn push<'n: 'm>(mut self, v: #inner<'n>) -> Self {
+            pub fn push(mut self, v: #inner) -> Self {
                 self.0.push(v);
                 self
             }
         );
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    def_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let code = quote!(
-            impl<'m> molecule::prelude::Builder for #name<'m> {
+            impl molecule::prelude::Builder for #name {
                 type Output = #owned;
                 fn calc_len(&self) -> usize {
                     4 + 4 * self.0.len() + self.0.iter().map(|inner| inner.calc_len()).sum::<usize>()
@@ -972,16 +919,12 @@ where
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
             let field_type = builder_name(&field.typ.name);
-            let code = if field.typ.is_atom() {
-                quote!(#field_name: #field_type,)
-            } else {
-                quote!(#field_name: #field_type<'m>,)
-            };
+            let code = quote!(#field_name: #field_type,);
             fields.push(code);
         }
         let code = quote!(
             #[derive(Debug)]
-            pub struct #name<'m> {
+            pub struct #name {
                 #( #fields )*
             }
         );
@@ -1013,25 +956,16 @@ where
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
             let field_type = builder_name(&field.typ.name);
-            let code = if field.typ.is_atom() {
-                quote!(
-                    pub fn #field_name(mut self, v: #field_type) -> Self {
-                        self.#field_name = v;
-                        self
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn #field_name<'n:'m>(mut self, v: #field_type<'n>) -> Self {
-                        self.#field_name = v;
-                        self
-                    }
-                )
-            };
+            let code = quote!(
+                pub fn #field_name(mut self, v: #field_type) -> Self {
+                    self.#field_name = v;
+                    self
+                }
+            );
             defuns.push(code);
         }
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    def_funcs(writer, &name, defuns)?;
     {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         let mut lengths: Vec<m4::TokenStream> = Vec::new();
@@ -1055,7 +989,7 @@ where
         let lengths1 = &lengths;
         let lengths2 = &lengths;
         let code = quote!(
-            impl<'m> molecule::prelude::Builder for #name<'m> {
+            impl molecule::prelude::Builder for #name {
                 type Output = #owned;
                 fn calc_len(&self) -> usize {
                     let len_header = 4 + #field_count * 4;
