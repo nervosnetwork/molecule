@@ -61,7 +61,7 @@ fn usize_lit(num: usize) -> m4::Literal {
     m4::Literal::usize_unsuffixed(num)
 }
 
-fn def_funcs_with_lifetime<W>(
+fn impl_funcs_with_lifetime<W>(
     writer: &mut W,
     name: &m4::Ident,
     defuns: Vec<m4::TokenStream>,
@@ -77,7 +77,7 @@ where
     write!(writer, "{}", code)
 }
 
-fn def_funcs<W>(writer: &mut W, name: &m4::Ident, defuns: Vec<m4::TokenStream>) -> io::Result<()>
+fn impl_funcs<W>(writer: &mut W, name: &m4::Ident, defuns: Vec<m4::TokenStream>) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -113,7 +113,7 @@ where
     write!(writer, "{}", code)
 }
 
-fn impl_reader_traits<W>(writer: &mut W, name: &m4::Ident) -> io::Result<()>
+fn impl_trait_reader<W>(writer: &mut W, name: &m4::Ident) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -169,7 +169,7 @@ where
         };
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    impl_funcs_with_lifetime(writer, &name, defuns)?;
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
@@ -187,7 +187,7 @@ where
         );
         write!(writer, "{}", code)?;
     }
-    impl_reader_traits(writer, &name)?;
+    impl_trait_reader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -229,7 +229,7 @@ where
         };
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    impl_funcs_with_lifetime(writer, &name, defuns)?;
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
@@ -247,7 +247,7 @@ where
         );
         write!(writer, "{}", code)?;
     }
-    impl_reader_traits(writer, &name)?;
+    impl_trait_reader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -299,7 +299,7 @@ where
         };
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    impl_funcs_with_lifetime(writer, &name, defuns)?;
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
@@ -327,7 +327,7 @@ where
         );
         write!(writer, "{}", code)?;
     }
-    impl_reader_traits(writer, &name)?;
+    impl_trait_reader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -374,7 +374,7 @@ where
         };
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    impl_funcs_with_lifetime(writer, &name, defuns)?;
     {
         let code = quote!(
             impl<'m> molecule::prelude::Verifiable for #name<'m> {
@@ -437,7 +437,7 @@ where
         );
         write!(writer, "{}", code)?;
     }
-    impl_reader_traits(writer, &name)?;
+    impl_trait_reader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -487,7 +487,7 @@ where
         };
         defuns.push(code);
     }
-    def_funcs_with_lifetime(writer, &name, defuns)?;
+    impl_funcs_with_lifetime(writer, &name, defuns)?;
     {
         let mut verify_fields: Vec<m4::TokenStream> = Vec::new();
         for (i, field) in info.inner.iter().enumerate() {
@@ -553,7 +553,7 @@ where
         );
         write!(writer, "{}", code)?;
     }
-    impl_reader_traits(writer, &name)?;
+    impl_trait_reader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -575,7 +575,7 @@ where
     W: io::Write,
 {
     let name = builder_name(origin_name);
-    let inner = builder_name(&info.typ.name);
+    let inner = owned_name(&info.typ.name);
     let item_count = usize_lit(info.item_count);
     {
         let code = quote!(
@@ -598,7 +598,7 @@ where
                 .collect::<Vec<_>>();
             quote!(
                 pub fn empty() -> Self {
-                    #name([#(#inner_array::empty(), )*])
+                    #name([#(#inner_array::default(), )*])
                 }
             )
         };
@@ -615,7 +615,7 @@ where
         );
         defuns.push(code);
     }
-    def_funcs(writer, &name, defuns)?;
+    impl_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let total_size = usize_lit(info.item_size * info.item_count);
@@ -647,7 +647,8 @@ where
                         #total_size
                     }
                     fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
-                        #( self.0[#idx].write(writer)?; )*
+                        use molecule::prelude::OwnedReader;
+                        #( writer.write_all(self.0[#idx].as_slice())?; )*
                         Ok(())
                     }
                     fn build(&self) -> ::std::io::Result<Self::Output> {
@@ -673,7 +674,7 @@ where
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
-            let field_type = builder_name(&field.typ.name);
+            let field_type = owned_name(&field.typ.name);
             let code = quote!(#field_name: #field_type,);
             fields.push(code);
         }
@@ -690,11 +691,11 @@ where
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
-            let field_type = builder_name(&field.typ.name);
+            let field_type = owned_name(&field.typ.name);
             let code = if field.typ.is_atom() {
                 quote!(#field_name: 0,)
             } else {
-                quote!(#field_name: #field_type::empty(),)
+                quote!(#field_name: #field_type::default(),)
             };
             fields.push(code);
         }
@@ -710,7 +711,7 @@ where
     {
         for field in info.inner.iter() {
             let field_name = func_name(&field.name);
-            let field_type = builder_name(&field.typ.name);
+            let field_type = owned_name(&field.typ.name);
             let code = quote!(
                 pub fn #field_name(mut self, v: #field_type) -> Self {
                     self.#field_name = v;
@@ -720,7 +721,7 @@ where
             defuns.push(code);
         }
     }
-    def_funcs(writer, &name, defuns)?;
+    impl_funcs(writer, &name, defuns)?;
     {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         for field in info.inner.iter() {
@@ -728,7 +729,7 @@ where
             let code = if field.typ.is_atom() {
                 quote!(writer.write_all(&[self.#field_name])?;)
             } else {
-                quote!(self.#field_name.write(writer)?;)
+                quote!(writer.write_all(self.#field_name.as_slice())?;)
             };
             fields.push(code);
         }
@@ -741,6 +742,7 @@ where
                     #total_size
                 }
                 fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                    use molecule::prelude::OwnedReader;
                     #( #fields )*
                     Ok(())
                 }
@@ -762,7 +764,7 @@ where
     W: io::Write,
 {
     let name = builder_name(origin_name);
-    let inner = builder_name(&info.typ.name);
+    let inner = owned_name(&info.typ.name);
     {
         let code = quote!(
             #[derive(Debug)]
@@ -788,7 +790,7 @@ where
         );
         defuns.push(code);
     }
-    def_funcs(writer, &name, defuns)?;
+    impl_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let item_size = usize_lit(info.item_size);
@@ -821,10 +823,11 @@ where
                         4 + #item_size * self.0.len()
                     }
                     fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                        use molecule::prelude::OwnedReader;
                         let len = (self.0.len() as u32).to_le_bytes();
                         writer.write_all(&len)?;
                         for inner in &self.0[..] {
-                            inner.write(writer)?;
+                            writer.write_all(inner.as_slice())?;
                         }
                         Ok(())
                     }
@@ -846,7 +849,7 @@ where
     W: io::Write,
 {
     let name = builder_name(origin_name);
-    let inner = builder_name(&info.typ.name);
+    let inner = owned_name(&info.typ.name);
     {
         let code = quote!(
             #[derive(Debug)]
@@ -872,16 +875,18 @@ where
         );
         defuns.push(code);
     }
-    def_funcs(writer, &name, defuns)?;
+    impl_funcs(writer, &name, defuns)?;
     {
         let owned = owned_name(origin_name);
         let code = quote!(
             impl molecule::prelude::Builder for #name {
                 type Output = #owned;
                 fn calc_len(&self) -> usize {
-                    4 + 4 * self.0.len() + self.0.iter().map(|inner| inner.calc_len()).sum::<usize>()
+                    use molecule::prelude::OwnedReader;
+                    4 + 4 * self.0.len() + self.0.iter().map(|inner| inner.as_slice().len()).sum::<usize>()
                 }
                 fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                    use molecule::prelude::OwnedReader;
                     {
                         let len = (self.calc_len() as u32).to_le_bytes();
                         writer.write_all(&len[..])?;
@@ -890,10 +895,10 @@ where
                     for inner in &self.0[..] {
                         let tmp = (offset as u32).to_le_bytes();
                         writer.write_all(&tmp[..])?;
-                        offset += inner.calc_len();
+                        offset += inner.as_slice().len();
                     }
                     for inner in &self.0[..] {
-                        inner.write(writer)?;
+                        writer.write_all(inner.as_slice())?;
                     }
                     Ok(())
                 }
@@ -965,7 +970,7 @@ where
             defuns.push(code);
         }
     }
-    def_funcs(writer, &name, defuns)?;
+    impl_funcs(writer, &name, defuns)?;
     {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         let mut lengths: Vec<m4::TokenStream> = Vec::new();
@@ -1035,6 +1040,30 @@ fn owned_name(name: &str) -> m4::Ident {
     }
 }
 
+fn impl_trait_ownedreader<W>(writer: &mut W, name: &m4::Ident) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let code = quote!(
+        impl<'m> molecule::prelude::OwnedReader for #name {
+            fn as_slice(&self) -> &[u8] {
+                &self.0[..]
+            }
+        }
+    );
+    write!(writer, "{}", code)
+}
+
+fn def_fn_as_reader(name: &str) -> m4::TokenStream {
+    let reader = reader_name(name);
+    quote!(
+        pub fn as_reader(&self) -> #reader {
+            use molecule::prelude::OwnedReader;
+            #reader(self.as_slice())
+        }
+    )
+}
+
 fn owned_array<W>(writer: &mut W, origin_name: &str, info: &ast::Array) -> io::Result<()>
 where
     W: io::Write,
@@ -1043,22 +1072,15 @@ where
     {
         let total_size = usize_lit(info.item_size * info.item_count);
         let code = quote!(
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct #name ([u8; #total_size]);
         );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
-    {
-        let reader = reader_name(origin_name);
-        let code = quote!(
-            pub fn as_reader(&self) -> #reader {
-                #reader(&self.0[..])
-            }
-        );
-        defuns.push(code);
-    }
-    def_funcs(writer, &name, defuns)?;
+    defuns.push(def_fn_as_reader(origin_name));
+    impl_funcs(writer, &name, defuns)?;
+    impl_trait_ownedreader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -1070,22 +1092,15 @@ where
     {
         let total_size = usize_lit(info.field_size.iter().sum());
         let code = quote!(
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct #name ([u8; #total_size]);
         );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
-    {
-        let reader = reader_name(origin_name);
-        let code = quote!(
-            pub fn as_reader(&self) -> #reader {
-                #reader(&self.0[..])
-            }
-        );
-        defuns.push(code);
-    }
-    def_funcs(writer, &name, defuns)?;
+    defuns.push(def_fn_as_reader(origin_name));
+    impl_funcs(writer, &name, defuns)?;
+    impl_trait_ownedreader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -1096,22 +1111,15 @@ where
     let name = owned_name(origin_name);
     {
         let code = quote!(
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct #name (Vec<u8>);
         );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
-    {
-        let reader = reader_name(origin_name);
-        let code = quote!(
-            pub fn as_reader(&self) -> #reader {
-                #reader(&self.0[..])
-            }
-        );
-        defuns.push(code);
-    }
-    def_funcs(writer, &name, defuns)?;
+    defuns.push(def_fn_as_reader(origin_name));
+    impl_funcs(writer, &name, defuns)?;
+    impl_trait_ownedreader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -1122,22 +1130,15 @@ where
     let name = owned_name(origin_name);
     {
         let code = quote!(
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct #name (Vec<u8>);
         );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
-    {
-        let reader = reader_name(origin_name);
-        let code = quote!(
-            pub fn as_reader(&self) -> #reader {
-                #reader(&self.0[..])
-            }
-        );
-        defuns.push(code);
-    }
-    def_funcs(writer, &name, defuns)?;
+    defuns.push(def_fn_as_reader(origin_name));
+    impl_funcs(writer, &name, defuns)?;
+    impl_trait_ownedreader(writer, &name)?;
     writeln!(writer)
 }
 
@@ -1148,21 +1149,14 @@ where
     let name = owned_name(origin_name);
     {
         let code = quote!(
-            #[derive(Debug)]
+            #[derive(Debug, Default)]
             pub struct #name (Vec<u8>);
         );
         write!(writer, "{}", code)?;
     }
     let mut defuns: Vec<m4::TokenStream> = Vec::new();
-    {
-        let reader = reader_name(origin_name);
-        let code = quote!(
-            pub fn as_reader(&self) -> #reader {
-                #reader(&self.0[..])
-            }
-        );
-        defuns.push(code);
-    }
-    def_funcs(writer, &name, defuns)?;
+    defuns.push(def_fn_as_reader(origin_name));
+    impl_funcs(writer, &name, defuns)?;
+    impl_trait_ownedreader(writer, &name)?;
     writeln!(writer)
 }

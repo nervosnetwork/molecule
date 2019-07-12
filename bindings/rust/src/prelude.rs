@@ -17,3 +17,7 @@ pub trait Builder {
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
     fn build(&self) -> io::Result<Self::Output>;
 }
+
+pub trait OwnedReader {
+    fn as_slice(&self) -> &[u8];
+}
