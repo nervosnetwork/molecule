@@ -31,11 +31,12 @@ whitespace              =   ifs | newline;
 break                   =   whitespace, { whitespace };
 break_opt               =   { whitespace };
 
+field_end               =   ",";
 stmt_end                =   ";";
 
 field_decl              =   identifier, break, ":", break_opt,
                             identifier, break_opt,
-                            stmt_end;
+                            field_end;
 array_decl              =   "array", break, identifier, break_opt,
                             "[", break_opt,
                                 identifier, break_opt, ";", break_opt, number, break_opt,
@@ -45,8 +46,7 @@ struct_decl             =   "struct", break, identifier, break_opt,
                             "{", break_opt,
                                 field_decl, break_opt,
                                 { field_decl, break_opt },
-                            "}", break_opt,
-                            stmt_end;
+                            "}";
 vector_decl             =   "vector", break, identifier, break_opt,
                             "<", break_opt,
                                 identifier, break_opt,
@@ -56,8 +56,7 @@ table_decl              =   "table", break, identifier, break_opt,
                             "{", break_opt,
                                 field_decl, break_opt,
                                 { field_decl, break_opt },
-                            "}", break_opt,
-                            stmt_end;
+                            "}";
 decl_stmt               =   array_decl | struct_decl | vector_decl | table_decl;
 
 path_super              =   "../";

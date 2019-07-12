@@ -17,12 +17,13 @@ whitespace      =   _{ ifs | newline }
 comment         =   _{ block_comment | line_comment }
 brk             =   _{ whitespace | comment }
 
+field_end       =   _{ "," }
 stmt_end        =   _{ ";" }
 
 field_decl      =   {
                         identifier ~ (brk)* ~ ":" ~ (brk)* ~
                         identifier ~ (brk)* ~
-                        stmt_end
+                        field_end
                     }
 array_decl      =   {
                         "array" ~ (brk)+ ~ identifier ~ (brk)* ~
@@ -35,8 +36,7 @@ struct_decl     =   {
                         "struct" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "{" ~ (brk)* ~
                             (field_decl ~ (brk)*)+ ~
-                        "}" ~ (brk)* ~
-                        stmt_end
+                        "}"
                     }
 vector_decl     =   {
                         "vector" ~ (brk)+ ~ identifier ~ (brk)* ~
@@ -49,8 +49,7 @@ table_decl      =   {
                         "table" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "{" ~ (brk)* ~
                             (field_decl ~ (brk)*)+ ~
-                        "}" ~ (brk)* ~
-                        stmt_end
+                        "}"
                     }
 decl_stmt       =   _{ array_decl | struct_decl | vector_decl | table_decl }
 
