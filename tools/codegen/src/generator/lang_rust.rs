@@ -579,8 +579,13 @@ where
     let item_count = usize_lit(info.item_count);
     {
         let code = quote!(
-            #[derive(Debug)]
             pub struct #name ([#inner; #item_count]);
+
+            impl ::std::fmt::Debug for #name {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    write!(f, "{} ({:?})", stringify!(#name), &self.0[..])
+                }
+            }
         );
         write!(writer, "{}", code)?;
     }
@@ -1072,8 +1077,19 @@ where
     {
         let total_size = usize_lit(info.item_size * info.item_count);
         let code = quote!(
-            #[derive(Debug, Default)]
             pub struct #name ([u8; #total_size]);
+
+            impl ::std::fmt::Debug for #name {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    write!(f, "{} ({:?})", stringify!(#name), &self.0[..])
+                }
+            }
+
+            impl ::std::default::Default for #name {
+                fn default() -> Self {
+                    #name ([0; #total_size])
+                }
+            }
         );
         write!(writer, "{}", code)?;
     }
@@ -1092,8 +1108,19 @@ where
     {
         let total_size = usize_lit(info.field_size.iter().sum());
         let code = quote!(
-            #[derive(Debug, Default)]
             pub struct #name ([u8; #total_size]);
+
+            impl ::std::fmt::Debug for #name {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    write!(f, "{} ({:?})", stringify!(#name), &self.0[..])
+                }
+            }
+
+            impl ::std::default::Default for #name {
+                fn default() -> Self {
+                    #name ([0; #total_size])
+                }
+            }
         );
         write!(writer, "{}", code)?;
     }
