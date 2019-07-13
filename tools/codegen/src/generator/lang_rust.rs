@@ -224,7 +224,7 @@ where
             fn build(&self) -> ::std::io::Result<#entity> {
                 let mut inner = Vec::with_capacity(self.expected_length());
                 self.write(&mut inner)?;
-                Ok(#entity::new_unchecked(inner))
+                Ok(#entity::new_unchecked(inner.into()))
             }
         }
     );

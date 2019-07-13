@@ -1,16 +1,18 @@
-use std::{default, fmt, io, marker::PhantomData};
+use std::{clone::Clone, default::Default, fmt, io, marker::PhantomData};
+
+use bytes::Bytes;
 
 use crate::error::{VerificationError, VerificationResult};
 
-pub trait Molecule: fmt::Debug + default::Default {
+pub trait Molecule: fmt::Debug + Default + Clone {
     fn verify(slice: &[u8]) -> VerificationResult<()>;
 }
 
 #[derive(Debug)]
 pub struct Reader<'r, M: Molecule>(&'r [u8], PhantomData<M>);
 
-#[derive(Debug, Default)]
-pub struct Entity<M: Molecule>(Vec<u8>, PhantomData<M>);
+#[derive(Debug, Default, Clone)]
+pub struct Entity<M: Molecule>(Bytes, PhantomData<M>);
 
 pub trait Builder {
     type Kernel: Molecule;
@@ -33,7 +35,7 @@ where
         self.0
     }
     pub fn to_entity(&self) -> Entity<M> {
-        Entity(self.0.to_owned(), PhantomData)
+        Entity::new_unchecked(self.0.to_owned().into())
     }
 }
 
@@ -41,7 +43,7 @@ impl<M> Entity<M>
 where
     M: Molecule,
 {
-    pub fn new_unchecked(data: Vec<u8>) -> Self {
+    pub fn new_unchecked(data: Bytes) -> Self {
         Entity(data, PhantomData)
     }
     pub fn from_slice(slice: &[u8]) -> VerificationResult<Self> {
