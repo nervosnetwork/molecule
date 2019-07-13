@@ -135,6 +135,7 @@ where
     W: io::Write,
 {
     let builder = builder_name(origin_name);
+    let builder_string = builder.to_string();
     let inner = entity_name(&info.typ.name);
     let item_count = usize_lit(info.item_count);
     let code = quote!(
@@ -142,7 +143,7 @@ where
 
         impl ::std::fmt::Debug for #builder {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                write!(f, "{} ({:?})", stringify!(#builder), &self.0[..])
+                write!(f, "{} ({:?})", #builder_string, &self.0[..])
             }
         }
 
@@ -255,6 +256,7 @@ where
     def_builder_for_array(writer, origin_name, info)?;
     {
         let name = molecule_name(origin_name);
+        let name_string = name.to_string();
         let inner = molecule_name(&info.typ.name);
         let total_size = usize_lit(info.item_size * info.item_count);
         let verify_inners = if info.typ.is_atom() {
@@ -276,7 +278,7 @@ where
                     Ok(())
                 } else {
                     let err = VerificationError::TotalSizeNotMatch(
-                        stringify!(#name).to_owned(), #total_size, slice.len());
+                        #name_string.to_owned(), #total_size, slice.len());
                     Err(err)
                 }
             }
@@ -365,6 +367,7 @@ where
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     {
         let name = molecule_name(origin_name);
+        let name_string = name.to_string();
         let total_size = usize_lit(info.field_size.iter().sum());
         let verify_fields = {
             let mut offset = 0;
@@ -391,7 +394,7 @@ where
                     Ok(())
                 } else {
                     let err = VerificationError::TotalSizeNotMatch(
-                        stringify!(#name).to_owned(), #total_size, slice.len());
+                        #name_string.to_owned(), #total_size, slice.len());
                     Err(err)
                 }
             }
@@ -485,6 +488,7 @@ where
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     {
         let name = molecule_name(origin_name);
+        let name_string = name.to_string();
         let inner = molecule_name(&info.typ.name);
         let item_size = usize_lit(info.item_size);
         let verify_inners = if info.typ.is_atom() {
@@ -504,7 +508,7 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err =
-                        VerificationError::HeaderIsBroken(stringify!(#name).to_owned(), 4, len);
+                        VerificationError::HeaderIsBroken(#name_string.to_owned(), 4, len);
                     Err(err)
                 } else {
                     let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
@@ -512,7 +516,7 @@ where
                     let expected = 4 + #item_size * item_count;
                     if len == expected {
                         let err = VerificationError::TotalSizeNotMatch(
-                            stringify!(#name).to_owned(),
+                            #name_string.to_owned(),
                             expected,
                             len,
                         );
@@ -615,6 +619,7 @@ where
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     {
         let name = molecule_name(origin_name);
+        let name_string = name.to_string();
         let inner = molecule_name(&info.typ.name);
         let code = quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
@@ -622,14 +627,14 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        stringify!(#name).to_owned(), 4, len);
+                        #name_string.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        stringify!(#name).to_owned(), total_size, len);
+                        #name_string.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 if total_size == 4 {
@@ -637,25 +642,25 @@ where
                 }
                 if total_size < 4 + 4 {
                     let err = VerificationError::DataIsShort(
-                        stringify!(#name).to_owned(), 8, total_size);
+                        #name_string.to_owned(), 8, total_size);
                     Err(err)?;
                 }
                 let offset_first = u32::from_le(ptr[1]) as usize;
                 if offset_first % 4 != 0 {
                     let err = VerificationError::FirstOffsetIsBroken(
-                        stringify!(#name).to_owned(), offset_first);
+                        #name_string.to_owned(), offset_first);
                     Err(err)?;
                 }
                 if offset_first < 4 + 4 {
                     let err = VerificationError::FirstOffsetIsShort(
-                        stringify!(#name).to_owned(), 8, offset_first);
+                        #name_string.to_owned(), 8, offset_first);
                     Err(err)?;
                 }
                 let item_count = offset_first / 4 - 1;
                 let expected = 4 + 4 * item_count;
                 if total_size < expected {
                     let err = VerificationError::DataIsShort(
-                        stringify!(#name).to_owned(), expected, total_size);
+                        #name_string.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..(item_count+1)]
@@ -664,7 +669,7 @@ where
                     .collect();
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(stringify!(#name).to_owned());
+                    let err = VerificationError::OffsetsNotMatch(#name_string.to_owned());
                     Err(err)?;
                 }
                 for i in 0..=(offsets.len()-2) {
@@ -772,6 +777,7 @@ where
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     {
         let name = molecule_name(origin_name);
+        let name_string = name.to_string();
         let field_count = usize_lit(info.inner.len());
         let verify_fields = info.inner.iter().enumerate().map(|(i, f)| {
             let field = molecule_name(&f.typ.name);
@@ -781,7 +787,7 @@ where
                 quote!(
                     if offsets[#start] + 1 != offsets[#end] {
                         let err = VerificationError::FieldIsBroken(
-                            stringify!(#name).to_owned(), #start);
+                            #name_string.to_owned(), #start);
                         Err(err)?;
                     }
                 )
@@ -797,20 +803,20 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        stringify!(#name).to_owned(), 4, len);
+                        #name_string.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        stringify!(#name).to_owned(), total_size, len);
+                        #name_string.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 let expected = 4 + 4 * #field_count;
                 if total_size < expected {
                     let err = VerificationError::HeaderIsBroken(
-                        stringify!(#name).to_owned(), expected, total_size);
+                        #name_string.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..=#field_count]
@@ -819,12 +825,12 @@ where
                     .collect();
                 if offsets[0] != expected {
                     let err = VerificationError::FirstOffsetIsShort(
-                        stringify!(#name).to_owned(), expected, offsets[0]);
+                        #name_string.to_owned(), expected, offsets[0]);
                     Err(err)?;
                 }
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(stringify!(#name).to_owned());
+                    let err = VerificationError::OffsetsNotMatch(#name_string.to_owned());
                     Err(err)?;
                 }
                 #( #verify_fields )*
