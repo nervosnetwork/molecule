@@ -2,7 +2,7 @@ use std::{clone::Clone, default::Default, fmt, io, marker::PhantomData};
 
 use bytes::Bytes;
 
-use crate::error::{VerificationError, VerificationResult};
+use crate::error::VerificationResult;
 
 pub trait Molecule: fmt::Debug + Default + Clone {
     fn verify(slice: &[u8]) -> VerificationResult<()>;
@@ -54,16 +54,5 @@ where
     }
     pub fn as_reader(&self) -> Reader<'_, M> {
         Reader(&self.0[..], PhantomData)
-    }
-}
-
-impl Molecule for u8 {
-    fn verify(slice: &[u8]) -> VerificationResult<()> {
-        if slice.len() == 1 {
-            Ok(())
-        } else {
-            let err = VerificationError::TotalSizeNotMatch("u8".to_owned(), 1, slice.len());
-            Err(err)
-        }
     }
 }

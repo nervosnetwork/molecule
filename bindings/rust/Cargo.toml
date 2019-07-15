@@ -13,12 +13,5 @@ license = "MIT"
 [dependencies]
 bytes = "~0.4"
 
-[build-dependencies]
-codegen = { package ="molecule-codegen", version = "=0.0.0", path = "../../tools/codegen" }
-
-[features]
-default = ["extra-types"]
-extra-types = []
-
 [badges]
 maintenance = { status = "experimental" }
