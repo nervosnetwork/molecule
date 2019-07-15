@@ -165,6 +165,19 @@ where
     write!(writer, "{}", code)
 }
 
+fn impl_reader<W>(writer: &mut W, origin_name: &str, funcs: Vec<m4::TokenStream>) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let name = reader_name(origin_name);
+    let code = quote!(
+        impl<'r> #name<'r> {
+            #( #funcs )*
+        }
+    );
+    write!(writer, "{}", code)
+}
+
 fn def_builder_for_array<W>(writer: &mut W, origin_name: &str, info: &ast::Array) -> io::Result<()>
 where
     W: io::Write,
@@ -323,8 +336,6 @@ where
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let reader = reader_name(origin_name);
-        let inner = reader_name(&info.typ.name);
         {
             let total_size = usize_lit(info.item_size * info.item_count);
             let item_size = usize_lit(info.item_size);
@@ -336,26 +347,31 @@ where
             );
             funcs.push(code);
         }
+        impl_molecule(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = reader_name(&info.typ.name);
         for idx in 0..info.item_count {
             let start = usize_lit(idx * info.item_size);
             let func = func_name(&format!("nth{}", idx));
             let code = if info.typ.is_atom() {
                 quote!(
-                    pub fn #func(reader: &#reader) -> #inner {
-                        reader.as_slice()[#start]
+                    pub fn #func(&self) -> #inner {
+                        self.as_slice()[#start]
                     }
                 )
             } else {
                 let end = usize_lit((idx + 1) * info.item_size);
                 quote!(
-                    pub fn #func<'r>(reader: &'r #reader) -> #inner<'r> {
-                        #inner::new_unchecked(&reader.as_slice()[#start..#end])
+                    pub fn #func(&self) -> #inner<'_> {
+                        #inner::new_unchecked(&self.as_slice()[#start..#end])
                     }
                 )
             };
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
+        impl_reader(writer, origin_name, funcs)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -439,7 +455,6 @@ where
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let reader = reader_name(origin_name);
         {
             let total_size = usize_lit(info.field_size.iter().sum());
             let field_count = usize_lit(info.inner.len());
@@ -451,6 +466,10 @@ where
             );
             funcs.push(code);
         }
+        impl_molecule(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let mut offset = 0;
             for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
@@ -460,22 +479,22 @@ where
                 offset += s;
                 let code = if f.typ.is_atom() {
                     quote!(
-                        pub fn #func(reader: &#reader) -> #inner {
-                            reader.as_slice()[#start]
+                        pub fn #func(&self) -> #inner {
+                            self.as_slice()[#start]
                         }
                     )
                 } else {
                     let end = usize_lit(offset);
                     quote!(
-                        pub fn #func<'r>(reader: &'r #reader) -> #inner<'r> {
-                            #inner::new_unchecked(&reader.as_slice()[#start..#end])
+                        pub fn #func(&self) -> #inner<'_> {
+                            #inner::new_unchecked(&self.as_slice()[#start..#end])
                         }
                     )
                 };
                 funcs.push(code);
             }
         }
-        impl_molecule(writer, origin_name, funcs)?;
+        impl_reader(writer, origin_name, funcs)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -581,34 +600,39 @@ where
             );
             funcs.push(code);
         }
+        impl_molecule(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
+            let item_size = usize_lit(info.item_size);
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
-                    pub fn nth(reader: &#reader, idx: usize) -> Option<#inner> {
-                        if idx >= Self::item_count(reader) {
+                    pub fn nth(&self, idx: usize) -> Option<#inner> {
+                        if idx >= <Self as molecule::prelude::Reader>::Kernel::item_count(self) {
                             None
                         } else {
-                            Some(reader.as_slice()[4+idx])
+                            Some(self.as_slice()[4+idx])
                         }
                     }
                 )
             } else {
                 quote!(
-                    pub fn nth<'r>(reader: &'r #reader, idx: usize) -> Option<#inner<'r>> {
-                        if idx >= Self::item_count(reader) {
+                    pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
+                        if idx >= <Self as molecule::prelude::Reader>::Kernel::item_count(self) {
                             None
                         } else {
                             let start = 4 + idx * #item_size;
                             let end = start + #item_size;
-                            Some(#inner::new_unchecked(&reader.as_slice()[start..end]))
+                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
                         }
                     }
                 )
             };
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
+        impl_reader(writer, origin_name, funcs)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -732,40 +756,44 @@ where
             );
             funcs.push(code);
         }
+        impl_molecule(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
-                    pub fn nth(reader: &#reader, idx: usize) -> Option<#inner> {
-                        let (count, offsets) = Self::item_offsets(reader);
+                    pub fn nth(&self, idx: usize) -> Option<#inner> {
+                        let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::item_offsets(self);
                         if idx >= count {
                             None
                         } else {
                             let offset = u32::from_le(offsets[idx]) as usize;
-                            Some(reader.as_slice()[offset])
+                            Some(self.as_slice()[offset])
                         }
                     }
                 )
             } else {
                 quote!(
-                    pub fn nth<'r>(reader: &'r #reader, idx: usize) -> Option<#inner<'r>> {
-                        let (count, offsets) = Self::item_offsets(reader);
+                    pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
+                        let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::item_offsets(self);
                         if idx >= count {
                             None
                         } else if idx == count - 1 {
                             let start = u32::from_le(offsets[idx]) as usize;
-                            Some(#inner::new_unchecked(&reader.as_slice()[start..]))
+                            Some(#inner::new_unchecked(&self.as_slice()[start..]))
                         } else {
                             let start = u32::from_le(offsets[idx]) as usize;
                             let end = u32::from_le(offsets[idx+1]) as usize;
-                            Some(#inner::new_unchecked(&reader.as_slice()[start..end]))
+                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
                         }
                     }
                 )
             };
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
+        impl_reader(writer, origin_name, funcs)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -894,6 +922,10 @@ where
             );
             funcs.push(code);
         }
+        impl_molecule(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let field_count = usize_lit(info.inner.len());
             for (i, f) in info.inner.iter().enumerate() {
@@ -902,39 +934,39 @@ where
                 let start = usize_lit(i);
                 let code = if f.typ.is_atom() {
                     quote!(
-                        pub fn #func(reader: &#reader) -> #inner {
-                            let (_, offsets) = Self::field_offsets(reader);
+                        pub fn #func(&self) -> #inner {
+                            let (_, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
                             let offset = u32::from_le(offsets[#start]) as usize;
-                            reader.as_slice()[offset]
+                            self.as_slice()[offset]
                         }
                     )
                 } else if i == info.inner.len() - 1 {
                     quote!(
-                        pub fn #func<'r>(reader: &'r #reader) -> #inner<'r> {
-                            let (count, offsets) = Self::field_offsets(reader);
+                        pub fn #func(&self) -> #inner<'_> {
+                            let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
                             let start = u32::from_le(offsets[#start]) as usize;
                             if count == #field_count {
-                                #inner::new_unchecked(&reader.as_slice()[start..])
+                                #inner::new_unchecked(&self.as_slice()[start..])
                             } else {
                                 let end = u32::from_le(offsets[#start+1]) as usize;
-                                #inner::new_unchecked(&reader.as_slice()[start..end])
+                                #inner::new_unchecked(&self.as_slice()[start..end])
                             }
                         }
                     )
                 } else {
                     quote!(
-                        pub fn #func<'r>(reader: &'r #reader) -> #inner<'r> {
-                            let (_, offsets) = Self::field_offsets(reader);
+                        pub fn #func(&self) -> #inner<'_> {
+                            let (_, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
                             let start = u32::from_le(offsets[#start]) as usize;
                             let end = u32::from_le(offsets[#start+1]) as usize;
-                            #inner::new_unchecked(&reader.as_slice()[start..end])
+                            #inner::new_unchecked(&self.as_slice()[start..end])
                         }
                     )
                 };
                 funcs.push(code);
             }
         }
-        impl_molecule(writer, origin_name, funcs)?;
+        impl_reader(writer, origin_name, funcs)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
