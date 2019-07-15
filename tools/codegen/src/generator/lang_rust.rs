@@ -14,7 +14,10 @@ impl Generator {
     where
         W: io::Write,
     {
-        write!(writer, "use molecule::prelude::*;")?;
+        let code = quote!(
+            use molecule::prelude::{Entity as _, Reader as _};
+        );
+        write!(writer, "{}", code)?;
         for decl in &self.ast.decls[..] {
             match decl.typ {
                 ast::TopDeclType::Array(ref info) => {
@@ -52,16 +55,12 @@ fn ident_name(name: &str, suffix: &str) -> m4::Ident {
     }
 }
 
-fn molecule_name(name: &str) -> m4::Ident {
-    ident_name(name, "")
-}
-
 fn reader_name(name: &str) -> m4::Ident {
     ident_name(name, "Reader")
 }
 
 fn entity_name(name: &str) -> m4::Ident {
-    ident_name(name, "Entity")
+    ident_name(name, "")
 }
 
 fn builder_name(name: &str) -> m4::Ident {
@@ -85,12 +84,9 @@ fn def_molecule<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
 where
     W: io::Write,
 {
-    let molecule = molecule_name(origin_name);
     let entity = entity_name(origin_name);
     let reader = reader_name(origin_name);
     let code = quote!(
-        #[derive(Debug, Default, Clone, Copy)]
-        pub struct #molecule;
         #[derive(Debug, Default, Clone)]
         pub struct #entity(molecule::bytes::Bytes);
         #[derive(Debug)]
@@ -113,9 +109,18 @@ where
                 #reader::new_unchecked(self.as_slice())
             }
         }
+    );
+    write!(writer, "{}", code)
+}
 
+fn impl_trait_reader<W>(writer: &mut W, origin_name: &str, funcs: m4::TokenStream) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity = entity_name(origin_name);
+    let reader = reader_name(origin_name);
+    let code = quote!(
         impl<'r> molecule::prelude::Reader<'r> for #reader<'r> {
-            type Kernel = #molecule;
             type Entity = #entity;
             fn to_entity(&self) -> Self::Entity {
                 #entity::new_unchecked(self.as_slice().into())
@@ -126,40 +131,7 @@ where
             fn as_slice(&self) -> &[u8] {
                 self.0
             }
-        }
-    );
-    write!(writer, "{}", code)
-}
-
-fn impl_trait_molecule<W>(
-    writer: &mut W,
-    origin_name: &str,
-    funcs: m4::TokenStream,
-) -> io::Result<()>
-where
-    W: io::Write,
-{
-    let name = molecule_name(origin_name);
-    let code = quote!(
-        impl molecule::prelude::Molecule for #name {
             #funcs
-        }
-    );
-    write!(writer, "{}", code)
-}
-
-fn impl_molecule<W>(
-    writer: &mut W,
-    origin_name: &str,
-    funcs: Vec<m4::TokenStream>,
-) -> io::Result<()>
-where
-    W: io::Write,
-{
-    let name = molecule_name(origin_name);
-    let code = quote!(
-        impl #name {
-            #( #funcs )*
         }
     );
     write!(writer, "{}", code)
@@ -262,12 +234,10 @@ fn impl_trait_builder<W>(
 where
     W: io::Write,
 {
-    let kernel = molecule_name(origin_name);
     let name = builder_name(origin_name);
     let entity = entity_name(origin_name);
     let code = quote!(
         impl molecule::prelude::Builder for #name {
-            type Kernel = #kernel;
             type Entity = #entity;
             #funcs
             fn build(&self) -> ::std::io::Result<Self::Entity> {
@@ -304,9 +274,9 @@ where
     def_molecule(writer, origin_name)?;
     def_builder_for_array(writer, origin_name, info)?;
     {
-        let name = molecule_name(origin_name);
-        let name_string = name.to_string();
-        let inner = molecule_name(&info.typ.name);
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
+        let inner = reader_name(&info.typ.name);
         let total_size = usize_lit(info.item_size * info.item_count);
         let verify_inners = if info.typ.is_atom() {
             Vec::new()
@@ -327,15 +297,16 @@ where
                     Ok(())
                 } else {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #name_string.to_owned(), #total_size, slice.len());
+                        #reader_string.to_owned(), #total_size, slice.len());
                     Err(err)
                 }
             }
         );
-        impl_trait_molecule(writer, origin_name, code)?;
+        impl_trait_reader(writer, origin_name, code)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = reader_name(&info.typ.name);
         {
             let total_size = usize_lit(info.item_size * info.item_count);
             let item_size = usize_lit(info.item_size);
@@ -347,11 +318,6 @@ where
             );
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = reader_name(&info.typ.name);
         for idx in 0..info.item_count {
             let start = usize_lit(idx * info.item_size);
             let func = func_name(&format!("nth{}", idx));
@@ -418,14 +384,14 @@ where
     def_molecule(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     {
-        let name = molecule_name(origin_name);
-        let name_string = name.to_string();
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
         let total_size = usize_lit(info.field_size.iter().sum());
         let verify_fields = {
             let mut offset = 0;
             let mut codes = Vec::with_capacity(info.field_size.len());
             for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
-                let field = molecule_name(&f.typ.name);
+                let field = reader_name(&f.typ.name);
                 let start = usize_lit(offset);
                 offset += s;
                 let end = usize_lit(offset);
@@ -446,12 +412,12 @@ where
                     Ok(())
                 } else {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #name_string.to_owned(), #total_size, slice.len());
+                        #reader_string.to_owned(), #total_size, slice.len());
                     Err(err)
                 }
             }
         );
-        impl_trait_molecule(writer, origin_name, code)?;
+        impl_trait_reader(writer, origin_name, code)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -466,10 +432,6 @@ where
             );
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let mut offset = 0;
             for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
@@ -542,9 +504,9 @@ where
     def_molecule(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     {
-        let name = molecule_name(origin_name);
-        let name_string = name.to_string();
-        let inner = molecule_name(&info.typ.name);
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
+        let inner = reader_name(&info.typ.name);
         let item_size = usize_lit(info.item_size);
         let verify_inners = if info.typ.is_atom() {
             quote!()
@@ -563,7 +525,7 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err =
-                        VerificationError::HeaderIsBroken(#name_string.to_owned(), 4, len);
+                        VerificationError::HeaderIsBroken(#reader_string.to_owned(), 4, len);
                     Err(err)
                 } else {
                     let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
@@ -571,7 +533,7 @@ where
                     let expected = 4 + #item_size * item_count;
                     if len == expected {
                         let err = VerificationError::TotalSizeNotMatch(
-                            #name_string.to_owned(),
+                            #reader_string.to_owned(),
                             expected,
                             len,
                         );
@@ -583,34 +545,29 @@ where
                 }
             }
         );
-        impl_trait_molecule(writer, origin_name, code)?;
+        impl_trait_reader(writer, origin_name, code)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let reader = reader_name(origin_name);
         let item_size = usize_lit(info.item_size);
         {
             let code = quote!(
                 pub const ITEM_SIZE: usize = #item_size;
 
-                pub fn item_count(reader: &#reader) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(reader.as_slice()) };
+                pub fn item_count(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
                 }
             );
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let item_size = usize_lit(info.item_size);
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
                     pub fn nth(&self, idx: usize) -> Option<#inner> {
-                        if idx >= <Self as molecule::prelude::Reader>::Kernel::item_count(self) {
+                        if idx >= Self::item_count(self) {
                             None
                         } else {
                             Some(self.as_slice()[4+idx])
@@ -620,7 +577,7 @@ where
             } else {
                 quote!(
                     pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
-                        if idx >= <Self as molecule::prelude::Reader>::Kernel::item_count(self) {
+                        if idx >= Self::item_count(self) {
                             None
                         } else {
                             let start = 4 + idx * #item_size;
@@ -678,23 +635,23 @@ where
     def_molecule(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     {
-        let name = molecule_name(origin_name);
-        let name_string = name.to_string();
-        let inner = molecule_name(&info.typ.name);
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
+        let inner = reader_name(&info.typ.name);
         let code = quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        #name_string.to_owned(), 4, len);
+                        #reader_string.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #name_string.to_owned(), total_size, len);
+                        #reader_string.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 if total_size == 4 {
@@ -702,25 +659,25 @@ where
                 }
                 if total_size < 4 + 4 {
                     let err = VerificationError::DataIsShort(
-                        #name_string.to_owned(), 8, total_size);
+                        #reader_string.to_owned(), 8, total_size);
                     Err(err)?;
                 }
                 let offset_first = u32::from_le(ptr[1]) as usize;
                 if offset_first % 4 != 0 {
                     let err = VerificationError::FirstOffsetIsBroken(
-                        #name_string.to_owned(), offset_first);
+                        #reader_string.to_owned(), offset_first);
                     Err(err)?;
                 }
                 if offset_first < 4 + 4 {
                     let err = VerificationError::FirstOffsetIsShort(
-                        #name_string.to_owned(), 8, offset_first);
+                        #reader_string.to_owned(), 8, offset_first);
                     Err(err)?;
                 }
                 let item_count = offset_first / 4 - 1;
                 let expected = 4 + 4 * item_count;
                 if total_size < expected {
                     let err = VerificationError::DataIsShort(
-                        #name_string.to_owned(), expected, total_size);
+                        #reader_string.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..(item_count+1)]
@@ -729,7 +686,7 @@ where
                     .collect();
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(#name_string.to_owned());
+                    let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
                     Err(err)?;
                 }
                 for i in 0..=(offsets.len()-2) {
@@ -740,15 +697,14 @@ where
                 Ok(())
             }
         );
-        impl_trait_molecule(writer, origin_name, code)?;
+        impl_trait_reader(writer, origin_name, code)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let reader = reader_name(origin_name);
         {
             let code = quote!(
-                pub fn item_offsets<'r>(reader: &'r #reader) -> (usize, &'r [u32]) {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(reader.as_slice()) };
+                pub fn item_offsets(&self) -> (usize, &[u32]) {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
                     let first = u32::from_le(ptr[1]) as usize;
                     let count = (first - 4) / 4;
                     (count, &ptr[1..])
@@ -756,16 +712,12 @@ where
             );
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
                     pub fn nth(&self, idx: usize) -> Option<#inner> {
-                        let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::item_offsets(self);
+                        let (count, offsets) = Self::item_offsets(self);
                         if idx >= count {
                             None
                         } else {
@@ -777,7 +729,7 @@ where
             } else {
                 quote!(
                     pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
-                        let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::item_offsets(self);
+                        let (count, offsets) = Self::item_offsets(self);
                         if idx >= count {
                             None
                         } else if idx == count - 1 {
@@ -840,18 +792,18 @@ where
     def_molecule(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     {
-        let name = molecule_name(origin_name);
-        let name_string = name.to_string();
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
         let field_count = usize_lit(info.inner.len());
         let verify_fields = info.inner.iter().enumerate().map(|(i, f)| {
-            let field = molecule_name(&f.typ.name);
+            let field = reader_name(&f.typ.name);
             let start = usize_lit(i);
             let end = usize_lit(i + 1);
             if f.typ.is_atom() {
                 quote!(
                     if offsets[#start] + 1 != offsets[#end] {
                         let err = VerificationError::FieldIsBroken(
-                            #name_string.to_owned(), #start);
+                            #reader_string.to_owned(), #start);
                         Err(err)?;
                     }
                 )
@@ -867,20 +819,20 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        #name_string.to_owned(), 4, len);
+                        #reader_string.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #name_string.to_owned(), total_size, len);
+                        #reader_string.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 let expected = 4 + 4 * #field_count;
                 if total_size < expected {
                     let err = VerificationError::HeaderIsBroken(
-                        #name_string.to_owned(), expected, total_size);
+                        #reader_string.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..=#field_count]
@@ -889,23 +841,22 @@ where
                     .collect();
                 if offsets[0] != expected {
                     let err = VerificationError::FirstOffsetIsShort(
-                        #name_string.to_owned(), expected, offsets[0]);
+                        #reader_string.to_owned(), expected, offsets[0]);
                     Err(err)?;
                 }
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(#name_string.to_owned());
+                    let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
                     Err(err)?;
                 }
                 #( #verify_fields )*
                 Ok(())
             }
         );
-        impl_trait_molecule(writer, origin_name, code)?;
+        impl_trait_reader(writer, origin_name, code)?;
     }
     {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let reader = reader_name(origin_name);
         {
             let field_count = usize_lit(info.inner.len());
             let code = quote!(pub const FIELD_COUNT: usize = #field_count;);
@@ -913,8 +864,8 @@ where
         }
         {
             let code = quote!(
-                pub fn field_offsets<'r>(reader: &'r #reader) -> (usize, &'r [u32]) {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(reader.as_slice()) };
+                pub fn field_offsets(&self) -> (usize, &[u32]) {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
                     let first = u32::from_le(ptr[1]) as usize;
                     let count = (first - 4) / 4;
                     (count, &ptr[1..])
@@ -922,10 +873,6 @@ where
             );
             funcs.push(code);
         }
-        impl_molecule(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let field_count = usize_lit(info.inner.len());
             for (i, f) in info.inner.iter().enumerate() {
@@ -935,7 +882,7 @@ where
                 let code = if f.typ.is_atom() {
                     quote!(
                         pub fn #func(&self) -> #inner {
-                            let (_, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
+                            let (_, offsets) = Self::field_offsets(self);
                             let offset = u32::from_le(offsets[#start]) as usize;
                             self.as_slice()[offset]
                         }
@@ -943,7 +890,7 @@ where
                 } else if i == info.inner.len() - 1 {
                     quote!(
                         pub fn #func(&self) -> #inner<'_> {
-                            let (count, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
+                            let (count, offsets) = Self::field_offsets(self);
                             let start = u32::from_le(offsets[#start]) as usize;
                             if count == #field_count {
                                 #inner::new_unchecked(&self.as_slice()[start..])
@@ -956,7 +903,7 @@ where
                 } else {
                     quote!(
                         pub fn #func(&self) -> #inner<'_> {
-                            let (_, offsets) = <Self as molecule::prelude::Reader>::Kernel::field_offsets(self);
+                            let (_, offsets) = Self::field_offsets(self);
                             let start = u32::from_le(offsets[#start]) as usize;
                             let end = u32::from_le(offsets[#start+1]) as usize;
                             #inner::new_unchecked(&self.as_slice()[start..end])
