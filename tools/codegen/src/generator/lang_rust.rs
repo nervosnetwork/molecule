@@ -14,6 +14,7 @@ impl Generator {
     where
         W: io::Write,
     {
+        write!(writer, "use molecule::prelude::*;")?;
         for decl in &self.ast.decls[..] {
             match decl.typ {
                 ast::TopDeclType::Array(ref info) => {
@@ -85,13 +86,47 @@ where
     W: io::Write,
 {
     let molecule = molecule_name(origin_name);
-    let reader = reader_name(origin_name);
     let entity = entity_name(origin_name);
+    let reader = reader_name(origin_name);
     let code = quote!(
         #[derive(Debug, Default, Clone, Copy)]
         pub struct #molecule;
-        pub type #reader<'r> = molecule::prelude::Reader<'r, #molecule>;
-        pub type #entity = molecule::prelude::Entity<#molecule>;
+        #[derive(Debug, Default, Clone)]
+        pub struct #entity(molecule::bytes::Bytes);
+        #[derive(Debug)]
+        pub struct #reader<'r>(&'r [u8]);
+
+        impl molecule::prelude::Entity for #entity {
+            fn new_unchecked(data: molecule::bytes::Bytes) -> Self {
+                #entity(data)
+            }
+            fn as_slice(&self) -> &[u8] {
+                &self.0[..]
+            }
+            fn from_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
+                #reader::from_slice(slice).map(|reader| reader.to_entity())
+            }
+        }
+
+        impl #entity {
+            pub fn as_reader(&self) -> #reader<'_> {
+                #reader::new_unchecked(self.as_slice())
+            }
+        }
+
+        impl<'r> molecule::prelude::Reader<'r> for #reader<'r> {
+            type Kernel = #molecule;
+            type Entity = #entity;
+            fn to_entity(&self) -> Self::Entity {
+                #entity::new_unchecked(self.as_slice().into())
+            }
+            fn new_unchecked(slice: &'r [u8]) -> Self {
+                #reader(slice)
+            }
+            fn as_slice(&self) -> &[u8] {
+                self.0
+            }
+        }
     );
     write!(writer, "{}", code)
 }
@@ -220,8 +255,9 @@ where
     let code = quote!(
         impl molecule::prelude::Builder for #name {
             type Kernel = #kernel;
+            type Entity = #entity;
             #funcs
-            fn build(&self) -> ::std::io::Result<#entity> {
+            fn build(&self) -> ::std::io::Result<Self::Entity> {
                 let mut inner = Vec::with_capacity(self.expected_length());
                 self.write(&mut inner)?;
                 Ok(#entity::new_unchecked(inner.into()))
