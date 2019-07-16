@@ -1,6 +1,6 @@
 [package]
 name = "molecule-codegen"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Boyu Yang <yangby@cryptape.com>"]
 edition = "2018"
 description = "Code generator for molecule."
