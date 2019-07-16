@@ -86,6 +86,7 @@ where
 {
     let entity = entity_name(origin_name);
     let reader = reader_name(origin_name);
+    let builder = builder_name(origin_name);
     let code = quote!(
         #[derive(Debug, Default, Clone)]
         pub struct #entity(molecule::bytes::Bytes);
@@ -93,6 +94,7 @@ where
         pub struct #reader<'r>(&'r [u8]);
 
         impl molecule::prelude::Entity for #entity {
+            type Builder = #builder;
             fn new_unchecked(data: molecule::bytes::Bytes) -> Self {
                 #entity(data)
             }
@@ -101,6 +103,9 @@ where
             }
             fn from_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
                 #reader::from_slice(slice).map(|reader| reader.to_entity())
+            }
+            fn new_builder() -> Self::Builder {
+                std::default::Default::default()
             }
         }
 

@@ -5,9 +5,11 @@ use bytes::Bytes;
 use crate::error::VerificationResult;
 
 pub trait Entity: fmt::Debug + Default + Clone {
+    type Builder: Builder;
     fn new_unchecked(data: Bytes) -> Self;
     fn as_slice(&self) -> &[u8];
     fn from_slice(slice: &[u8]) -> VerificationResult<Self>;
+    fn new_builder() -> Self::Builder;
 }
 
 pub trait Reader<'r>: Sized + fmt::Debug {
@@ -21,7 +23,7 @@ pub trait Reader<'r>: Sized + fmt::Debug {
     fn to_entity(&self) -> Self::Entity;
 }
 
-pub trait Builder {
+pub trait Builder: Default {
     type Entity: Entity;
     fn expected_length(&self) -> usize;
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
