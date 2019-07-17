@@ -860,11 +860,9 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let code = quote!(
-                pub fn offsets(&self) -> (usize, &[u32]) {
+                pub fn offsets(&self) -> &[u32] {
                     let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
-                    let first = u32::from_le(ptr[1]) as usize;
-                    let count = (first - 4) / 4;
-                    (count, &ptr[1..])
+                    &ptr[1..]
                 }
             );
             funcs.push(code);
@@ -873,8 +871,13 @@ where
             let code = quote!(
                 pub fn len(&self) -> usize {
                     let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
-                    let first = u32::from_le(ptr[1]) as usize;
-                    (first - 4) / 4
+                    let bytes_len = u32::from_le(ptr[0]) as usize;
+                    if bytes_len == 4 {
+                        0
+                    } else {
+                        let first = u32::from_le(ptr[1]) as usize;
+                        (first - 4) / 4
+                    }
                 }
                 pub fn is_empty(&self) -> bool {
                     self.len() == 0
@@ -887,10 +890,11 @@ where
             let code = if info.typ.is_atom() {
                 quote!(
                     pub fn get(&self, idx: usize) -> Option<#inner> {
-                        let (count, offsets) = self.offsets();
-                        if idx >= count {
+                        let len = self.len();
+                        if idx >= len {
                             None
                         } else {
+                            let offsets = self.offsets();
                             let offset = u32::from_le(offsets[idx]) as usize;
                             Some(self.as_slice()[offset])
                         }
@@ -899,16 +903,18 @@ where
             } else {
                 quote!(
                     pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
-                        let (count, offsets) = self.offsets();
-                        if idx >= count {
+                        let len = self.len();
+                        if idx >= len {
                             None
-                        } else if idx == count - 1 {
-                            let start = u32::from_le(offsets[idx]) as usize;
-                            Some(#inner::new_unchecked(&self.as_slice()[start..]))
                         } else {
+                            let offsets = self.offsets();
                             let start = u32::from_le(offsets[idx]) as usize;
-                            let end = u32::from_le(offsets[idx+1]) as usize;
-                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
+                            if idx == len - 1 {
+                                Some(#inner::new_unchecked(&self.as_slice()[start..]))
+                            } else {
+                                let end = u32::from_le(offsets[idx+1]) as usize;
+                                Some(#inner::new_unchecked(&self.as_slice()[start..end]))
+                            }
                         }
                     }
                 )
