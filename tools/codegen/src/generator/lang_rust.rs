@@ -668,7 +668,7 @@ where
             quote!(
                 for i in 0..item_count {
                     let start = #item_size * i;
-                    let end = start + #item_size * i;
+                    let end = start + #item_size;
                     #inner::verify(&slice[start..end])?;
                 }
             )
