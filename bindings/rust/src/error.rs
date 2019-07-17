@@ -3,6 +3,7 @@ use std::{error, fmt, result};
 #[derive(Debug)]
 pub enum VerificationError {
     TotalSizeNotMatch(String, usize, usize),
+    TotalSizeNotAsExpected(String, usize, usize, usize),
     HeaderIsBroken(String, usize, usize),
     FirstOffsetIsBroken(String, usize),
     FirstOffsetIsShort(String, usize, usize),
@@ -21,6 +22,13 @@ impl fmt::Display for VerificationError {
                     f,
                     "{} total size doesn't match, expect {}, actual {}",
                     st, expected, actual
+                )?;
+            }
+            VerificationError::TotalSizeNotAsExpected(st, min, max, actual) => {
+                write!(
+                    f,
+                    "{} total size doesn't match, expect [{}..{}], actual {}",
+                    st, min, max, actual
                 )?;
             }
             VerificationError::HeaderIsBroken(st, expected, actual) => {

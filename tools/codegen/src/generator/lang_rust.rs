@@ -20,6 +20,9 @@ impl Generator {
         write!(writer, "{}", code)?;
         for decl in &self.ast.decls[..] {
             match decl.typ {
+                ast::TopDeclType::Option_(ref info) => {
+                    gen_option(writer, &decl.name, info)?;
+                }
                 ast::TopDeclType::Array(ref info) => {
                     gen_array(writer, &decl.name, info)?;
                 }
@@ -155,6 +158,23 @@ where
     write!(writer, "{}", code)
 }
 
+fn def_builder_for_option<W>(
+    writer: &mut W,
+    origin_name: &str,
+    info: &ast::Option_,
+) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let builder = builder_name(origin_name);
+    let inner = entity_name(&info.typ.name);
+    let code = quote!(
+        #[derive(Debug, Default)]
+        pub struct #builder (Option<#inner>);
+    );
+    write!(writer, "{}", code)
+}
+
 fn def_builder_for_array<W>(writer: &mut W, origin_name: &str, info: &ast::Array) -> io::Result<()>
 where
     W: io::Write,
@@ -271,6 +291,135 @@ where
 /*
  * Core
  */
+
+fn gen_option<W>(writer: &mut W, origin_name: &str, info: &ast::Option_) -> io::Result<()>
+where
+    W: io::Write,
+{
+    def_molecule(writer, origin_name)?;
+    def_builder_for_option(writer, origin_name, info)?;
+    {
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
+        let inner = reader_name(&info.typ.name);
+        let code = if info.typ.is_atom() {
+            quote!(
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    use molecule::error::VerificationError;
+                    if slice.len() <= 1 {
+                        Ok(())
+                    } else {
+                        let err = VerificationError::TotalSizeNotAsExpected(
+                            #reader_string.to_owned(), 0, 1, slice.len());
+                        Err(err)
+                    }
+                }
+            )
+        } else {
+            quote!(
+                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                    if slice.is_empty() {
+                        Ok(())
+                    } else {
+                        #inner::verify(&slice[..])
+                    }
+                }
+            )
+        };
+        impl_trait_reader(writer, origin_name, code)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                pub fn is_none(&self) -> bool {
+                    self.0.is_empty()
+                }
+
+                pub fn is_some(&self) -> bool {
+                    !self.0.is_empty()
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let inner = reader_name(&info.typ.name);
+            let code = if info.typ.is_atom() {
+                quote!(
+                    pub fn get(&self) -> Option<#inner> {
+                        if self.is_none() {
+                            None
+                        } else {
+                            Some(self.0[0])
+                        }
+                    }
+                )
+            } else {
+                quote!(
+                    pub fn get(&self) -> Option<#inner<'_>> {
+                        if self.is_none() {
+                            None
+                        } else {
+                            Some(#inner::new_unchecked(self.as_slice()))
+                        }
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+        impl_reader(writer, origin_name, funcs)?;
+    }
+    {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = entity_name(&info.typ.name);
+        let code = quote!(
+            pub fn set(mut self, v: #inner) -> Self {
+                self.0 = Some(v);
+                self
+            }
+            pub fn unset(mut self) -> Self {
+                self.0 = None;
+                self
+            }
+        );
+        funcs.push(code);
+        impl_builder(writer, origin_name, funcs)?;
+    }
+    {
+        let write_inner = if info.typ.is_atom() {
+            quote!(if let Some(inner) = self.0 {
+                writer.write_all(&[inner])
+            } else {
+                Ok(())
+            })
+        } else {
+            quote!(if let Some(ref inner) = self.0 {
+                writer.write_all(inner.as_slice())
+            } else {
+                Ok(())
+            })
+        };
+        let expected_length = if info.typ.is_atom() {
+            quote!(if let Some(_) = self.0 { 1 } else { 0 })
+        } else {
+            quote!(if let Some(ref inner) = self.0 {
+                inner.as_slice().len()
+            } else {
+                0
+            })
+        };
+        let code = quote!(
+            fn expected_length(&self) -> usize {
+                #expected_length
+            }
+            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                #write_inner
+            }
+        );
+        impl_trait_builder(writer, origin_name, code)?;
+    }
+    writeln!(writer)
+}
 
 fn gen_array<W>(writer: &mut W, origin_name: &str, info: &ast::Array) -> io::Result<()>
 where
@@ -693,7 +842,7 @@ where
                     .map(|x| u32::from_le(*x) as usize)
                     .collect();
                 offsets.push(total_size);
-                if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
+                if offsets.windows(2).any(|i| i[0] > i[1]) {
                     let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
                     Err(err)?;
                 }
@@ -866,7 +1015,7 @@ where
                     Err(err)?;
                 }
                 offsets.push(total_size);
-                if !offsets.windows(2).all(|i| i[0] < i[1]) {
+                if offsets.windows(2).any(|i| i[0] > i[1]) {
                     let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
                     Err(err)?;
                 }

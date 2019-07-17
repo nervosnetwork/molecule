@@ -25,6 +25,13 @@ field_decl      =   {
                         identifier ~ (brk)* ~
                         field_end
                     }
+option_decl     =   {
+                        "option" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "(" ~ (brk)* ~
+                            identifier ~ (brk)* ~
+                        ")" ~ (brk)* ~
+                        stmt_end
+                    }
 array_decl      =   {
                         "array" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "[" ~ (brk)* ~
@@ -51,7 +58,7 @@ table_decl      =   {
                             (field_decl ~ (brk)*)+ ~
                         "}"
                     }
-decl_stmt       =   _{ array_decl | struct_decl | vector_decl | table_decl }
+decl_stmt       =   _{ option_decl | array_decl | struct_decl | vector_decl | table_decl }
 
 path_super      =   @{ "../" }
 path            =   { path_super* ~ (identifier ~ "/")* ~ identifier }

@@ -22,11 +22,17 @@ pub(crate) struct TopDecl {
 #[derive(Debug)]
 pub(crate) enum TopDeclType {
     Atom,
+    Option_(Option_),
     Array(Array),
     Struct(Struct),
     FixedVector(FixedVector),
     DynamicVector(DynamicVector),
     Table(Table),
+}
+
+#[derive(Debug)]
+pub(crate) struct Option_ {
+    pub(crate) typ: Rc<TopDecl>,
 }
 
 #[derive(Debug)]
@@ -74,6 +80,7 @@ macro_rules! impl_top_decl_type_for {
     };
 }
 
+impl_top_decl_type_for!(Option_);
 impl_top_decl_type_for!(Array);
 impl_top_decl_type_for!(Struct);
 impl_top_decl_type_for!(FixedVector);
@@ -105,6 +112,7 @@ impl TopDecl {
     fn total_size(&self) -> Option<usize> {
         match self.typ {
             TopDeclType::Atom => Some(ATOM_SIZE),
+            TopDeclType::Option_(_) => None,
             TopDeclType::Array(ref typ) => Some(typ.item_size * typ.item_count),
             TopDeclType::Struct(ref typ) => Some(typ.field_size.iter().sum()),
             TopDeclType::FixedVector(_) => None,
@@ -115,6 +123,15 @@ impl TopDecl {
 
     fn complete(raw: &RawTopDecl, deps: &HashMap<&str, Rc<Self>>) -> Option<Self> {
         match raw {
+            RawTopDecl::Option_(raw_decl) => {
+                if let Some(dep) = deps.get(raw_decl.typ.as_str()) {
+                    let typ = Rc::clone(dep);
+                    let typ: TopDeclType = Option_ { typ }.into();
+                    Some(TopDecl::new(raw.name(), typ))
+                } else {
+                    None
+                }
+            }
             RawTopDecl::Array(raw_decl) => {
                 if let Some(dep) = deps.get(raw_decl.typ.as_str()) {
                     let typ = Rc::clone(dep);

@@ -33,6 +33,15 @@ impl Parser {
                     // TODO
                     panic!("sorry, current version doesn't support `import` statements");
                 }
+                inner::Rule::option_decl => {
+                    let mut pair = pair.into_inner();
+                    let node = ast::raw::OptionDecl {
+                        name: pair.next_string(),
+                        typ: pair.next_string(),
+                    };
+                    pair.next_should_be_none();
+                    ast.add_decl(node);
+                }
                 inner::Rule::array_decl => {
                     let mut pair = pair.into_inner();
                     let node = ast::raw::ArrayDecl {
