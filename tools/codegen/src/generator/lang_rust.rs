@@ -850,7 +850,7 @@ where
                     Err(err)?;
                 }
                 offsets.push(total_size);
-                if offsets.windows(2).any(|i| i[0] + 4 > i[1]) {
+                if !offsets.windows(2).all(|i| i[0] < i[1]) {
                     let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
                     Err(err)?;
                 }
