@@ -559,9 +559,12 @@ where
             let code = quote!(
                 pub const ITEM_SIZE: usize = #item_size;
 
-                pub fn item_count(&self) -> usize {
+                pub fn len(&self) -> usize {
                     let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
+                }
+                pub fn is_empty(&self) -> bool {
+                    self.len() == 0
                 }
             );
             funcs.push(code);
@@ -571,8 +574,8 @@ where
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
-                    pub fn nth(&self, idx: usize) -> Option<#inner> {
-                        if idx >= Self::item_count(self) {
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        if idx >= self.len() {
                             None
                         } else {
                             Some(self.as_slice()[4+idx])
@@ -581,8 +584,8 @@ where
                 )
             } else {
                 quote!(
-                    pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
-                        if idx >= Self::item_count(self) {
+                    pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
+                        if idx >= self.len() {
                             None
                         } else {
                             let start = 4 + idx * #item_size;
@@ -708,7 +711,7 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let code = quote!(
-                pub fn item_offsets(&self) -> (usize, &[u32]) {
+                pub fn offsets(&self) -> (usize, &[u32]) {
                     let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
                     let first = u32::from_le(ptr[1]) as usize;
                     let count = (first - 4) / 4;
@@ -718,11 +721,24 @@ where
             funcs.push(code);
         }
         {
+            let code = quote!(
+                pub fn len(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let first = u32::from_le(ptr[1]) as usize;
+                    (first - 4) / 4
+                }
+                pub fn is_empty(&self) -> bool {
+                    self.len() == 0
+                }
+            );
+            funcs.push(code);
+        }
+        {
             let inner = reader_name(&info.typ.name);
             let code = if info.typ.is_atom() {
                 quote!(
-                    pub fn nth(&self, idx: usize) -> Option<#inner> {
-                        let (count, offsets) = Self::item_offsets(self);
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        let (count, offsets) = self.offsets();
                         if idx >= count {
                             None
                         } else {
@@ -733,8 +749,8 @@ where
                 )
             } else {
                 quote!(
-                    pub fn nth(&self, idx: usize) -> Option<#inner<'_>> {
-                        let (count, offsets) = Self::item_offsets(self);
+                    pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
+                        let (count, offsets) = self.offsets();
                         if idx >= count {
                             None
                         } else if idx == count - 1 {
