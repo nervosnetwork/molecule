@@ -537,15 +537,15 @@ where
                     let item_count = u32::from_le(ptr[0]) as usize;
                     let expected = 4 + #item_size * item_count;
                     if len == expected {
+                        #verify_inners
+                        Ok(())
+                    } else {
                         let err = VerificationError::TotalSizeNotMatch(
                             #reader_string.to_owned(),
                             expected,
                             len,
                         );
                         Err(err)
-                    } else {
-                        #verify_inners
-                        Ok(())
                     }
                 }
             }
