@@ -126,7 +126,7 @@ where
     write!(writer, "{}", code)
 }
 
-fn impl_entity<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+fn impl_entity<W>(writer: &mut W, origin_name: &str, funcs: Vec<m4::TokenStream>) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -137,6 +137,7 @@ where
             pub fn as_reader(&self) -> #reader<'_> {
                 #reader::new_unchecked(self.as_slice())
             }
+            #( #funcs )*
         }
     );
     write!(writer, "{}", code)
@@ -320,7 +321,48 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_option(writer, origin_name, info)?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                pub fn is_none(&self) -> bool {
+                    self.0.is_empty()
+                }
+
+                pub fn is_some(&self) -> bool {
+                    !self.0.is_empty()
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let inner = entity_name(&info.typ.name);
+            let code = if info.typ.is_atom() {
+                quote!(
+                    pub fn get(&self) -> Option<#inner> {
+                        if self.is_none() {
+                            None
+                        } else {
+                            Some(self.0[0])
+                        }
+                    }
+                )
+            } else {
+                quote!(
+                    pub fn get(&self) -> Option<#inner> {
+                        if self.is_none() {
+                            None
+                        } else {
+                            Some(#inner::new_unchecked(self.0.clone()))
+                        }
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
@@ -453,7 +495,42 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_array(writer, origin_name, info)?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = entity_name(&info.typ.name);
+        {
+            let total_size = usize_lit(info.item_size * info.item_count);
+            let item_size = usize_lit(info.item_size);
+            let item_count = usize_lit(info.item_count);
+            let code = quote!(
+                pub const TOTAL_SIZE: usize = #total_size;
+                pub const ITEM_SIZE: usize = #item_size;
+                pub const ITEM_COUNT: usize = #item_count;
+            );
+            funcs.push(code);
+        }
+        for idx in 0..info.item_count {
+            let start = usize_lit(idx * info.item_size);
+            let func = func_name(&format!("nth{}", idx));
+            let code = if info.typ.is_atom() {
+                quote!(
+                    pub fn #func(&self) -> #inner {
+                        self.0[#start]
+                    }
+                )
+            } else {
+                let end = usize_lit((idx + 1) * info.item_size);
+                quote!(
+                    pub fn #func(&self) -> #inner {
+                        #inner::new_unchecked(self.0.slice(#start, #end))
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
@@ -567,7 +644,46 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let total_size = usize_lit(info.field_size.iter().sum());
+            let field_count = usize_lit(info.inner.len());
+            let fields_size = info.field_size.iter().map(|x| usize_lit(*x as usize));
+            let code = quote!(
+                pub const TOTAL_SIZE: usize = #total_size;
+                pub const FIELD_COUNT: usize = #field_count;
+                pub const FIELDS_SIZE: [usize; #field_count]= [ #( #fields_size, )* ];
+            );
+            funcs.push(code);
+        }
+        {
+            let mut offset = 0;
+            for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
+                let func = func_name(&f.name);
+                let inner = entity_name(&f.typ.name);
+                let start = usize_lit(offset);
+                offset += s;
+                let code = if f.typ.is_atom() {
+                    quote!(
+                        pub fn #func(&self) -> #inner {
+                            self.0[#start]
+                        }
+                    )
+                } else {
+                    let end = usize_lit(offset);
+                    quote!(
+                        pub fn #func(&self) -> #inner {
+                            #inner::new_unchecked(self.0.slice(#start, #end))
+                        }
+                    )
+                };
+                funcs.push(code);
+            }
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
@@ -691,7 +807,54 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let item_size = usize_lit(info.item_size);
+        {
+            let code = quote!(
+                pub const ITEM_SIZE: usize = #item_size;
+
+                pub fn len(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    u32::from_le(ptr[0]) as usize
+                }
+                pub fn is_empty(&self) -> bool {
+                    self.len() == 0
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let item_size = usize_lit(info.item_size);
+            let inner = entity_name(&info.typ.name);
+            let code = if info.typ.is_atom() {
+                quote!(
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        if idx >= self.len() {
+                            None
+                        } else {
+                            Some(self.0[4+idx])
+                        }
+                    }
+                )
+            } else {
+                quote!(
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        if idx >= self.len() {
+                            None
+                        } else {
+                            let start = 4 + idx * #item_size;
+                            let end = start + #item_size;
+                            Some(#inner::new_unchecked(self.0.slice(start, end)))
+                        }
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
@@ -829,7 +992,74 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                pub fn offsets(&self) -> &[u32] {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    &ptr[1..]
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let code = quote!(
+                pub fn len(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let bytes_len = u32::from_le(ptr[0]) as usize;
+                    if bytes_len == 4 {
+                        0
+                    } else {
+                        let first = u32::from_le(ptr[1]) as usize;
+                        (first - 4) / 4
+                    }
+                }
+                pub fn is_empty(&self) -> bool {
+                    self.len() == 0
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let inner = entity_name(&info.typ.name);
+            let code = if info.typ.is_atom() {
+                quote!(
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        let len = self.len();
+                        if idx >= len {
+                            None
+                        } else {
+                            let offsets = self.offsets();
+                            let offset = u32::from_le(offsets[idx]) as usize;
+                            Some(self.0[offset])
+                        }
+                    }
+                )
+            } else {
+                quote!(
+                    pub fn get(&self, idx: usize) -> Option<#inner> {
+                        let len = self.len();
+                        if idx >= len {
+                            None
+                        } else {
+                            let offsets = self.offsets();
+                            let start = u32::from_le(offsets[idx]) as usize;
+                            if idx == len - 1 {
+                                Some(#inner::new_unchecked(self.0.slice_from(start)))
+                            } else {
+                                let end = u32::from_le(offsets[idx+1]) as usize;
+                                Some(#inner::new_unchecked(self.0.slice(start, end)))
+                            }
+                        }
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
@@ -1009,7 +1239,67 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     impl_trait_entity(writer, origin_name)?;
-    impl_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let field_count = usize_lit(info.inner.len());
+            let code = quote!(pub const FIELD_COUNT: usize = #field_count;);
+            funcs.push(code);
+        }
+        {
+            let code = quote!(
+                pub fn field_offsets(&self) -> (usize, &[u32]) {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let first = u32::from_le(ptr[1]) as usize;
+                    let count = (first - 4) / 4;
+                    (count, &ptr[1..])
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let field_count = usize_lit(info.inner.len());
+            for (i, f) in info.inner.iter().enumerate() {
+                let func = func_name(&f.name);
+                let inner = entity_name(&f.typ.name);
+                let start = usize_lit(i);
+                let code = if f.typ.is_atom() {
+                    quote!(
+                        pub fn #func(&self) -> #inner {
+                            let (_, offsets) = Self::field_offsets(self);
+                            let offset = u32::from_le(offsets[#start]) as usize;
+                            self.0[offset]
+                        }
+                    )
+                } else if i == info.inner.len() - 1 {
+                    quote!(
+                        pub fn #func(&self) -> #inner {
+                            let (count, offsets) = Self::field_offsets(self);
+                            let start = u32::from_le(offsets[#start]) as usize;
+                            if count == #field_count {
+                                #inner::new_unchecked(self.0.slice_from(start))
+                            } else {
+                                let end = u32::from_le(offsets[#start+1]) as usize;
+                                #inner::new_unchecked(self.0.slice(start, end))
+                            }
+                        }
+                    )
+                } else {
+                    quote!(
+                        pub fn #func(&self) -> #inner {
+                            let (_, offsets) = Self::field_offsets(self);
+                            let start = u32::from_le(offsets[#start]) as usize;
+                            let end = u32::from_le(offsets[#start+1]) as usize;
+                            #inner::new_unchecked(self.0.slice(start, end))
+                        }
+                    )
+                };
+                funcs.push(code);
+            }
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
     let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
