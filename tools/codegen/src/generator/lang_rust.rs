@@ -83,7 +83,23 @@ fn func_name(name: &str) -> m4::Ident {
  * Common
  */
 
-fn def_molecule<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+fn def_entity_and_reader<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity = entity_name(origin_name);
+    let reader = reader_name(origin_name);
+    let code = quote!(
+        #[derive(Debug, Default, Clone)]
+        pub struct #entity(molecule::bytes::Bytes);
+        #[derive(Debug)]
+        pub struct #reader<'r>(&'r [u8]);
+
+    );
+    write!(writer, "{}", code)
+}
+
+fn impl_trait_entity<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -91,11 +107,6 @@ where
     let reader = reader_name(origin_name);
     let builder = builder_name(origin_name);
     let code = quote!(
-        #[derive(Debug, Default, Clone)]
-        pub struct #entity(molecule::bytes::Bytes);
-        #[derive(Debug)]
-        pub struct #reader<'r>(&'r [u8]);
-
         impl molecule::prelude::Entity for #entity {
             type Builder = #builder;
             fn new_unchecked(data: molecule::bytes::Bytes) -> Self {
@@ -111,7 +122,17 @@ where
                 std::default::Default::default()
             }
         }
+    );
+    write!(writer, "{}", code)
+}
 
+fn impl_entity<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity = entity_name(origin_name);
+    let reader = reader_name(origin_name);
+    let code = quote!(
         impl #entity {
             pub fn as_reader(&self) -> #reader<'_> {
                 #reader::new_unchecked(self.as_slice())
@@ -149,9 +170,9 @@ fn impl_reader<W>(writer: &mut W, origin_name: &str, funcs: Vec<m4::TokenStream>
 where
     W: io::Write,
 {
-    let name = reader_name(origin_name);
+    let reader = reader_name(origin_name);
     let code = quote!(
-        impl<'r> #name<'r> {
+        impl<'r> #reader<'r> {
             #( #funcs )*
         }
     );
@@ -259,10 +280,10 @@ fn impl_trait_builder<W>(
 where
     W: io::Write,
 {
-    let name = builder_name(origin_name);
+    let builder = builder_name(origin_name);
     let entity = entity_name(origin_name);
     let code = quote!(
-        impl molecule::prelude::Builder for #name {
+        impl molecule::prelude::Builder for #builder {
             type Entity = #entity;
             #funcs
             fn build(&self) -> ::std::io::Result<Self::Entity> {
@@ -279,9 +300,9 @@ fn impl_builder<W>(writer: &mut W, origin_name: &str, funcs: Vec<m4::TokenStream
 where
     W: io::Write,
 {
-    let name = builder_name(origin_name);
+    let builder = builder_name(origin_name);
     let code = quote!(
-        impl #name {
+        impl #builder {
             #( #funcs )*
         }
     );
@@ -296,13 +317,15 @@ fn gen_option<W>(writer: &mut W, origin_name: &str, info: &ast::Option_) -> io::
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_option(writer, origin_name, info)?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
-        let code = if info.typ.is_atom() {
+        if info.typ.is_atom() {
             quote!(
                 fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                     use molecule::error::VerificationError;
@@ -325,10 +348,10 @@ where
                     }
                 }
             )
-        };
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        }
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let code = quote!(
@@ -367,25 +390,10 @@ where
             };
             funcs.push(code);
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = entity_name(&info.typ.name);
-        let code = quote!(
-            pub fn set(mut self, v: #inner) -> Self {
-                self.0 = Some(v);
-                self
-            }
-            pub fn unset(mut self) -> Self {
-                self.0 = None;
-                self
-            }
-        );
-        funcs.push(code);
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
         let write_inner = if info.typ.is_atom() {
             quote!(if let Some(inner) = self.0 {
                 writer.write_all(&[inner])
@@ -408,16 +416,33 @@ where
                 0
             })
         };
-        let code = quote!(
+        quote!(
             fn expected_length(&self) -> usize {
                 #expected_length
             }
             fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
                 #write_inner
             }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = entity_name(&info.typ.name);
+        let code = quote!(
+            pub fn set(mut self, v: #inner) -> Self {
+                self.0 = Some(v);
+                self
+            }
+            pub fn unset(mut self) -> Self {
+                self.0 = None;
+                self
+            }
         );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        funcs.push(code);
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
 
@@ -425,9 +450,11 @@ fn gen_array<W>(writer: &mut W, origin_name: &str, info: &ast::Array) -> io::Res
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_array(writer, origin_name, info)?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
@@ -443,7 +470,7 @@ where
                 })
                 .collect()
         };
-        let code = quote!(
+        quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 if slice.len() == #total_size {
@@ -455,10 +482,10 @@ where
                     Err(err)
                 }
             }
-        );
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = reader_name(&info.typ.name);
         {
@@ -491,9 +518,29 @@ where
             };
             funcs.push(code);
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
+        let total_size = usize_lit(info.item_size * info.item_count);
+        let write_inners = if info.typ.is_atom() {
+            quote!(writer.write_all(&self.0)?;)
+        } else {
+            let idx = (0..info.item_count).map(usize_lit).collect::<Vec<_>>();
+            quote!(#( writer.write_all(self.0[#idx].as_slice())?; )*)
+        };
+        quote!(
+            fn expected_length(&self) -> usize {
+                #total_size
+            }
+            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                #write_inners
+                Ok(())
+            }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
         for idx in 0..info.item_count {
@@ -507,27 +554,9 @@ where
             );
             funcs.push(code);
         }
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
-        let total_size = usize_lit(info.item_size * info.item_count);
-        let write_inners = if info.typ.is_atom() {
-            quote!(writer.write_all(&self.0)?;)
-        } else {
-            let idx = (0..info.item_count).map(usize_lit).collect::<Vec<_>>();
-            quote!(#( writer.write_all(self.0[#idx].as_slice())?; )*)
-        };
-        let code = quote!(
-            fn expected_length(&self) -> usize {
-                #total_size
-            }
-            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
-                #write_inners
-                Ok(())
-            }
-        );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
 
@@ -535,9 +564,11 @@ fn gen_struct<W>(writer: &mut W, origin_name: &str, info: &ast::Struct) -> io::R
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let total_size = usize_lit(info.field_size.iter().sum());
@@ -558,7 +589,7 @@ where
             }
             codes
         };
-        let code = quote!(
+        quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 if slice.len() == #total_size {
@@ -570,10 +601,10 @@ where
                     Err(err)
                 }
             }
-        );
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let total_size = usize_lit(info.field_size.iter().sum());
@@ -610,9 +641,31 @@ where
                 funcs.push(code);
             }
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
+        let total_size = usize_lit(info.field_size.iter().sum());
+        let fields = info.inner.iter().map(|f| {
+            let field_name = func_name(&f.name);
+            if f.typ.is_atom() {
+                quote!(writer.write_all(&[self.#field_name])?;)
+            } else {
+                quote!(writer.write_all(self.#field_name.as_slice())?;)
+            }
+        });
+        quote!(
+            fn expected_length(&self) -> usize {
+                #total_size
+            }
+            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                #( #fields )*
+                Ok(())
+            }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         for f in info.inner.iter() {
             let field_name = func_name(&f.name);
@@ -625,29 +678,9 @@ where
             );
             funcs.push(code);
         }
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
-        let total_size = usize_lit(info.field_size.iter().sum());
-        let fields = info.inner.iter().map(|f| {
-            let field_name = func_name(&f.name);
-            if f.typ.is_atom() {
-                quote!(writer.write_all(&[self.#field_name])?;)
-            } else {
-                quote!(writer.write_all(self.#field_name.as_slice())?;)
-            }
-        });
-        let code = quote!(
-            fn expected_length(&self) -> usize {
-                #total_size
-            }
-            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
-                #( #fields )*
-                Ok(())
-            }
-        );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
 
@@ -655,9 +688,11 @@ fn gen_fix_vec<W>(writer: &mut W, origin_name: &str, info: &ast::FixedVector) ->
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
@@ -673,7 +708,7 @@ where
                 }
             )
         };
-        let code = quote!(
+        quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
@@ -698,10 +733,10 @@ where
                     }
                 }
             }
-        );
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let item_size = usize_lit(info.item_size);
         {
@@ -746,21 +781,10 @@ where
             };
             funcs.push(code);
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = entity_name(&info.typ.name);
-        let code = quote!(
-            pub fn push(mut self, v: #inner) -> Self {
-                self.0.push(v);
-                self
-            }
-        );
-        funcs.push(code);
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
         let item_size = usize_lit(info.item_size);
         let write_inners = if info.typ.is_atom() {
             quote!(writer.write_all(&self.0)?;)
@@ -769,7 +793,7 @@ where
                 writer.write_all(inner.as_slice())?;
             })
         };
-        let code = quote!(
+        quote!(
             fn expected_length(&self) -> usize {
                 4 + #item_size * self.0.len()
             }
@@ -779,9 +803,22 @@ where
                 #write_inners
                 Ok(())
             }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = entity_name(&info.typ.name);
+        let code = quote!(
+            pub fn push(mut self, v: #inner) -> Self {
+                self.0.push(v);
+                self
+            }
         );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        funcs.push(code);
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
 
@@ -789,13 +826,15 @@ fn gen_dyn_vec<W>(writer: &mut W, origin_name: &str, info: &ast::DynamicVector) 
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
-        let code = quote!(
+        quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
@@ -853,10 +892,10 @@ where
                 }
                 Ok(())
             }
-        );
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let code = quote!(
@@ -921,22 +960,11 @@ where
             };
             funcs.push(code);
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = entity_name(&info.typ.name);
-        let code = quote!(
-            pub fn push(mut self, v: #inner) -> Self {
-                self.0.push(v);
-                self
-            }
-        );
-        funcs.push(code);
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
-        let code = quote!(
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
+        quote!(
             fn expected_length(&self) -> usize {
                 let len_header = 4 + 4 * self.0.len();
                 len_header + self.0.iter().map(|inner| inner.as_slice().len()).sum::<usize>()
@@ -955,9 +983,22 @@ where
                 }
                 Ok(())
             }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        let inner = entity_name(&info.typ.name);
+        let code = quote!(
+            pub fn push(mut self, v: #inner) -> Self {
+                self.0.push(v);
+                self
+            }
         );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        funcs.push(code);
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
 
@@ -965,9 +1006,11 @@ fn gen_table<W>(writer: &mut W, origin_name: &str, info: &ast::Table) -> io::Res
 where
     W: io::Write,
 {
-    def_molecule(writer, origin_name)?;
+    def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
-    {
+    impl_trait_entity(writer, origin_name)?;
+    impl_entity(writer, origin_name)?;
+    let code = {
         let reader = reader_name(origin_name);
         let reader_string = reader.to_string();
         let field_count = usize_lit(info.inner.len());
@@ -989,7 +1032,7 @@ where
                 )
             }
         });
-        let code = quote!(
+        quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
@@ -1028,10 +1071,10 @@ where
                 #( #verify_fields )*
                 Ok(())
             }
-        );
-        impl_trait_reader(writer, origin_name, code)?;
-    }
-    {
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let field_count = usize_lit(info.inner.len());
@@ -1089,24 +1132,10 @@ where
                 funcs.push(code);
             }
         }
-        impl_reader(writer, origin_name, funcs)?;
-    }
-    {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        for f in info.inner.iter() {
-            let field_name = func_name(&f.name);
-            let field_type = entity_name(&f.typ.name);
-            let code = quote!(
-                pub fn #field_name(mut self, v: #field_type) -> Self {
-                    self.#field_name = v;
-                    self
-                }
-            );
-            funcs.push(code);
-        }
-        impl_builder(writer, origin_name, funcs)?;
-    }
-    {
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         let mut lengths: Vec<m4::TokenStream> = Vec::new();
         let field_count = usize_lit(info.inner.len());
@@ -1127,7 +1156,7 @@ where
         }
         let lengths1 = &lengths;
         let lengths2 = &lengths;
-        let code = quote!(
+        quote!(
             fn expected_length(&self) -> usize {
                 let len_header = 4 + #field_count * 4;
                 len_header #(+ #lengths1)*
@@ -1145,8 +1174,24 @@ where
                 #( #fields )*
                 Ok(())
             }
-        );
-        impl_trait_builder(writer, origin_name, code)?;
-    }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        for f in info.inner.iter() {
+            let field_name = func_name(&f.name);
+            let field_type = entity_name(&f.typ.name);
+            let code = quote!(
+                pub fn #field_name(mut self, v: #field_type) -> Self {
+                    self.#field_name = v;
+                    self
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
     writeln!(writer)
 }
