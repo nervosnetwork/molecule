@@ -23,6 +23,7 @@ pub(crate) struct TopDecl {
 pub(crate) enum TopDeclType {
     Atom,
     Option_(Option_),
+    Union(Union),
     Array(Array),
     Struct(Struct),
     FixedVector(FixedVector),
@@ -33,6 +34,11 @@ pub(crate) enum TopDeclType {
 #[derive(Debug)]
 pub(crate) struct Option_ {
     pub(crate) typ: Rc<TopDecl>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Union {
+    pub(crate) inner: Vec<ItemDecl>,
 }
 
 #[derive(Debug)]
@@ -65,6 +71,11 @@ pub(crate) struct Table {
 }
 
 #[derive(Debug)]
+pub(crate) struct ItemDecl {
+    pub(crate) typ: Rc<TopDecl>,
+}
+
+#[derive(Debug)]
 pub(crate) struct FieldDecl {
     pub(crate) name: String,
     pub(crate) typ: Rc<TopDecl>,
@@ -81,6 +92,7 @@ macro_rules! impl_top_decl_type_for {
 }
 
 impl_top_decl_type_for!(Option_);
+impl_top_decl_type_for!(Union);
 impl_top_decl_type_for!(Array);
 impl_top_decl_type_for!(Struct);
 impl_top_decl_type_for!(FixedVector);
@@ -113,6 +125,7 @@ impl TopDecl {
         match self.typ {
             TopDeclType::Atom => Some(ATOM_SIZE),
             TopDeclType::Option_(_) => None,
+            TopDeclType::Union(_) => None,
             TopDeclType::Array(ref typ) => Some(typ.item_size * typ.item_count),
             TopDeclType::Struct(ref typ) => Some(typ.field_size.iter().sum()),
             TopDeclType::FixedVector(_) => None,
@@ -127,6 +140,25 @@ impl TopDecl {
                 if let Some(dep) = deps.get(raw_decl.typ.as_str()) {
                     let typ = Rc::clone(dep);
                     let typ: TopDeclType = Option_ { typ }.into();
+                    Some(TopDecl::new(raw.name(), typ))
+                } else {
+                    None
+                }
+            }
+            RawTopDecl::Union(raw_decl) => {
+                let mut inner = Vec::with_capacity(raw_decl.inner.len());
+                for raw_item in &raw_decl.inner[..] {
+                    if let Some(dep) = deps.get(raw_item.typ.as_str()) {
+                        let item = ItemDecl {
+                            typ: Rc::clone(dep),
+                        };
+                        inner.push(item);
+                    } else {
+                        break;
+                    }
+                }
+                if inner.len() == raw_decl.inner.len() {
+                    let typ: TopDeclType = Union { inner }.into();
                     Some(TopDecl::new(raw.name(), typ))
                 } else {
                     None

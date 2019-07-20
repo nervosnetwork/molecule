@@ -5,9 +5,20 @@ pub(crate) struct FieldDecl {
 }
 
 #[derive(Debug)]
+pub(crate) struct ItemDecl {
+    pub(crate) typ: String,
+}
+
+#[derive(Debug)]
 pub(crate) struct OptionDecl {
     pub(crate) name: String,
     pub(crate) typ: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct UnionDecl {
+    pub(crate) name: String,
+    pub(crate) inner: Vec<ItemDecl>,
 }
 
 #[derive(Debug)]
@@ -38,6 +49,7 @@ pub(crate) struct TableDecl {
 #[derive(Debug)]
 pub(crate) enum TopDecl {
     Option_(OptionDecl),
+    Union(UnionDecl),
     Array(ArrayDecl),
     Struct(StructDecl),
     Vector(VectorDecl),
@@ -78,6 +90,7 @@ macro_rules! impl_top_decl_for {
 }
 
 impl_top_decl_for!(Option_, OptionDecl);
+impl_top_decl_for!(Union, UnionDecl);
 impl_top_decl_for!(Array, ArrayDecl);
 impl_top_decl_for!(Struct, StructDecl);
 impl_top_decl_for!(Vector, VectorDecl);
@@ -87,6 +100,7 @@ impl TopDecl {
     pub(crate) fn name(&self) -> &str {
         match self {
             TopDecl::Option_(inner) => inner.name(),
+            TopDecl::Union(inner) => inner.name(),
             TopDecl::Array(inner) => inner.name(),
             TopDecl::Struct(inner) => inner.name(),
             TopDecl::Vector(inner) => inner.name(),

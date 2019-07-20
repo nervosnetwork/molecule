@@ -17,9 +17,14 @@ whitespace      =   _{ ifs | newline }
 comment         =   _{ block_comment | line_comment }
 brk             =   _{ whitespace | comment }
 
+item_end        =   _{ "," }
 field_end       =   _{ "," }
 stmt_end        =   _{ ";" }
 
+item_decl       =   {
+                        identifier ~ (brk)* ~
+                        item_end
+                    }
 field_decl      =   {
                         identifier ~ (brk)* ~ ":" ~ (brk)* ~
                         identifier ~ (brk)* ~
@@ -31,6 +36,12 @@ option_decl     =   {
                             identifier ~ (brk)* ~
                         ")" ~ (brk)* ~
                         stmt_end
+                    }
+union_decl      =   {
+                        "union" ~ (brk)+ ~ identifier ~ (brk)* ~
+                        "{" ~ (brk)* ~
+                            (item_decl ~ (brk)*)+ ~
+                        "}"
                     }
 array_decl      =   {
                         "array" ~ (brk)+ ~ identifier ~ (brk)* ~
@@ -58,7 +69,10 @@ table_decl      =   {
                             (field_decl ~ (brk)*)+ ~
                         "}"
                     }
-decl_stmt       =   _{ option_decl | array_decl | struct_decl | vector_decl | table_decl }
+decl_stmt       =   _{
+                        option_decl | union_decl | array_decl
+                            | struct_decl | vector_decl | table_decl
+                    }
 
 path_super      =   @{ "../" }
 path            =   { path_super* ~ (identifier ~ "/")* ~ identifier }

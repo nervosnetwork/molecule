@@ -23,6 +23,9 @@ impl Generator {
                 ast::TopDeclType::Option_(ref info) => {
                     gen_option(writer, &decl.name, info)?;
                 }
+                ast::TopDeclType::Union(ref info) => {
+                    gen_union(writer, &decl.name, info)?;
+                }
                 ast::TopDeclType::Array(ref info) => {
                     gen_array(writer, &decl.name, info)?;
                 }
@@ -58,11 +61,23 @@ fn ident_name(name: &str, suffix: &str) -> m4::Ident {
     }
 }
 
+fn entity_name(name: &str) -> m4::Ident {
+    ident_name(name, "")
+}
+
 fn reader_name(name: &str) -> m4::Ident {
     ident_name(name, "Reader")
 }
 
-fn entity_name(name: &str) -> m4::Ident {
+fn entity_union_name(name: &str) -> m4::Ident {
+    ident_name(name, "Union")
+}
+
+fn reader_union_name(name: &str) -> m4::Ident {
+    ident_name(name, "ReaderUnion")
+}
+
+fn union_item_name(name: &str) -> m4::Ident {
     ident_name(name, "")
 }
 
@@ -97,6 +112,111 @@ where
 
     );
     write!(writer, "{}", code)
+}
+
+fn def_items_for_union<W>(writer: &mut W, origin_name: &str, info: &ast::Union) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity_union = entity_union_name(origin_name);
+    let reader_union = reader_union_name(origin_name);
+    let entity_unions = &vec![entity_union_name(origin_name); info.inner.len()];
+    let reader_unions = &vec![reader_union_name(origin_name); info.inner.len()];
+    let (ref entity_inners, ref reader_inners, ref union_items, ref union_ids) =
+        info.inner.iter().enumerate().fold(
+            (
+                Vec::with_capacity(info.inner.len()),
+                Vec::with_capacity(info.inner.len()),
+                Vec::with_capacity(info.inner.len()),
+                Vec::with_capacity(info.inner.len()),
+            ),
+            |(mut entity_inners, mut reader_inners, mut union_items, mut union_ids),
+             (index, inner)| {
+                let entity_name = entity_name(&inner.typ.name);
+                let reader_name = reader_name(&inner.typ.name);
+                let item_name = union_item_name(&inner.typ.name);
+                let item_id = usize_lit(index);
+                entity_inners.push(entity_name);
+                reader_inners.push(reader_name);
+                union_items.push(item_name);
+                union_ids.push(item_id);
+                (entity_inners, reader_inners, union_items, union_ids)
+            },
+        );
+    {
+        let entity_default = {
+            let inner = &info.inner[0];
+            let item_name = union_item_name(&inner.typ.name);
+            quote!(#item_name(::std::default::Default::default()))
+        };
+        let code = quote!(
+            #[derive(Debug, Clone)]
+            pub enum #entity_union {
+                #( #union_items(#entity_inners), )*
+            }
+            #[derive(Debug)]
+            pub enum #reader_union<'r> {
+                #( #union_items(#reader_inners<'r>), )*
+            }
+
+            impl ::std::default::Default for #entity_union {
+                fn default() -> Self {
+                    #entity_union::#entity_default
+                }
+            }
+        );
+        write!(writer, "{}", code)?;
+    }
+    for (item_name, entity_name) in union_items.iter().zip(entity_inners.iter()) {
+        let code = quote!(
+            impl ::std::convert::From<#entity_name> for #entity_union {
+                fn from(item: #entity_name) -> Self {
+                    #entity_union::#item_name(item)
+                }
+            }
+        );
+        write!(writer, "{}", code)?;
+    }
+    for (item_name, reader_name) in union_items.iter().zip(reader_inners.iter()) {
+        let code = quote!(
+            impl<'r> ::std::convert::From<#reader_name<'r>> for #reader_union<'r> {
+                fn from(item: #reader_name<'r>) -> Self {
+                    #reader_union::#item_name(item)
+                }
+            }
+        );
+        write!(writer, "{}", code)?;
+    }
+    {
+        let code = quote!(
+            impl #entity_union {
+                pub fn as_slice(&self) -> &[u8] {
+                    match self {
+                        #( #entity_unions::#union_items(item) => item.as_slice(), )*
+                    }
+                }
+                pub fn item_id(&self) -> usize {
+                    match self {
+                        #( #entity_unions::#union_items(_) => #union_ids, )*
+                    }
+                }
+            }
+            impl<'r> #reader_union<'r> {
+                pub fn as_slice(&self) -> &[u8] {
+                    match self {
+                        #( #reader_unions::#union_items(item) => item.as_slice(), )*
+                    }
+                }
+                pub fn item_id(&self) -> usize {
+                    match self {
+                        #( #reader_unions::#union_items(_) => #union_ids, )*
+                    }
+                }
+            }
+        );
+        write!(writer, "{}", code)?;
+    }
+    Ok(())
 }
 
 fn impl_trait_entity<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
@@ -236,6 +356,19 @@ where
             }
         )
     };
+    write!(writer, "{}", code)
+}
+
+fn def_builder_for_union<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let builder = builder_name(origin_name);
+    let entity_union = entity_union_name(origin_name);
+    let code = quote!(
+        #[derive(Debug, Default)]
+        pub struct #builder (#entity_union);
+    );
     write!(writer, "{}", code)
 }
 
@@ -482,6 +615,150 @@ where
             }
         );
         funcs.push(code);
+        funcs
+    };
+    impl_builder(writer, origin_name, funcs)?;
+    writeln!(writer)
+}
+
+fn gen_union<W>(writer: &mut W, origin_name: &str, info: &ast::Union) -> io::Result<()>
+where
+    W: io::Write,
+{
+    def_entity_and_reader(writer, origin_name)?;
+    def_items_for_union(writer, origin_name, info)?;
+    def_builder_for_union(writer, origin_name)?;
+    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let item_count = usize_lit(info.inner.len());
+            let code = quote!(
+                pub const ITEM_COUNT: usize = #item_count;
+
+                pub fn item_id(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    u32::from_le(ptr[0]) as usize
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let entity_union = entity_union_name(origin_name);
+            let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
+                let item_id = usize_lit(index);
+                let inner = entity_name(&inner.typ.name);
+                quote!(#item_id => #inner::new_unchecked(inner).into(),)
+            });
+            let code = quote!(
+                pub fn get(&self) -> #entity_union {
+                    let inner = self.0.slice_from(4);
+                    match self.item_id() {
+                        #( #match_stmts )*
+                        _ => unreachable!(),
+                    }
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_entity(writer, origin_name, funcs)?;
+    let code = {
+        let reader = reader_name(origin_name);
+        let reader_string = reader.to_string();
+        let item_count = usize_lit(info.inner.len());
+        let verify_inners = info.inner.iter().enumerate().map(|(index, inner)| {
+            let item_id = usize_lit(index);
+            let inner = reader_name(&inner.typ.name);
+            quote!(#item_id => #inner::verify(&slice[4..]),)
+        });
+        quote!(
+            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                use molecule::error::VerificationError;
+                if slice.len() < 4 {
+                    let err = VerificationError::HeaderIsBroken(
+                        #reader_string.to_owned(), 4, slice.len());
+                    Err(err)
+                } else {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
+                    let item_id = u32::from_le(ptr[0]) as usize;
+                    match item_id {
+                        #( #verify_inners )*
+                        _ => {
+                            let err = VerificationError::UnknownItem(
+                                #reader_string.to_owned(), #item_count, item_id);
+                            Err(err)
+                        },
+                    }
+                }
+            }
+        )
+    };
+    impl_trait_reader(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let item_count = usize_lit(info.inner.len());
+            let code = quote!(
+                pub const ITEM_COUNT: usize = #item_count;
+
+                pub fn item_id(&self) -> usize {
+                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    u32::from_le(ptr[0]) as usize
+                }
+            );
+            funcs.push(code);
+        }
+        {
+            let reader_union = reader_union_name(origin_name);
+            let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
+                let item_id = usize_lit(index);
+                let inner = reader_name(&inner.typ.name);
+                quote!(#item_id => #inner::new_unchecked(inner).into(),)
+            });
+            let code = quote!(
+                pub fn get(&self) -> #reader_union<'_> {
+                    let inner = &self.as_slice()[4..];
+                    match self.item_id() {
+                        #( #match_stmts )*
+                        _ => unreachable!(),
+                    }
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_reader(writer, origin_name, funcs)?;
+    let code = {
+        quote!(
+            fn expected_length(&self) -> usize {
+                4 + self.0.as_slice().len()
+            }
+            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                let item_id = (self.0.item_id() as u32).to_le_bytes();
+                writer.write_all(&item_id[..])?;
+                writer.write_all(self.0.as_slice())
+            }
+        )
+    };
+    impl_trait_builder(writer, origin_name, code)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let entity_union = entity_union_name(origin_name);
+            let code = quote!(
+                pub fn set<I>(mut self, v: I) -> Self
+                where
+                    I: ::std::convert::Into<#entity_union>
+                {
+                    self.0 = v.into();
+                    self
+                }
+            );
+            funcs.push(code);
+        }
         funcs
     };
     impl_builder(writer, origin_name, funcs)?;

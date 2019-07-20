@@ -5,6 +5,7 @@ pub enum VerificationError {
     TotalSizeNotMatch(String, usize, usize),
     TotalSizeNotAsExpected(String, usize, usize, usize),
     HeaderIsBroken(String, usize, usize),
+    UnknownItem(String, usize, usize),
     FirstOffsetIsBroken(String, usize),
     FirstOffsetIsShort(String, usize, usize),
     DataIsShort(String, usize, usize),
@@ -36,6 +37,13 @@ impl fmt::Display for VerificationError {
                     f,
                     "{} total size is not enough for header, expect {}, actual {}",
                     st, expected, actual
+                )?;
+            }
+            VerificationError::UnknownItem(st, max, actual) => {
+                write!(
+                    f,
+                    "{} item id is and unknown number, expect the id less than {}, actual {}",
+                    st, max, actual
                 )?;
             }
             VerificationError::FirstOffsetIsBroken(st, actual) => {

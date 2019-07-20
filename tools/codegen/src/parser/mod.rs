@@ -42,6 +42,15 @@ impl Parser {
                     pair.next_should_be_none();
                     ast.add_decl(node);
                 }
+                inner::Rule::union_decl => {
+                    let mut pair = pair.into_inner();
+                    let node = ast::raw::UnionDecl {
+                        name: pair.next_string(),
+                        inner: pair.next_items(),
+                    };
+                    pair.next_should_be_none();
+                    ast.add_decl(node);
+                }
                 inner::Rule::array_decl => {
                     let mut pair = pair.into_inner();
                     let node = ast::raw::ArrayDecl {

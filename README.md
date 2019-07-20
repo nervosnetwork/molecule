@@ -31,9 +31,12 @@ whitespace              =   ifs | newline;
 break                   =   whitespace, { whitespace };
 break_opt               =   { whitespace };
 
+item_end                =   ",";
 field_end               =   ",";
 stmt_end                =   ";";
 
+item_decl               =   identifier, break_opt,
+                            item_end;
 field_decl              =   identifier, break, ":", break_opt,
                             identifier, break_opt,
                             field_end;
@@ -42,6 +45,11 @@ option_decl             =   "option", break, identifier, break_opt,
                                 identifier, break_opt,
                             ")", break_opt,
                             stmt_end;
+union_decl              =   "union", break, identifier, break_opt,
+                            "{", break_opt,
+                                item_decl, break_opt,
+                                { item_decl, break_opt },
+                            "}";
 array_decl              =   "array", break, identifier, break_opt,
                             "[", break_opt,
                                 identifier, break_opt, ";", break_opt, number, break_opt,
@@ -62,7 +70,8 @@ table_decl              =   "table", break, identifier, break_opt,
                                 field_decl, break_opt,
                                 { field_decl, break_opt },
                             "}";
-decl_stmt               =   option_decl | array_decl | struct_decl | vector_decl | table_decl;
+decl_stmt               =   option_decl | union_decl | array_decl
+                          | struct_decl | vector_decl | table_decl;
 
 path_super              =   "../";
 path                    =   { path_super }, { identifier, "/" }, identifier;
