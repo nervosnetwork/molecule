@@ -504,23 +504,21 @@ where
             quote!(
                 fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                     use molecule::error::VerificationError;
-                    if slice.len() <= 1 {
-                        Ok(())
-                    } else {
+                    if slice.len() > 1 {
                         let err = VerificationError::TotalSizeNotAsExpected(
                             #reader_string.to_owned(), 0, 1, slice.len());
-                        Err(err)
+                        Err(err)?;
                     }
+                    Ok(())
                 }
             )
         } else {
             quote!(
                 fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
-                    if slice.is_empty() {
-                        Ok(())
-                    } else {
-                        #inner::verify(&slice[..])
+                    if !slice.is_empty() {
+                        #inner::verify(&slice[..])?;
                     }
+                    Ok(())
                 }
             )
         }
@@ -679,19 +677,19 @@ where
                 if slice.len() < 4 {
                     let err = VerificationError::HeaderIsBroken(
                         #reader_string.to_owned(), 4, slice.len());
-                    Err(err)
-                } else {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
-                    let item_id = u32::from_le(ptr[0]) as usize;
-                    match item_id {
-                        #( #verify_inners )*
-                        _ => {
-                            let err = VerificationError::UnknownItem(
-                                #reader_string.to_owned(), #item_count, item_id);
-                            Err(err)
-                        },
-                    }
+                    Err(err)?;
                 }
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
+                let item_id = u32::from_le(ptr[0]) as usize;
+                match item_id {
+                    #( #verify_inners )*
+                    _ => {
+                        let err = VerificationError::UnknownItem(
+                            #reader_string.to_owned(), #item_count, item_id);
+                        Err(err)
+                    },
+                }?;
+                Ok(())
             }
         )
     };
@@ -827,14 +825,13 @@ where
         quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
-                if slice.len() == #total_size {
-                    #( #verify_inners )*
-                    Ok(())
-                } else {
+                if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
                         #reader_string.to_owned(), #total_size, slice.len());
-                    Err(err)
+                    Err(err)?;
                 }
+                #( #verify_inners )*
+                Ok(())
             }
         )
     };
@@ -985,14 +982,13 @@ where
         quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
-                if slice.len() == #total_size {
-                    #( #verify_fields )*
-                    Ok(())
-                } else {
+                if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
                         #reader_string.to_owned(), #total_size, slice.len());
-                    Err(err)
+                    Err(err)?;
                 }
+                #( #verify_fields )*
+                Ok(())
             }
         )
     };
@@ -1155,23 +1151,21 @@ where
                 if len < 4 {
                     let err =
                         VerificationError::HeaderIsBroken(#reader_string.to_owned(), 4, len);
-                    Err(err)
-                } else {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
-                    let item_count = u32::from_le(ptr[0]) as usize;
-                    let expected = 4 + #item_size * item_count;
-                    if len == expected {
-                        #verify_inners
-                        Ok(())
-                    } else {
-                        let err = VerificationError::TotalSizeNotMatch(
-                            #reader_string.to_owned(),
-                            expected,
-                            len,
-                        );
-                        Err(err)
-                    }
+                    Err(err)?;
                 }
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
+                let item_count = u32::from_le(ptr[0]) as usize;
+                let expected = 4 + #item_size * item_count;
+                if len != expected {
+                    let err = VerificationError::TotalSizeNotMatch(
+                        #reader_string.to_owned(),
+                        expected,
+                        len,
+                    );
+                    Err(err)?;
+                }
+                #verify_inners
+                Ok(())
             }
         )
     };
