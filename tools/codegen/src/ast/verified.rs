@@ -169,6 +169,9 @@ impl TopDecl {
                     let typ = Rc::clone(dep);
                     let item_count = raw_decl.length;
                     let typ: TopDeclType = if let Some(item_size) = dep.total_size() {
+                        if item_size == 0 {
+                            panic!("the array ({}) has no size", raw.name());
+                        }
                         Array {
                             item_size,
                             item_count,
@@ -212,6 +215,9 @@ impl TopDecl {
                     }
                 }
                 if inner.len() == raw_decl.inner.len() {
+                    if field_size.iter().sum::<usize>() == 0 {
+                        panic!("the struct ({}) has no size", raw.name());
+                    }
                     let typ: TopDeclType = Struct { field_size, inner }.into();
                     Some(TopDecl::new(raw.name(), typ))
                 } else {
