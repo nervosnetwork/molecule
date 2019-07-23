@@ -67,7 +67,6 @@ vector_decl             =   "vector", break, identifier, break_opt,
                             stmt_end;
 table_decl              =   "table", break, identifier, break_opt,
                             "{", break_opt,
-                                field_decl, break_opt,
                                 { field_decl, break_opt },
                             "}";
 decl_stmt               =   option_decl | union_decl | array_decl

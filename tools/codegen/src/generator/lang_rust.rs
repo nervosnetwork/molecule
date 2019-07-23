@@ -1702,7 +1702,18 @@ where
         funcs
     };
     impl_reader(writer, origin_name, funcs)?;
-    let code = {
+    let code = if info.inner.is_empty() {
+        quote!(
+            fn expected_length(&self) -> usize {
+                4
+            }
+            fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
+                let len = 4u32.to_le_bytes();
+                writer.write_all(&len[..])?;
+                Ok(())
+            }
+        )
+    } else {
         let mut fields: Vec<m4::TokenStream> = Vec::new();
         let mut lengths: Vec<m4::TokenStream> = Vec::new();
         let field_count = usize_lit(info.inner.len());

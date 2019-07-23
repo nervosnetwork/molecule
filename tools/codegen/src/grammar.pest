@@ -66,7 +66,7 @@ vector_decl     =   {
 table_decl      =   {
                         "table" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "{" ~ (brk)* ~
-                            (field_decl ~ (brk)*)+ ~
+                            (field_decl ~ (brk)*)* ~
                         "}"
                     }
 decl_stmt       =   _{
