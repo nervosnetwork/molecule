@@ -239,7 +239,7 @@ where
                 #reader::from_slice(slice).map(|reader| reader.to_entity())
             }
             fn new_builder() -> Self::Builder {
-                std::default::Default::default()
+                ::std::default::Default::default()
             }
         }
     );
@@ -637,7 +637,7 @@ where
                 pub const ITEM_COUNT: usize = #item_count;
 
                 pub fn item_id(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
                 }
             );
@@ -681,7 +681,7 @@ where
                         #reader_string.to_owned(), 4, slice.len());
                     Err(err)
                 } else {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                     let item_id = u32::from_le(ptr[0]) as usize;
                     match item_id {
                         #( #verify_inners )*
@@ -704,7 +704,7 @@ where
                 pub const ITEM_COUNT: usize = #item_count;
 
                 pub fn item_id(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
                 }
             );
@@ -1092,7 +1092,7 @@ where
                 pub const ITEM_SIZE: usize = #item_size;
 
                 pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
                 }
                 pub fn is_empty(&self) -> bool {
@@ -1157,7 +1157,7 @@ where
                         VerificationError::HeaderIsBroken(#reader_string.to_owned(), 4, len);
                     Err(err)
                 } else {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                     let item_count = u32::from_le(ptr[0]) as usize;
                     let expected = 4 + #item_size * item_count;
                     if len == expected {
@@ -1184,7 +1184,7 @@ where
                 pub const ITEM_SIZE: usize = #item_size;
 
                 pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     u32::from_le(ptr[0]) as usize
                 }
                 pub fn is_empty(&self) -> bool {
@@ -1274,7 +1274,7 @@ where
         {
             let code = quote!(
                 pub fn offsets(&self) -> &[u32] {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     &ptr[1..]
                 }
             );
@@ -1283,7 +1283,7 @@ where
         {
             let code = quote!(
                 pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     let bytes_len = u32::from_le(ptr[0]) as usize;
                     if bytes_len == 4 {
                         0
@@ -1350,7 +1350,7 @@ where
                         #reader_string.to_owned(), 4, len);
                     Err(err)?;
                 }
-                let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
@@ -1407,7 +1407,7 @@ where
         {
             let code = quote!(
                 pub fn offsets(&self) -> &[u32] {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     &ptr[1..]
                 }
             );
@@ -1416,7 +1416,7 @@ where
         {
             let code = quote!(
                 pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     let bytes_len = u32::from_le(ptr[0]) as usize;
                     if bytes_len == 4 {
                         0
@@ -1526,7 +1526,7 @@ where
         {
             let code = quote!(
                 pub fn field_offsets(&self) -> (usize, &[u32]) {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     let first = u32::from_le(ptr[1]) as usize;
                     let count = (first - 4) / 4;
                     (count, &ptr[1..])
@@ -1608,7 +1608,7 @@ where
                         #reader_string.to_owned(), 4, len);
                     Err(err)?;
                 }
-                let ptr: &[u32] = unsafe { std::mem::transmute(slice) };
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
@@ -1651,7 +1651,7 @@ where
         {
             let code = quote!(
                 pub fn field_offsets(&self) -> (usize, &[u32]) {
-                    let ptr: &[u32] = unsafe { std::mem::transmute(self.as_slice()) };
+                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
                     let first = u32::from_le(ptr[1]) as usize;
                     let count = (first - 4) / 4;
                     (count, &ptr[1..])
