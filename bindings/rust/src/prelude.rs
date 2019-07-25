@@ -12,7 +12,7 @@ pub trait Entity: fmt::Debug + Default + Clone {
     fn new_builder() -> Self::Builder;
 }
 
-pub trait Reader<'r>: Sized + fmt::Debug {
+pub trait Reader<'r>: Sized + fmt::Debug + Clone + Copy {
     type Entity: Entity;
     fn verify(slice: &[u8]) -> VerificationResult<()>;
     fn new_unchecked(slice: &'r [u8]) -> Self;

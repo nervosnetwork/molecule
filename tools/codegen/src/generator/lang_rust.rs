@@ -107,7 +107,7 @@ where
     let code = quote!(
         #[derive(Debug, Default, Clone)]
         pub struct #entity(molecule::bytes::Bytes);
-        #[derive(Debug)]
+        #[derive(Debug, Clone, Copy)]
         pub struct #reader<'r>(&'r [u8]);
 
     );
