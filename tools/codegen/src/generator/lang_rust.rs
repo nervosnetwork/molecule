@@ -74,7 +74,7 @@ fn entity_union_name(name: &str) -> m4::Ident {
 }
 
 fn reader_union_name(name: &str) -> m4::Ident {
-    ident_name(name, "ReaderUnion")
+    ident_name(name, "UnionReader")
 }
 
 fn union_item_name(name: &str) -> m4::Ident {
@@ -135,7 +135,7 @@ where
                 let entity_name = entity_name(&inner.typ.name);
                 let reader_name = reader_name(&inner.typ.name);
                 let item_name = union_item_name(&inner.typ.name);
-                let item_id = usize_lit(index);
+                let item_id = usize_lit(index + 1);
                 entity_inners.push(entity_name);
                 reader_inners.push(reader_name);
                 union_items.push(item_name);
@@ -154,7 +154,7 @@ where
             pub enum #entity_union {
                 #( #union_items(#entity_inners), )*
             }
-            #[derive(Debug)]
+            #[derive(Debug, Clone, Copy)]
             pub enum #reader_union<'r> {
                 #( #union_items(#reader_inners<'r>), )*
             }
@@ -167,6 +167,10 @@ where
         );
         write!(writer, "{}", code)?;
     }
+    let union_items_string = &union_items
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<_>>();
     for (item_name, entity_name) in union_items.iter().zip(entity_inners.iter()) {
         let code = quote!(
             impl ::std::convert::From<#entity_name> for #entity_union {
@@ -200,6 +204,16 @@ where
                         #( #entity_unions::#union_items(_) => #union_ids, )*
                     }
                 }
+                pub fn item_name(&self) -> &str {
+                    match self {
+                        #( #entity_unions::#union_items(_) => #union_items_string, )*
+                    }
+                }
+                pub fn as_reader(&self) -> #reader_union<'_> {
+                    match self {
+                        #( #entity_unions::#union_items(item) => item.as_reader().into(), )*
+                    }
+                }
             }
             impl<'r> #reader_union<'r> {
                 pub fn as_slice(&self) -> &[u8] {
@@ -210,6 +224,11 @@ where
                 pub fn item_id(&self) -> usize {
                     match self {
                         #( #reader_unions::#union_items(_) => #union_ids, )*
+                    }
+                }
+                pub fn item_name(&self) -> &str {
+                    match self {
+                        #( #reader_unions::#union_items(_) => #union_items_string, )*
                     }
                 }
             }
@@ -644,7 +663,7 @@ where
         {
             let entity_union = entity_union_name(origin_name);
             let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
-                let item_id = usize_lit(index);
+                let item_id = usize_lit(index + 1);
                 let inner = entity_name(&inner.typ.name);
                 quote!(#item_id => #inner::new_unchecked(inner).into(),)
             });
@@ -667,7 +686,7 @@ where
         let reader_string = reader.to_string();
         let item_count = usize_lit(info.inner.len());
         let verify_inners = info.inner.iter().enumerate().map(|(index, inner)| {
-            let item_id = usize_lit(index);
+            let item_id = usize_lit(index + 1);
             let inner = reader_name(&inner.typ.name);
             quote!(#item_id => #inner::verify(&slice[4..]),)
         });
@@ -711,7 +730,7 @@ where
         {
             let reader_union = reader_union_name(origin_name);
             let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
-                let item_id = usize_lit(index);
+                let item_id = usize_lit(index + 1);
                 let inner = reader_name(&inner.typ.name);
                 quote!(#item_id => #inner::new_unchecked(inner).into(),)
             });
