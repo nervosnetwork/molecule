@@ -39,11 +39,11 @@ impl fmt::Display for VerificationError {
                     st, expected, actual
                 )?;
             }
-            VerificationError::UnknownItem(st, max, actual) => {
+            VerificationError::UnknownItem(st, size, actual) => {
                 write!(
                     f,
-                    "{} item id is and unknown number, expect the id less than {}, actual {}",
-                    st, max, actual
+                    "{} item id (={}) is an unknown id, only has {} kind of items",
+                    st, actual, size
                 )?;
             }
             VerificationError::FirstOffsetIsBroken(st, actual) => {
