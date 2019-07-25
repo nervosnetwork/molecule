@@ -21,8 +21,6 @@ license = "MIT"
 package ="molecule-codegen"
 version = "=0.0.3"
 path = "../codegen"
-default-features = false
-features = ["lang-all"]
 
 [badges]
 maintenance = { status = "experimental" }

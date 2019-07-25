@@ -9,4 +9,5 @@ pub(crate) mod utils;
 pub(crate) use ast::verified::Ast;
 pub use compiler::Compiler;
 pub(crate) use generator::Generator;
+pub use generator::Language;
 pub(crate) use parser::Parser;

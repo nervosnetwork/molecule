@@ -4,9 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::Generator;
+use crate::{Generator, Language};
 
 pub struct Compiler {
+    language: Option<Language>,
     file_path: Option<PathBuf>,
     out_dir: PathBuf,
 }
@@ -20,9 +21,15 @@ impl Default for Compiler {
 impl Compiler {
     pub fn new() -> Self {
         Self {
+            language: None,
             file_path: None,
             out_dir: PathBuf::from(&env::var("OUT_DIR").unwrap()),
         }
+    }
+
+    pub fn language(&mut self, lang: Language) -> &mut Self {
+        self.language.replace(lang);
+        self
     }
 
     pub fn file_path<P>(&mut self, path: P) -> &mut Self
@@ -42,6 +49,7 @@ impl Compiler {
     }
 
     pub fn run(&mut self) {
+        let lang = self.language.unwrap();
         let file_name = self
             .file_path
             .as_ref()
@@ -51,7 +59,7 @@ impl Compiler {
             .to_owned();
         let mut out_file = self.out_dir.clone();
         out_file.push(file_name);
-        out_file.set_extension("rs");
+        out_file.set_extension(lang.extension());
 
         let mut file_in = fs::OpenOptions::new()
             .read(true)
@@ -68,6 +76,6 @@ impl Compiler {
             .unwrap();
 
         let generator = Generator::new(&buffer);
-        generator.generate_rust(&mut file_out).unwrap();
+        generator.generate(lang, &mut file_out).unwrap();
     }
 }
