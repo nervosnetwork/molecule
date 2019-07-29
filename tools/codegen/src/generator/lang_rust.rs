@@ -311,8 +311,10 @@ where
     W: io::Write,
 {
     let reader = reader_name(origin_name);
+    let reader_string = reader.to_string();
     let code = quote!(
         impl<'r> #reader<'r> {
+            pub const NAME: &'r str = #reader_string;
             #( #funcs )*
         }
     );
@@ -516,8 +518,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
         if info.typ.is_atom() {
             quote!(
@@ -525,7 +525,11 @@ where
                     use molecule::error::VerificationError;
                     if slice.len() > 1 {
                         let err = VerificationError::TotalSizeNotAsExpected(
-                            #reader_string.to_owned(), 0, 1, slice.len());
+                            Self::NAME.to_owned(),
+                            0,
+                            1,
+                            slice.len(),
+                        );
                         Err(err)?;
                     }
                     Ok(())
@@ -682,8 +686,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let item_count = usize_lit(info.inner.len());
         let verify_inners = info.inner.iter().enumerate().map(|(index, inner)| {
             let item_id = usize_lit(index + 1);
@@ -695,7 +697,7 @@ where
                 use molecule::error::VerificationError;
                 if slice.len() < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        #reader_string.to_owned(), 4, slice.len());
+                        Self::NAME.to_owned(), 4, slice.len());
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
@@ -704,7 +706,7 @@ where
                     #( #verify_inners )*
                     _ => {
                         let err = VerificationError::UnknownItem(
-                            #reader_string.to_owned(), #item_count, item_id);
+                            Self::NAME.to_owned(), #item_count, item_id);
                         Err(err)
                     },
                 }?;
@@ -826,8 +828,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
         let total_size = usize_lit(info.item_size * info.item_count);
         let verify_inners = if info.typ.is_atom() {
@@ -846,7 +846,7 @@ where
                 use molecule::error::VerificationError;
                 if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #reader_string.to_owned(), #total_size, slice.len());
+                        Self::NAME.to_owned(), #total_size, slice.len());
                     Err(err)?;
                 }
                 #( #verify_inners )*
@@ -978,8 +978,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let total_size = usize_lit(info.field_size.iter().sum());
         let verify_fields = {
             let mut offset = 0;
@@ -1003,7 +1001,7 @@ where
                 use molecule::error::VerificationError;
                 if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #reader_string.to_owned(), #total_size, slice.len());
+                        Self::NAME.to_owned(), #total_size, slice.len());
                     Err(err)?;
                 }
                 #( #verify_fields )*
@@ -1148,8 +1146,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
         let item_size = usize_lit(info.item_size);
         let verify_inners = if info.typ.is_atom() {
@@ -1169,7 +1165,7 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err =
-                        VerificationError::HeaderIsBroken(#reader_string.to_owned(), 4, len);
+                        VerificationError::HeaderIsBroken(Self::NAME.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
@@ -1177,7 +1173,7 @@ where
                 let expected = 4 + #item_size * item_count;
                 if len != expected {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #reader_string.to_owned(),
+                        Self::NAME.to_owned(),
                         expected,
                         len,
                     );
@@ -1351,8 +1347,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let inner = reader_name(&info.typ.name);
         quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
@@ -1360,14 +1354,14 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        #reader_string.to_owned(), 4, len);
+                        Self::NAME.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #reader_string.to_owned(), total_size, len);
+                        Self::NAME.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 if total_size == 4 {
@@ -1375,25 +1369,25 @@ where
                 }
                 if total_size < 4 + 4 {
                     let err = VerificationError::DataIsShort(
-                        #reader_string.to_owned(), 8, total_size);
+                        Self::NAME.to_owned(), 8, total_size);
                     Err(err)?;
                 }
                 let offset_first = u32::from_le(ptr[1]) as usize;
                 if offset_first % 4 != 0 {
                     let err = VerificationError::FirstOffsetIsBroken(
-                        #reader_string.to_owned(), offset_first);
+                        Self::NAME.to_owned(), offset_first);
                     Err(err)?;
                 }
                 if offset_first < 4 + 4 {
                     let err = VerificationError::FirstOffsetIsShort(
-                        #reader_string.to_owned(), 8, offset_first);
+                        Self::NAME.to_owned(), 8, offset_first);
                     Err(err)?;
                 }
                 let item_count = offset_first / 4 - 1;
                 let expected = 4 + 4 * item_count;
                 if total_size < expected {
                     let err = VerificationError::DataIsShort(
-                        #reader_string.to_owned(), expected, total_size);
+                        Self::NAME.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..(item_count+1)]
@@ -1402,7 +1396,7 @@ where
                     .collect();
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
+                    let err = VerificationError::OffsetsNotMatch(Self::NAME.to_owned());
                     Err(err)?;
                 }
                 for i in 0..=(offsets.len()-2) {
@@ -1591,8 +1585,6 @@ where
     };
     impl_entity(writer, origin_name, funcs)?;
     let code = {
-        let reader = reader_name(origin_name);
-        let reader_string = reader.to_string();
         let field_count = usize_lit(info.inner.len());
         let verify_fields = info.inner.iter().enumerate().map(|(i, f)| {
             let field = reader_name(&f.typ.name);
@@ -1602,7 +1594,7 @@ where
                 quote!(
                     if offsets[#start] + 1 != offsets[#end] {
                         let err = VerificationError::FieldIsBroken(
-                            #reader_string.to_owned(), #start);
+                            Self::NAME.to_owned(), #start);
                         Err(err)?;
                     }
                 )
@@ -1618,20 +1610,20 @@ where
                 let len = slice.len();
                 if len < 4 {
                     let err = VerificationError::HeaderIsBroken(
-                        #reader_string.to_owned(), 4, len);
+                        Self::NAME.to_owned(), 4, len);
                     Err(err)?;
                 }
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
                 let total_size = u32::from_le(ptr[0]) as usize;
                 if total_size != len {
                     let err = VerificationError::TotalSizeNotMatch(
-                        #reader_string.to_owned(), total_size, len);
+                        Self::NAME.to_owned(), total_size, len);
                     Err(err)?;
                 }
                 let expected = 4 + 4 * #field_count;
                 if total_size < expected {
                     let err = VerificationError::HeaderIsBroken(
-                        #reader_string.to_owned(), expected, total_size);
+                        Self::NAME.to_owned(), expected, total_size);
                     Err(err)?;
                 }
                 let mut offsets: Vec<usize> = ptr[1..=#field_count]
@@ -1640,12 +1632,12 @@ where
                     .collect();
                 if offsets[0] != expected {
                     let err = VerificationError::FirstOffsetIsShort(
-                        #reader_string.to_owned(), expected, offsets[0]);
+                        Self::NAME.to_owned(), expected, offsets[0]);
                     Err(err)?;
                 }
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] > i[1]) {
-                    let err = VerificationError::OffsetsNotMatch(#reader_string.to_owned());
+                    let err = VerificationError::OffsetsNotMatch(Self::NAME.to_owned());
                     Err(err)?;
                 }
                 #( #verify_fields )*
