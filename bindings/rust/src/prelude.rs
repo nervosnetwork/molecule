@@ -7,6 +7,7 @@ use crate::error::VerificationResult;
 pub trait Entity: fmt::Debug + Default + Clone {
     type Builder: Builder;
     fn new_unchecked(data: Bytes) -> Self;
+    fn as_bytes(&self) -> Bytes;
     fn as_slice(&self) -> &[u8];
     fn from_slice(slice: &[u8]) -> VerificationResult<Self>;
     fn new_builder() -> Self::Builder;

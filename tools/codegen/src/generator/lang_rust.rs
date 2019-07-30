@@ -198,6 +198,11 @@ where
     {
         let code = quote!(
             impl #entity_union {
+                pub fn as_bytes(&self) -> molecule::bytes::Bytes {
+                    match self {
+                        #( #entity_unions::#union_items(item) => item.as_bytes(), )*
+                    }
+                }
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
                         #( #entity_unions::#union_items(item) => item.as_slice(), )*
@@ -254,6 +259,9 @@ where
             type Builder = #builder;
             fn new_unchecked(data: molecule::bytes::Bytes) -> Self {
                 #entity(data)
+            }
+            fn as_bytes(&self) -> molecule::bytes::Bytes {
+                self.0.clone()
             }
             fn as_slice(&self) -> &[u8] {
                 &self.0[..]
