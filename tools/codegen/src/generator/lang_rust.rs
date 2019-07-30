@@ -94,8 +94,12 @@ fn func_name(name: &str) -> m4::Ident {
     m4::Ident::new(&name.to_snake(), span)
 }
 
-fn iterator_name(name: &str) -> m4::Ident {
+fn entity_iterator_name(name: &str) -> m4::Ident {
     ident_name(name, "Iterator")
+}
+
+fn reader_iterator_name(name: &str) -> m4::Ident {
+    ident_name(name, "ReaderIterator")
 }
 
 /*
@@ -480,18 +484,39 @@ fn def_iterator_for_vector<W>(writer: &mut W, origin_name: &str, inner_name: &st
 where
     W: io::Write,
 {
-    let iterator = iterator_name(origin_name);
+    let entity_iterator = entity_iterator_name(origin_name);
+    let entity = entity_name(origin_name);
+    let entity_inner = entity_name(inner_name);
+    let reader_iterator = reader_iterator_name(origin_name);
     let reader = reader_name(origin_name);
-    let inner = reader_name(inner_name);
+    let reader_inner = reader_name(inner_name);
     let code = quote!(
-        impl<'r> #reader<'r> {
-            pub fn iter(&self) -> #iterator<'_, 'r> {
-                #iterator(&self, 0, self.len())
+        impl #entity {
+            pub fn iter(&self) -> #entity_iterator {
+                #entity_iterator(self.clone(), 0, self.len())
             }
         }
-        pub struct #iterator<'t, 'r> (&'t #reader<'r>, /* count */ usize, /* max */ usize);
-        impl<'t: 'r, 'r> ::std::iter::Iterator for #iterator<'t, 'r> {
-            type Item = #inner<'t>;
+        pub struct #entity_iterator (#entity, /* count */ usize, /* max */ usize);
+        impl ::std::iter::Iterator for #entity_iterator {
+            type Item = #entity_inner;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.1 >= self.2 {
+                    None
+                } else {
+                    let ret = self.0.get(self.1).unwrap();
+                    self.1 += 1;
+                    Some(ret)
+                }
+            }
+        }
+        impl<'r> #reader<'r> {
+            pub fn iter(&self) -> #reader_iterator<'_, 'r> {
+                #reader_iterator(&self, 0, self.len())
+            }
+        }
+        pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, /* count */ usize, /* max */ usize);
+        impl<'t: 'r, 'r> ::std::iter::Iterator for #reader_iterator<'t, 'r> {
+            type Item = #reader_inner<'t>;
             fn next(&mut self) -> Option<Self::Item> {
                 if self.1 >= self.2 {
                     None
