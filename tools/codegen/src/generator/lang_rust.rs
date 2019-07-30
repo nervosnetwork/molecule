@@ -94,6 +94,10 @@ fn func_name(name: &str) -> m4::Ident {
     m4::Ident::new(&name.to_snake(), span)
 }
 
+fn iterator_name(name: &str) -> m4::Ident {
+    ident_name(name, "Iterator")
+}
+
 /*
  * Common
  */
@@ -459,6 +463,36 @@ where
     let code = quote!(
         impl #builder {
             #( #funcs )*
+        }
+    );
+    write!(writer, "{}", code)
+}
+
+fn def_iterator_for_vector<W>(writer: &mut W, origin_name: &str, inner_name: &str) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let iterator = iterator_name(origin_name);
+    let reader = reader_name(origin_name);
+    let inner = reader_name(inner_name);
+    let code = quote!(
+        impl<'r> #reader<'r> {
+            pub fn iter(&self) -> #iterator<'_, 'r> {
+                #iterator(&self, 0, self.len())
+            }
+        }
+        pub struct #iterator<'t, 'r> (&'t #reader<'r>, /* count */ usize, /* max */ usize);
+        impl<'t: 'r, 'r> ::std::iter::Iterator for #iterator<'t, 'r> {
+            type Item = #inner<'t>;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.1 >= self.2 {
+                    None
+                } else {
+                    let ret = self.0.get(self.1).unwrap();
+                    self.1 += 1;
+                    Some(ret)
+                }
+            }
         }
     );
     write!(writer, "{}", code)
@@ -1268,6 +1302,9 @@ where
         funcs
     };
     impl_builder(writer, origin_name, funcs)?;
+    if !info.typ.is_atom() {
+        def_iterator_for_vector(writer, origin_name, &info.typ.name)?;
+    }
     writeln!(writer)
 }
 
@@ -1513,6 +1550,9 @@ where
         funcs
     };
     impl_builder(writer, origin_name, funcs)?;
+    if !info.typ.is_atom() {
+        def_iterator_for_vector(writer, origin_name, &info.typ.name)?;
+    }
     writeln!(writer)
 }
 
