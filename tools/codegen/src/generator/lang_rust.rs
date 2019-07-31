@@ -113,11 +113,28 @@ where
     let entity = entity_name(origin_name);
     let reader = reader_name(origin_name);
     let code = quote!(
-        #[derive(Debug, Default, Clone)]
+        #[derive(Debug, Clone)]
         pub struct #entity(molecule::bytes::Bytes);
         #[derive(Debug, Clone, Copy)]
         pub struct #reader<'r>(&'r [u8]);
 
+    );
+    write!(writer, "{}", code)
+}
+
+fn impl_default_for_entity<W>(writer: &mut W, origin_name: &str, content: Vec<u8>) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity = entity_name(origin_name);
+    let bytes = content.into_iter().map(|b| usize_lit(b as usize));
+    let code = quote!(
+        impl ::std::default::Default for #entity {
+            fn default() -> Self {
+                let v: Vec<u8> = vec![#( #bytes, )*];
+                #entity::new_unchecked(v.into())
+            }
+        }
     );
     write!(writer, "{}", code)
 }
@@ -542,6 +559,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_option(writer, origin_name, info)?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
@@ -717,6 +735,7 @@ where
     def_items_for_union(writer, origin_name, info)?;
     def_builder_for_union(writer, origin_name)?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
@@ -858,6 +877,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_array(writer, origin_name, info)?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
@@ -1004,6 +1024,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
@@ -1164,6 +1185,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let item_size = usize_lit(info.item_size);
@@ -1348,6 +1370,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     impl_trait_entity(writer, origin_name)?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
@@ -1595,6 +1618,7 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
+    impl_default_for_entity(writer, origin_name, info.default_content())?;
     impl_trait_entity(writer, origin_name)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();

@@ -67,6 +67,7 @@ pub(crate) struct DynamicVector {
 
 #[derive(Debug)]
 pub(crate) struct Table {
+    pub(crate) content: Vec<u8>,
     pub(crate) inner: Vec<FieldDecl>,
 }
 
@@ -98,6 +99,48 @@ impl_top_decl_type_for!(Struct);
 impl_top_decl_type_for!(FixedVector);
 impl_top_decl_type_for!(DynamicVector);
 impl_top_decl_type_for!(Table);
+
+impl Option_ {
+    pub fn default_content(&self) -> Vec<u8> {
+        Vec::new()
+    }
+}
+
+impl Union {
+    pub fn default_content(&self) -> Vec<u8> {
+        (&0u32.to_le_bytes()[..]).to_owned()
+    }
+}
+
+impl Array {
+    pub fn default_content(&self) -> Vec<u8> {
+        vec![0; self.item_size * self.item_count]
+    }
+}
+
+impl Struct {
+    pub fn default_content(&self) -> Vec<u8> {
+        vec![0; self.field_size.iter().sum()]
+    }
+}
+
+impl FixedVector {
+    pub fn default_content(&self) -> Vec<u8> {
+        (&0u32.to_le_bytes()[..]).to_owned()
+    }
+}
+
+impl DynamicVector {
+    pub fn default_content(&self) -> Vec<u8> {
+        (&4u32.to_le_bytes()[..]).to_owned()
+    }
+}
+
+impl Table {
+    pub fn default_content(&self) -> Vec<u8> {
+        self.content.clone()
+    }
+}
 
 impl TopDecl {
     fn new(name: &str, typ: impl Into<TopDeclType>) -> Self {
@@ -131,6 +174,19 @@ impl TopDecl {
             TopDeclType::FixedVector(_) => None,
             TopDeclType::DynamicVector(_) => None,
             TopDeclType::Table(_) => None,
+        }
+    }
+
+    fn default_content(&self) -> Vec<u8> {
+        match self.typ {
+            TopDeclType::Atom => vec![0],
+            TopDeclType::Option_(ref typ) => typ.default_content(),
+            TopDeclType::Union(ref typ) => typ.default_content(),
+            TopDeclType::Array(ref typ) => typ.default_content(),
+            TopDeclType::Struct(ref typ) => typ.default_content(),
+            TopDeclType::FixedVector(ref typ) => typ.default_content(),
+            TopDeclType::DynamicVector(ref typ) => typ.default_content(),
+            TopDeclType::Table(ref typ) => typ.default_content(),
         }
     }
 
@@ -239,6 +295,9 @@ impl TopDecl {
             }
             RawTopDecl::Table(raw_decl) => {
                 let mut inner = Vec::with_capacity(raw_decl.inner.len());
+                let mut offset = 4 + 4 * raw_decl.inner.len();
+                let mut offsets = Vec::new();
+                let mut body = Vec::new();
                 for raw_field in &raw_decl.inner[..] {
                     let field_name = raw_field.name.to_owned();
                     if let Some(dep) = deps.get(raw_field.typ.as_str()) {
@@ -246,13 +305,22 @@ impl TopDecl {
                             name: field_name,
                             typ: Rc::clone(dep),
                         };
+                        offsets.extend_from_slice(&(offset as u32).to_le_bytes()[..]);
+                        let field_content = field.typ.default_content();
+                        body.extend_from_slice(&field_content[..]);
+                        offset += field_content.len();
                         inner.push(field);
                     } else {
                         break;
                     }
                 }
                 if inner.len() == raw_decl.inner.len() {
-                    let typ: TopDeclType = Table { inner }.into();
+                    let mut content = Vec::new();
+                    content.extend_from_slice(&(offset as u32).to_le_bytes()[..]);
+                    content.extend_from_slice(&offsets[..]);
+                    content.extend_from_slice(&body[..]);
+                    assert_eq!(content.len(), offset);
+                    let typ: TopDeclType = Table { content, inner }.into();
                     Some(TopDecl::new(raw.name(), typ))
                 } else {
                     None
