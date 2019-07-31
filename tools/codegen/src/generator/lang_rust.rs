@@ -366,7 +366,7 @@ where
     let inner = entity_name(&info.typ.name);
     let code = quote!(
         #[derive(Debug, Default)]
-        pub struct #builder (Option<#inner>);
+        pub struct #builder (pub(crate) Option<#inner>);
     );
     write!(writer, "{}", code)
 }
@@ -380,7 +380,7 @@ where
     let inner = entity_name(&info.typ.name);
     let item_count = usize_lit(info.item_count);
     let code = quote!(
-        pub struct #builder ([#inner; #item_count]);
+        pub struct #builder (pub(crate) [#inner; #item_count]);
 
         impl ::std::fmt::Debug for #builder {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
@@ -421,7 +421,7 @@ where
     let entity_union = entity_union_name(origin_name);
     let code = quote!(
         #[derive(Debug, Default)]
-        pub struct #builder (#entity_union);
+        pub struct #builder (pub(crate) #entity_union);
     );
     write!(writer, "{}", code)
 }
@@ -442,7 +442,7 @@ where
     });
     let code = quote!(
         #[derive(Debug, Default)]
-        pub struct #builder { #( #fields )* }
+        pub struct #builder { #( pub(crate) #fields )* }
     );
     write!(writer, "{}", code)
 }
@@ -455,7 +455,7 @@ where
     let inner = entity_name(&inner_name);
     let code = quote!(
         #[derive(Debug, Default)]
-        pub struct #builder (Vec<#inner>);
+        pub struct #builder (pub(crate) Vec<#inner>);
     );
     write!(writer, "{}", code)
 }
@@ -711,12 +711,8 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
         let code = quote!(
-            pub fn set(mut self, v: #inner) -> Self {
-                self.0 = Some(v);
-                self
-            }
-            pub fn unset(mut self) -> Self {
-                self.0 = None;
+            pub fn set(mut self, v: Option<#inner>) -> Self {
+                self.0 = v;
                 self
             }
         );
@@ -1000,6 +996,16 @@ where
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
+        let item_count = usize_lit(info.item_count);
+        {
+            let code = quote!(
+                pub fn set(mut self, v: [#inner; #item_count]) -> Self {
+                    self.0 = v;
+                    self
+                }
+            );
+            funcs.push(code);
+        }
         for idx in 0..info.item_count {
             let index = usize_lit(idx);
             let func = func_name(&format!("nth{}", idx));
@@ -1348,8 +1354,18 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
         let code = quote!(
+            pub fn set(mut self, v: Vec<#inner>) -> Self {
+                self.0 = v;
+                self
+            }
             pub fn push(mut self, v: #inner) -> Self {
                 self.0.push(v);
+                self
+            }
+            pub fn extend<T: ::std::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
+                for elem in iter {
+                    self.0.push(elem);
+                }
                 self
             }
         );
@@ -1597,8 +1613,18 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         let inner = entity_name(&info.typ.name);
         let code = quote!(
+            pub fn set(mut self, v: Vec<#inner>) -> Self {
+                self.0 = v;
+                self
+            }
             pub fn push(mut self, v: #inner) -> Self {
                 self.0.push(v);
+                self
+            }
+            pub fn extend<T: ::std::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
+                for elem in iter {
+                    self.0.push(elem);
+                }
                 self
             }
         );
