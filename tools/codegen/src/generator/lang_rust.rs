@@ -268,7 +268,11 @@ where
     Ok(())
 }
 
-fn impl_trait_entity<W>(writer: &mut W, origin_name: &str) -> io::Result<()>
+fn impl_trait_entity<W>(
+    writer: &mut W,
+    origin_name: &str,
+    funcs: Vec<m4::TokenStream>,
+) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -293,6 +297,7 @@ where
             fn new_builder() -> Self::Builder {
                 ::std::default::Default::default()
             }
+            #( #funcs )*
         }
     );
     write!(writer, "{}", code)
@@ -572,7 +577,19 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_option(writer, origin_name, info)?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder().set(self.get())
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -744,7 +761,19 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_items_for_union(writer, origin_name, info)?;
     def_builder_for_union(writer, origin_name)?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder().set(self.get())
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -886,7 +915,22 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_array(writer, origin_name, info)?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let items = (0..info.item_count)
+                .map(|idx| func_name(&format!("nth{}", idx)))
+                .map(|func| quote!(self.#func()));
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder().set([ #( #items, )* ])
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1043,7 +1087,22 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let fields = info.inner.iter().map(|f| func_name(&f.name));
+            let fields_func = fields.clone();
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder()
+                        #( .#fields(self.#fields_func()) )*
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1204,7 +1263,19 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder().extend(self.into_iter())
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1397,7 +1468,19 @@ where
 {
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder().extend(self.into_iter())
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1655,7 +1738,22 @@ where
     def_entity_and_reader(writer, origin_name)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    impl_trait_entity(writer, origin_name)?;
+    let funcs = {
+        let mut funcs: Vec<m4::TokenStream> = Vec::new();
+        {
+            let fields = info.inner.iter().map(|f| func_name(&f.name));
+            let fields_func = fields.clone();
+            let code = quote!(
+                fn as_builder(self) -> Self::Builder {
+                    Self::new_builder()
+                        #( .#fields(self.#fields_func()) )*
+                }
+            );
+            funcs.push(code);
+        }
+        funcs
+    };
+    impl_trait_entity(writer, origin_name, funcs)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {

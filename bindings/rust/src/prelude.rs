@@ -11,6 +11,7 @@ pub trait Entity: fmt::Debug + Default + Clone {
     fn as_slice(&self) -> &[u8];
     fn from_slice(slice: &[u8]) -> VerificationResult<Self>;
     fn new_builder() -> Self::Builder;
+    fn as_builder(self) -> Self::Builder;
 }
 
 pub trait Reader<'r>: Sized + fmt::Debug + Clone + Copy {
