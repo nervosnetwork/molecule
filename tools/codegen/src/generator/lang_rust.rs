@@ -497,7 +497,12 @@ where
     write!(writer, "{}", code)
 }
 
-fn def_iterator_for_vector<W>(writer: &mut W, origin_name: &str, inner_name: &str) -> io::Result<()>
+fn def_iterator_for_vector<W>(
+    writer: &mut W,
+    origin_name: &str,
+    inner_name: &str,
+    is_atom: bool,
+) -> io::Result<()>
 where
     W: io::Write,
 {
@@ -508,12 +513,7 @@ where
     let reader = reader_name(origin_name);
     let reader_inner = reader_name(inner_name);
     let code = quote!(
-        impl #entity {
-            pub fn iter(&self) -> #entity_iterator {
-                #entity_iterator(self.clone(), 0, self.len())
-            }
-        }
-        pub struct #entity_iterator (#entity, /* count */ usize, /* max */ usize);
+        pub struct #entity_iterator (#entity, usize, usize);
         impl ::std::iter::Iterator for #entity_iterator {
             type Item = #entity_inner;
             fn next(&mut self) -> Option<Self::Item> {
@@ -526,26 +526,40 @@ where
                 }
             }
         }
-        impl<'r> #reader<'r> {
-            pub fn iter(&self) -> #reader_iterator<'_, 'r> {
-                #reader_iterator(&self, 0, self.len())
-            }
-        }
-        pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, /* count */ usize, /* max */ usize);
-        impl<'t: 'r, 'r> ::std::iter::Iterator for #reader_iterator<'t, 'r> {
-            type Item = #reader_inner<'t>;
-            fn next(&mut self) -> Option<Self::Item> {
-                if self.1 >= self.2 {
-                    None
-                } else {
-                    let ret = self.0.get(self.1).unwrap();
-                    self.1 += 1;
-                    Some(ret)
-                }
+        impl IntoIterator for #entity {
+            type Item = #entity_inner;
+            type IntoIter = #entity_iterator;
+            fn into_iter(self) -> Self::IntoIter {
+                let len = self.len();
+                #entity_iterator(self, 0, len)
             }
         }
     );
-    write!(writer, "{}", code)
+    write!(writer, "{}", code)?;
+    if !is_atom {
+        let code = quote!(
+            impl<'r> #reader<'r> {
+                pub fn iter(&self) -> #reader_iterator<'_, 'r> {
+                    #reader_iterator(&self, 0, self.len())
+                }
+            }
+            pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, usize, usize);
+            impl<'t: 'r, 'r> ::std::iter::Iterator for #reader_iterator<'t, 'r> {
+                type Item = #reader_inner<'t>;
+                fn next(&mut self) -> Option<Self::Item> {
+                    if self.1 >= self.2 {
+                        None
+                    } else {
+                        let ret = self.0.get(self.1).unwrap();
+                        self.1 += 1;
+                        Some(ret)
+                    }
+                }
+            }
+        );
+        write!(writer, "{}", code)?;
+    }
+    Ok(())
 }
 
 /*
@@ -1373,9 +1387,7 @@ where
         funcs
     };
     impl_builder(writer, origin_name, funcs)?;
-    if !info.typ.is_atom() {
-        def_iterator_for_vector(writer, origin_name, &info.typ.name)?;
-    }
+    def_iterator_for_vector(writer, origin_name, &info.typ.name, info.typ.is_atom())?;
     writeln!(writer)
 }
 
@@ -1632,9 +1644,7 @@ where
         funcs
     };
     impl_builder(writer, origin_name, funcs)?;
-    if !info.typ.is_atom() {
-        def_iterator_for_vector(writer, origin_name, &info.typ.name)?;
-    }
+    def_iterator_for_vector(writer, origin_name, &info.typ.name, info.typ.is_atom())?;
     writeln!(writer)
 }
 
