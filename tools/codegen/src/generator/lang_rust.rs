@@ -463,6 +463,431 @@ where
     write!(writer, "{}", code)
 }
 
+fn def_access_funcs_for_option(is_entity: bool, info: &ast::Option_) -> Vec<m4::TokenStream> {
+    let (inner, getter_ret, getter_stmt) = if is_entity {
+        let inner = entity_name(&info.typ.name);
+        let getter_ret = quote!(#inner);
+        let getter_stmt = quote!(self.0.clone());
+        (inner, getter_ret, getter_stmt)
+    } else {
+        let inner = reader_name(&info.typ.name);
+        let getter_ret = quote!(#inner<'_>);
+        let getter_stmt = quote!(self.as_slice());
+        (inner, getter_ret, getter_stmt)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let code = quote!(
+            pub fn is_none(&self) -> bool {
+                self.0.is_empty()
+            }
+
+            pub fn is_some(&self) -> bool {
+                !self.0.is_empty()
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let code = if info.typ.is_atom() {
+            quote!(
+                pub fn get(&self) -> Option<#inner> {
+                    if self.is_none() {
+                        None
+                    } else {
+                        Some(self.0[0])
+                    }
+                }
+            )
+        } else {
+            quote!(
+                pub fn get(&self) -> Option<#getter_ret> {
+                    if self.is_none() {
+                        None
+                    } else {
+                        Some(#inner::new_unchecked(#getter_stmt))
+                    }
+                }
+            )
+        };
+        funcs.push(code);
+    }
+    funcs
+}
+
+fn def_access_funcs_for_union(
+    is_entity: bool,
+    origin_name: &str,
+    info: &ast::Union,
+) -> Vec<m4::TokenStream> {
+    let (getter_ret, getter_stmt) = if is_entity {
+        let union = entity_union_name(origin_name);
+        let getter_ret = quote!(#union);
+        let getter_stmt = quote!(self.0.slice_from(4));
+        (getter_ret, getter_stmt)
+    } else {
+        let union = reader_union_name(origin_name);
+        let getter_ret = quote!(#union<'_>);
+        let getter_stmt = quote!(&self.as_slice()[4..]);
+        (getter_ret, getter_stmt)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let item_count = usize_lit(info.inner.len());
+        let code = quote!(
+            pub const ITEM_COUNT: usize = #item_count;
+
+            pub fn item_id(&self) -> usize {
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                u32::from_le(ptr[0]) as usize
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
+            let item_id = usize_lit(index + 1);
+            let inner = if is_entity {
+                entity_name(&inner.typ.name)
+            } else {
+                reader_name(&inner.typ.name)
+            };
+            quote!(#item_id => #inner::new_unchecked(inner).into(),)
+        });
+        let code = quote!(
+            pub fn get(&self) -> #getter_ret {
+                let inner = #getter_stmt;
+                match self.item_id() {
+                    #( #match_stmts )*
+                    _ => unreachable!(),
+                }
+            }
+        );
+        funcs.push(code);
+    }
+    funcs
+}
+
+fn def_access_funcs_for_array(is_entity: bool, info: &ast::Array) -> Vec<m4::TokenStream> {
+    let (inner, getter_ret) = if is_entity {
+        let inner = entity_name(&info.typ.name);
+        let getter_ret = quote!(#inner);
+        (inner, getter_ret)
+    } else {
+        let inner = reader_name(&info.typ.name);
+        let getter_ret = quote!(#inner<'_>);
+        (inner, getter_ret)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let total_size = usize_lit(info.item_size * info.item_count);
+        let item_size = usize_lit(info.item_size);
+        let item_count = usize_lit(info.item_count);
+        let code = quote!(
+            pub const TOTAL_SIZE: usize = #total_size;
+            pub const ITEM_SIZE: usize = #item_size;
+            pub const ITEM_COUNT: usize = #item_count;
+        );
+        funcs.push(code);
+    }
+    for idx in 0..info.item_count {
+        let start = usize_lit(idx * info.item_size);
+        let func = snake_name(&format!("nth{}", idx));
+        let code = if info.typ.is_atom() {
+            let getter_stmt = if is_entity {
+                quote!(self.0[#start])
+            } else {
+                quote!(self.as_slice()[#start])
+            };
+            quote!(
+                pub fn #func(&self) -> #inner {
+                    #getter_stmt
+                }
+            )
+        } else {
+            let end = usize_lit((idx + 1) * info.item_size);
+            let getter_stmt = if is_entity {
+                quote!(self.0.slice(#start, #end))
+            } else {
+                quote!(&self.as_slice()[#start..#end])
+            };
+            quote!(
+                pub fn #func(&self) -> #getter_ret {
+                    #inner::new_unchecked(#getter_stmt)
+                }
+            )
+        };
+        funcs.push(code);
+    }
+    funcs
+}
+
+fn def_access_funcs_for_struct(is_entity: bool, info: &ast::Struct) -> Vec<m4::TokenStream> {
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let total_size = usize_lit(info.field_size.iter().sum());
+        let field_count = usize_lit(info.inner.len());
+        let fields_size = info.field_size.iter().map(|x| usize_lit(*x as usize));
+        let code = quote!(
+            pub const TOTAL_SIZE: usize = #total_size;
+            pub const FIELD_COUNT: usize = #field_count;
+            pub const FIELDS_SIZE: [usize; #field_count]= [ #( #fields_size, )* ];
+        );
+        funcs.push(code);
+    }
+    {
+        let mut offset = 0;
+        for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
+            let func = snake_name(&f.name);
+            let (inner, getter_ret) = if is_entity {
+                let inner = entity_name(&f.typ.name);
+                let getter_ret = quote!(#inner);
+                (inner, getter_ret)
+            } else {
+                let inner = reader_name(&f.typ.name);
+                let getter_ret = quote!(#inner<'_>);
+                (inner, getter_ret)
+            };
+            let start = usize_lit(offset);
+            offset += s;
+            let code = if f.typ.is_atom() {
+                let getter_stmt = if is_entity {
+                    quote!(self.0[#start])
+                } else {
+                    quote!(self.as_slice()[#start])
+                };
+                quote!(
+                    pub fn #func(&self) -> #inner {
+                        #getter_stmt
+                    }
+                )
+            } else {
+                let end = usize_lit(offset);
+                let getter_stmt = if is_entity {
+                    quote!(self.0.slice(#start, #end))
+                } else {
+                    quote!(&self.as_slice()[#start..#end])
+                };
+                quote!(
+                    pub fn #func(&self) -> #getter_ret {
+                        #inner::new_unchecked(#getter_stmt)
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+    }
+    funcs
+}
+
+fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec<m4::TokenStream> {
+    let (inner, getter_ret, getter_stmt_atom, getter_stmt) = if is_entity {
+        let inner = entity_name(&info.typ.name);
+        let getter_ret = quote!(#inner);
+        let getter_stmt_atom = quote!(self.0[4 + idx]);
+        let getter_stmt = quote!(self.0.slice(start, end));
+        (inner, getter_ret, getter_stmt_atom, getter_stmt)
+    } else {
+        let inner = reader_name(&info.typ.name);
+        let getter_ret = quote!(#inner<'_>);
+        let getter_stmt_atom = quote!(self.as_slice()[4 + idx]);
+        let getter_stmt = quote!(&self.as_slice()[start..end]);
+        (inner, getter_ret, getter_stmt_atom, getter_stmt)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    let item_size = usize_lit(info.item_size);
+    {
+        let code = quote!(
+            pub const ITEM_SIZE: usize = #item_size;
+
+            pub fn len(&self) -> usize {
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                u32::from_le(ptr[0]) as usize
+            }
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let item_size = usize_lit(info.item_size);
+        let code = if info.typ.is_atom() {
+            quote!(
+                pub fn get(&self, idx: usize) -> Option<#inner> {
+                    if idx >= self.len() {
+                        None
+                    } else {
+                        Some(#getter_stmt_atom)
+                    }
+                }
+            )
+        } else {
+            quote!(
+                pub fn get(&self, idx: usize) -> Option<#getter_ret> {
+                    if idx >= self.len() {
+                        None
+                    } else {
+                        let start = 4 + idx * #item_size;
+                        let end = start + #item_size;
+                        Some(#inner::new_unchecked(#getter_stmt))
+                    }
+                }
+            )
+        };
+        funcs.push(code);
+    }
+    funcs
+}
+
+fn def_access_funcs_for_dyn_vec(
+    is_entity: bool,
+    info: &ast::DynamicVector,
+) -> Vec<m4::TokenStream> {
+    let (inner, getter_ret, getter_stmt_last, getter_stmt) = if is_entity {
+        let inner = entity_name(&info.typ.name);
+        let getter_ret = quote!(#inner);
+        let getter_stmt_last = quote!(self.0.slice_from(start));
+        let getter_stmt = quote!(self.0.slice(start, end));
+        (inner, getter_ret, getter_stmt_last, getter_stmt)
+    } else {
+        let inner = reader_name(&info.typ.name);
+        let getter_ret = quote!(#inner<'_>);
+        let getter_stmt_last = quote!(&self.as_slice()[start..]);
+        let getter_stmt = quote!(&self.as_slice()[start..end]);
+        (inner, getter_ret, getter_stmt_last, getter_stmt)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let code = quote!(
+            pub fn offsets(&self) -> &[u32] {
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                &ptr[1..]
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let code = quote!(
+            pub fn len(&self) -> usize {
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                let bytes_len = u32::from_le(ptr[0]) as usize;
+                if bytes_len == 4 {
+                    0
+                } else {
+                    let first = u32::from_le(ptr[1]) as usize;
+                    (first - 4) / 4
+                }
+            }
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let code = quote!(
+            pub fn get(&self, idx: usize) -> Option<#getter_ret> {
+                let len = self.len();
+                if idx >= len {
+                    None
+                } else {
+                    let offsets = self.offsets();
+                    let start = u32::from_le(offsets[idx]) as usize;
+                    if idx == len - 1 {
+                        Some(#inner::new_unchecked(#getter_stmt_last))
+                    } else {
+                        let end = u32::from_le(offsets[idx+1]) as usize;
+                        Some(#inner::new_unchecked(#getter_stmt))
+                    }
+                }
+            }
+        );
+        funcs.push(code);
+    }
+    funcs
+}
+
+fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::TokenStream> {
+    let (getter_stmt_atom, getter_stmt_last, getter_stmt) = if is_entity {
+        let getter_stmt_atom = quote!(self.0[offset]);
+        let getter_stmt_last = quote!(self.0.slice_from(start));
+        let getter_stmt = quote!(self.0.slice(start, end));
+        (getter_stmt_atom, getter_stmt_last, getter_stmt)
+    } else {
+        let getter_stmt_atom = quote!(self.as_slice()[offset]);
+        let getter_stmt_last = quote!(&self.as_slice()[start..]);
+        let getter_stmt = quote!(&self.as_slice()[start..end]);
+        (getter_stmt_atom, getter_stmt_last, getter_stmt)
+    };
+    let mut funcs: Vec<m4::TokenStream> = Vec::new();
+    {
+        let field_count = usize_lit(info.inner.len());
+        let code = quote!(pub const FIELD_COUNT: usize = #field_count;);
+        funcs.push(code);
+    }
+    {
+        let code = quote!(
+            pub fn field_offsets(&self) -> (usize, &[u32]) {
+                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                let first = u32::from_le(ptr[1]) as usize;
+                let count = (first - 4) / 4;
+                (count, &ptr[1..])
+            }
+        );
+        funcs.push(code);
+    }
+    {
+        let field_count = usize_lit(info.inner.len());
+        for (i, f) in info.inner.iter().enumerate() {
+            let func = snake_name(&f.name);
+            let (inner, getter_ret) = if is_entity {
+                let inner = entity_name(&f.typ.name);
+                let getter_ret = quote!(#inner);
+                (inner, getter_ret)
+            } else {
+                let inner = reader_name(&f.typ.name);
+                let getter_ret = quote!(#inner<'_>);
+                (inner, getter_ret)
+            };
+            let start = usize_lit(i);
+            let code = if f.typ.is_atom() {
+                quote!(
+                    pub fn #func(&self) -> #inner {
+                        let (_, offsets) = Self::field_offsets(self);
+                        let offset = u32::from_le(offsets[#start]) as usize;
+                        #getter_stmt_atom
+                    }
+                )
+            } else if i == info.inner.len() - 1 {
+                quote!(
+                    pub fn #func(&self) -> #getter_ret {
+                        let (count, offsets) = Self::field_offsets(self);
+                        let start = u32::from_le(offsets[#start]) as usize;
+                        if count == #field_count {
+                            #inner::new_unchecked(#getter_stmt_last)
+                        } else {
+                            let end = u32::from_le(offsets[#start+1]) as usize;
+                            #inner::new_unchecked(#getter_stmt)
+                        }
+                    }
+                )
+            } else {
+                quote!(
+                    pub fn #func(&self) -> #getter_ret {
+                        let (_, offsets) = Self::field_offsets(self);
+                        let start = u32::from_le(offsets[#start]) as usize;
+                        let end = u32::from_le(offsets[#start+1]) as usize;
+                        #inner::new_unchecked(#getter_stmt)
+                    }
+                )
+            };
+            funcs.push(code);
+        }
+    }
+    funcs
+}
+
 fn def_builder_for_option<W>(
     writer: &mut W,
     origin_name: &str,
@@ -706,47 +1131,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let code = quote!(
-                pub fn is_none(&self) -> bool {
-                    self.0.is_empty()
-                }
-
-                pub fn is_some(&self) -> bool {
-                    !self.0.is_empty()
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let inner = entity_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self) -> Option<#inner> {
-                        if self.is_none() {
-                            None
-                        } else {
-                            Some(self.0[0])
-                        }
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self) -> Option<#inner> {
-                        if self.is_none() {
-                            None
-                        } else {
-                            Some(#inner::new_unchecked(self.0.clone()))
-                        }
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_option(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let inner = reader_name(&info.typ.name);
@@ -778,47 +1163,7 @@ where
         }
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let code = quote!(
-                pub fn is_none(&self) -> bool {
-                    self.0.is_empty()
-                }
-
-                pub fn is_some(&self) -> bool {
-                    !self.0.is_empty()
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let inner = reader_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self) -> Option<#inner> {
-                        if self.is_none() {
-                            None
-                        } else {
-                            Some(self.0[0])
-                        }
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self) -> Option<#inner<'_>> {
-                        if self.is_none() {
-                            None
-                        } else {
-                            Some(#inner::new_unchecked(self.as_slice()))
-                        }
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_option(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         let write_inner = if info.typ.is_atom() {
@@ -898,40 +1243,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let item_count = usize_lit(info.inner.len());
-            let code = quote!(
-                pub const ITEM_COUNT: usize = #item_count;
-
-                pub fn item_id(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    u32::from_le(ptr[0]) as usize
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let entity_union = entity_union_name(origin_name);
-            let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
-                let item_id = usize_lit(index + 1);
-                let inner = entity_name(&inner.typ.name);
-                quote!(#item_id => #inner::new_unchecked(inner).into(),)
-            });
-            let code = quote!(
-                pub fn get(&self) -> #entity_union {
-                    let inner = self.0.slice_from(4);
-                    match self.item_id() {
-                        #( #match_stmts )*
-                        _ => unreachable!(),
-                    }
-                }
-            );
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_union(true, origin_name, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let item_count = usize_lit(info.inner.len());
@@ -963,40 +1275,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let item_count = usize_lit(info.inner.len());
-            let code = quote!(
-                pub const ITEM_COUNT: usize = #item_count;
-
-                pub fn item_id(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    u32::from_le(ptr[0]) as usize
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let reader_union = reader_union_name(origin_name);
-            let match_stmts = info.inner.iter().enumerate().map(|(index, inner)| {
-                let item_id = usize_lit(index + 1);
-                let inner = reader_name(&inner.typ.name);
-                quote!(#item_id => #inner::new_unchecked(inner).into(),)
-            });
-            let code = quote!(
-                pub fn get(&self) -> #reader_union<'_> {
-                    let inner = &self.as_slice()[4..];
-                    match self.item_id() {
-                        #( #match_stmts )*
-                        _ => unreachable!(),
-                    }
-                }
-            );
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_union(false, origin_name, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         quote!(
@@ -1080,41 +1359,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = entity_name(&info.typ.name);
-        {
-            let total_size = usize_lit(info.item_size * info.item_count);
-            let item_size = usize_lit(info.item_size);
-            let item_count = usize_lit(info.item_count);
-            let code = quote!(
-                pub const TOTAL_SIZE: usize = #total_size;
-                pub const ITEM_SIZE: usize = #item_size;
-                pub const ITEM_COUNT: usize = #item_count;
-            );
-            funcs.push(code);
-        }
-        for idx in 0..info.item_count {
-            let start = usize_lit(idx * info.item_size);
-            let func = snake_name(&format!("nth{}", idx));
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn #func(&self) -> #inner {
-                        self.0[#start]
-                    }
-                )
-            } else {
-                let end = usize_lit((idx + 1) * info.item_size);
-                quote!(
-                    pub fn #func(&self) -> #inner {
-                        #inner::new_unchecked(self.0.slice(#start, #end))
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_array(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let inner = reader_name(&info.typ.name);
@@ -1144,41 +1389,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let inner = reader_name(&info.typ.name);
-        {
-            let total_size = usize_lit(info.item_size * info.item_count);
-            let item_size = usize_lit(info.item_size);
-            let item_count = usize_lit(info.item_count);
-            let code = quote!(
-                pub const TOTAL_SIZE: usize = #total_size;
-                pub const ITEM_SIZE: usize = #item_size;
-                pub const ITEM_COUNT: usize = #item_count;
-            );
-            funcs.push(code);
-        }
-        for idx in 0..info.item_count {
-            let start = usize_lit(idx * info.item_size);
-            let func = snake_name(&format!("nth{}", idx));
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn #func(&self) -> #inner {
-                        self.as_slice()[#start]
-                    }
-                )
-            } else {
-                let end = usize_lit((idx + 1) * info.item_size);
-                quote!(
-                    pub fn #func(&self) -> #inner<'_> {
-                        #inner::new_unchecked(&self.as_slice()[#start..#end])
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_array(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         let total_size = usize_lit(info.item_size * info.item_count);
@@ -1269,45 +1480,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let total_size = usize_lit(info.field_size.iter().sum());
-            let field_count = usize_lit(info.inner.len());
-            let fields_size = info.field_size.iter().map(|x| usize_lit(*x as usize));
-            let code = quote!(
-                pub const TOTAL_SIZE: usize = #total_size;
-                pub const FIELD_COUNT: usize = #field_count;
-                pub const FIELDS_SIZE: [usize; #field_count]= [ #( #fields_size, )* ];
-            );
-            funcs.push(code);
-        }
-        {
-            let mut offset = 0;
-            for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
-                let func = snake_name(&f.name);
-                let inner = entity_name(&f.typ.name);
-                let start = usize_lit(offset);
-                offset += s;
-                let code = if f.typ.is_atom() {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            self.0[#start]
-                        }
-                    )
-                } else {
-                    let end = usize_lit(offset);
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            #inner::new_unchecked(self.0.slice(#start, #end))
-                        }
-                    )
-                };
-                funcs.push(code);
-            }
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_struct(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let total_size = usize_lit(info.field_size.iter().sum());
@@ -1342,45 +1515,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let total_size = usize_lit(info.field_size.iter().sum());
-            let field_count = usize_lit(info.inner.len());
-            let fields_size = info.field_size.iter().map(|x| usize_lit(*x as usize));
-            let code = quote!(
-                pub const TOTAL_SIZE: usize = #total_size;
-                pub const FIELD_COUNT: usize = #field_count;
-                pub const FIELDS_SIZE: [usize; #field_count]= [ #( #fields_size, )* ];
-            );
-            funcs.push(code);
-        }
-        {
-            let mut offset = 0;
-            for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
-                let func = snake_name(&f.name);
-                let inner = reader_name(&f.typ.name);
-                let start = usize_lit(offset);
-                offset += s;
-                let code = if f.typ.is_atom() {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            self.as_slice()[#start]
-                        }
-                    )
-                } else {
-                    let end = usize_lit(offset);
-                    quote!(
-                        pub fn #func(&self) -> #inner<'_> {
-                            #inner::new_unchecked(&self.as_slice()[#start..#end])
-                        }
-                    )
-                };
-                funcs.push(code);
-            }
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_struct(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         let total_size = usize_lit(info.field_size.iter().sum());
@@ -1465,53 +1600,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let item_size = usize_lit(info.item_size);
-        {
-            let code = quote!(
-                pub const ITEM_SIZE: usize = #item_size;
-
-                pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    u32::from_le(ptr[0]) as usize
-                }
-                pub fn is_empty(&self) -> bool {
-                    self.len() == 0
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let item_size = usize_lit(info.item_size);
-            let inner = entity_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        if idx >= self.len() {
-                            None
-                        } else {
-                            Some(self.0[4+idx])
-                        }
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        if idx >= self.len() {
-                            None
-                        } else {
-                            let start = 4 + idx * #item_size;
-                            let end = start + #item_size;
-                            Some(#inner::new_unchecked(self.0.slice(start, end)))
-                        }
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_fix_vec(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let inner = reader_name(&info.typ.name);
@@ -1553,53 +1642,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        let item_size = usize_lit(info.item_size);
-        {
-            let code = quote!(
-                pub const ITEM_SIZE: usize = #item_size;
-
-                pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    u32::from_le(ptr[0]) as usize
-                }
-                pub fn is_empty(&self) -> bool {
-                    self.len() == 0
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let item_size = usize_lit(info.item_size);
-            let inner = reader_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        if idx >= self.len() {
-                            None
-                        } else {
-                            Some(self.as_slice()[4+idx])
-                        }
-                    }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
-                        if idx >= self.len() {
-                            None
-                        } else {
-                            let start = 4 + idx * #item_size;
-                            let end = start + #item_size;
-                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
-                        }
-                    }
-                )
-            };
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_fix_vec(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         let item_size = usize_lit(info.item_size);
@@ -1684,58 +1727,7 @@ where
     };
     impl_trait_entity(writer, origin_name, funcs)?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let code = quote!(
-                pub fn offsets(&self) -> &[u32] {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    &ptr[1..]
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let code = quote!(
-                pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    let bytes_len = u32::from_le(ptr[0]) as usize;
-                    if bytes_len == 4 {
-                        0
-                    } else {
-                        let first = u32::from_le(ptr[1]) as usize;
-                        (first - 4) / 4
-                    }
-                }
-                pub fn is_empty(&self) -> bool {
-                    self.len() == 0
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let inner = entity_name(&info.typ.name);
-            let code = quote!(
-                pub fn get(&self, idx: usize) -> Option<#inner> {
-                    let len = self.len();
-                    if idx >= len {
-                        None
-                    } else {
-                        let offsets = self.offsets();
-                        let start = u32::from_le(offsets[idx]) as usize;
-                        if idx == len - 1 {
-                            Some(#inner::new_unchecked(self.0.slice_from(start)))
-                        } else {
-                            let end = u32::from_le(offsets[idx+1]) as usize;
-                            Some(#inner::new_unchecked(self.0.slice(start, end)))
-                        }
-                    }
-                }
-            );
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_dyn_vec(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let inner = reader_name(&info.typ.name);
@@ -1800,58 +1792,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let code = quote!(
-                pub fn offsets(&self) -> &[u32] {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    &ptr[1..]
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let code = quote!(
-                pub fn len(&self) -> usize {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    let bytes_len = u32::from_le(ptr[0]) as usize;
-                    if bytes_len == 4 {
-                        0
-                    } else {
-                        let first = u32::from_le(ptr[1]) as usize;
-                        (first - 4) / 4
-                    }
-                }
-                pub fn is_empty(&self) -> bool {
-                    self.len() == 0
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let inner = reader_name(&info.typ.name);
-            let code = quote!(
-                pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
-                    let len = self.len();
-                    if idx >= len {
-                        None
-                    } else {
-                        let offsets = self.offsets();
-                        let start = u32::from_le(offsets[idx]) as usize;
-                        if idx == len - 1 {
-                            Some(#inner::new_unchecked(&self.as_slice()[start..]))
-                        } else {
-                            let end = u32::from_le(offsets[idx+1]) as usize;
-                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
-                        }
-                    }
-                }
-            );
-            funcs.push(code);
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_dyn_vec(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = {
         quote!(
@@ -1953,66 +1894,7 @@ where
         funcs
     };
     impl_trait_entity(writer, origin_name, funcs)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let field_count = usize_lit(info.inner.len());
-            let code = quote!(pub const FIELD_COUNT: usize = #field_count;);
-            funcs.push(code);
-        }
-        {
-            let code = quote!(
-                pub fn field_offsets(&self) -> (usize, &[u32]) {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    let first = u32::from_le(ptr[1]) as usize;
-                    let count = (first - 4) / 4;
-                    (count, &ptr[1..])
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let field_count = usize_lit(info.inner.len());
-            for (i, f) in info.inner.iter().enumerate() {
-                let func = snake_name(&f.name);
-                let inner = entity_name(&f.typ.name);
-                let start = usize_lit(i);
-                let code = if f.typ.is_atom() {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            let (_, offsets) = Self::field_offsets(self);
-                            let offset = u32::from_le(offsets[#start]) as usize;
-                            self.0[offset]
-                        }
-                    )
-                } else if i == info.inner.len() - 1 {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            let (count, offsets) = Self::field_offsets(self);
-                            let start = u32::from_le(offsets[#start]) as usize;
-                            if count == #field_count {
-                                #inner::new_unchecked(self.0.slice_from(start))
-                            } else {
-                                let end = u32::from_le(offsets[#start+1]) as usize;
-                                #inner::new_unchecked(self.0.slice(start, end))
-                            }
-                        }
-                    )
-                } else {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            let (_, offsets) = Self::field_offsets(self);
-                            let start = u32::from_le(offsets[#start]) as usize;
-                            let end = u32::from_le(offsets[#start+1]) as usize;
-                            #inner::new_unchecked(self.0.slice(start, end))
-                        }
-                    )
-                };
-                funcs.push(code);
-            }
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_table(true, info);
     impl_entity(writer, origin_name, funcs)?;
     let code = {
         let field_count = usize_lit(info.inner.len());
@@ -2076,66 +1958,7 @@ where
         )
     };
     impl_trait_reader(writer, origin_name, code)?;
-    let funcs = {
-        let mut funcs: Vec<m4::TokenStream> = Vec::new();
-        {
-            let field_count = usize_lit(info.inner.len());
-            let code = quote!(pub const FIELD_COUNT: usize = #field_count;);
-            funcs.push(code);
-        }
-        {
-            let code = quote!(
-                pub fn field_offsets(&self) -> (usize, &[u32]) {
-                    let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                    let first = u32::from_le(ptr[1]) as usize;
-                    let count = (first - 4) / 4;
-                    (count, &ptr[1..])
-                }
-            );
-            funcs.push(code);
-        }
-        {
-            let field_count = usize_lit(info.inner.len());
-            for (i, f) in info.inner.iter().enumerate() {
-                let func = snake_name(&f.name);
-                let inner = reader_name(&f.typ.name);
-                let start = usize_lit(i);
-                let code = if f.typ.is_atom() {
-                    quote!(
-                        pub fn #func(&self) -> #inner {
-                            let (_, offsets) = Self::field_offsets(self);
-                            let offset = u32::from_le(offsets[#start]) as usize;
-                            self.as_slice()[offset]
-                        }
-                    )
-                } else if i == info.inner.len() - 1 {
-                    quote!(
-                        pub fn #func(&self) -> #inner<'_> {
-                            let (count, offsets) = Self::field_offsets(self);
-                            let start = u32::from_le(offsets[#start]) as usize;
-                            if count == #field_count {
-                                #inner::new_unchecked(&self.as_slice()[start..])
-                            } else {
-                                let end = u32::from_le(offsets[#start+1]) as usize;
-                                #inner::new_unchecked(&self.as_slice()[start..end])
-                            }
-                        }
-                    )
-                } else {
-                    quote!(
-                        pub fn #func(&self) -> #inner<'_> {
-                            let (_, offsets) = Self::field_offsets(self);
-                            let start = u32::from_le(offsets[#start]) as usize;
-                            let end = u32::from_le(offsets[#start+1]) as usize;
-                            #inner::new_unchecked(&self.as_slice()[start..end])
-                        }
-                    )
-                };
-                funcs.push(code);
-            }
-        }
-        funcs
-    };
+    let funcs = def_access_funcs_for_table(false, info);
     impl_reader(writer, origin_name, funcs)?;
     let code = if info.inner.is_empty() {
         quote!(
