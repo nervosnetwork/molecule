@@ -1715,38 +1715,23 @@ where
         }
         {
             let inner = entity_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        let len = self.len();
-                        if idx >= len {
-                            None
+            let code = quote!(
+                pub fn get(&self, idx: usize) -> Option<#inner> {
+                    let len = self.len();
+                    if idx >= len {
+                        None
+                    } else {
+                        let offsets = self.offsets();
+                        let start = u32::from_le(offsets[idx]) as usize;
+                        if idx == len - 1 {
+                            Some(#inner::new_unchecked(self.0.slice_from(start)))
                         } else {
-                            let offsets = self.offsets();
-                            let offset = u32::from_le(offsets[idx]) as usize;
-                            Some(self.0[offset])
+                            let end = u32::from_le(offsets[idx+1]) as usize;
+                            Some(#inner::new_unchecked(self.0.slice(start, end)))
                         }
                     }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        let len = self.len();
-                        if idx >= len {
-                            None
-                        } else {
-                            let offsets = self.offsets();
-                            let start = u32::from_le(offsets[idx]) as usize;
-                            if idx == len - 1 {
-                                Some(#inner::new_unchecked(self.0.slice_from(start)))
-                            } else {
-                                let end = u32::from_le(offsets[idx+1]) as usize;
-                                Some(#inner::new_unchecked(self.0.slice(start, end)))
-                            }
-                        }
-                    }
-                )
-            };
+                }
+            );
             funcs.push(code);
         }
         funcs
@@ -1846,38 +1831,23 @@ where
         }
         {
             let inner = reader_name(&info.typ.name);
-            let code = if info.typ.is_atom() {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner> {
-                        let len = self.len();
-                        if idx >= len {
-                            None
+            let code = quote!(
+                pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
+                    let len = self.len();
+                    if idx >= len {
+                        None
+                    } else {
+                        let offsets = self.offsets();
+                        let start = u32::from_le(offsets[idx]) as usize;
+                        if idx == len - 1 {
+                            Some(#inner::new_unchecked(&self.as_slice()[start..]))
                         } else {
-                            let offsets = self.offsets();
-                            let offset = u32::from_le(offsets[idx]) as usize;
-                            Some(self.as_slice()[offset])
+                            let end = u32::from_le(offsets[idx+1]) as usize;
+                            Some(#inner::new_unchecked(&self.as_slice()[start..end]))
                         }
                     }
-                )
-            } else {
-                quote!(
-                    pub fn get(&self, idx: usize) -> Option<#inner<'_>> {
-                        let len = self.len();
-                        if idx >= len {
-                            None
-                        } else {
-                            let offsets = self.offsets();
-                            let start = u32::from_le(offsets[idx]) as usize;
-                            if idx == len - 1 {
-                                Some(#inner::new_unchecked(&self.as_slice()[start..]))
-                            } else {
-                                let end = u32::from_le(offsets[idx+1]) as usize;
-                                Some(#inner::new_unchecked(&self.as_slice()[start..end]))
-                            }
-                        }
-                    }
-                )
-            };
+                }
+            );
             funcs.push(code);
         }
         funcs
