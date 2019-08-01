@@ -16,6 +16,7 @@ impl Generator {
     {
         let code = quote!(
             use molecule::prelude::{Entity as _, Reader as _};
+            use molecule::faster_hex::hex_string;
         );
         write!(writer, "{}", code)?;
         for decl in &self.ast.decls[..] {
@@ -113,11 +114,46 @@ where
     let entity = entity_name(origin_name);
     let reader = reader_name(origin_name);
     let code = quote!(
-        #[derive(Debug, Clone)]
+        #[derive(Clone)]
         pub struct #entity(molecule::bytes::Bytes);
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Clone, Copy)]
         pub struct #reader<'r>(&'r [u8]);
 
+        impl ::std::fmt::Debug for #entity {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
+            }
+        }
+        impl<'r> ::std::fmt::Debug for #reader<'r> {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
+            }
+        }
+    );
+    write!(writer, "{}", code)
+}
+
+fn impl_display_for_entity_and_reader<W>(
+    writer: &mut W,
+    origin_name: &str,
+    stmts: m4::TokenStream,
+) -> io::Result<()>
+where
+    W: io::Write,
+{
+    let entity = entity_name(origin_name);
+    let reader = reader_name(origin_name);
+    let code = quote!(
+        impl ::std::fmt::Display for #entity {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                #stmts
+            }
+        }
+        impl<'r> ::std::fmt::Display for #reader<'r> {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                #stmts
+            }
+        }
     );
     write!(writer, "{}", code)
 }
@@ -145,29 +181,55 @@ where
 {
     let entity_union = entity_union_name(origin_name);
     let reader_union = reader_union_name(origin_name);
-    let entity_unions = &vec![entity_union_name(origin_name); info.inner.len()];
-    let reader_unions = &vec![reader_union_name(origin_name); info.inner.len()];
-    let (ref entity_inners, ref reader_inners, ref union_items, ref union_ids) =
-        info.inner.iter().enumerate().fold(
+    let entity_union_string = entity_union.to_string();
+    let reader_union_string = reader_union.to_string();
+    let (
+        ref entity_inners,
+        ref reader_inners,
+        ref union_items,
+        ref union_ids,
+        ref entity_union_item_paths,
+        ref reader_union_item_paths,
+    ) = info.inner.iter().enumerate().fold(
+        (
+            Vec::with_capacity(info.inner.len()),
+            Vec::with_capacity(info.inner.len()),
+            Vec::with_capacity(info.inner.len()),
+            Vec::with_capacity(info.inner.len()),
+            Vec::with_capacity(info.inner.len()),
+            Vec::with_capacity(info.inner.len()),
+        ),
+        |(
+            mut entity_inners,
+            mut reader_inners,
+            mut union_items,
+            mut union_ids,
+            mut entity_union_item_paths,
+            mut reader_union_item_paths,
+        ),
+         (index, inner)| {
+            let entity_name = entity_name(&inner.typ.name);
+            let reader_name = reader_name(&inner.typ.name);
+            let item_name = union_item_name(&inner.typ.name);
+            let item_id = usize_lit(index + 1);
+            let entity_union_item_path = quote!(#entity_union::#item_name);
+            let reader_union_item_path = quote!(#reader_union::#item_name);
+            entity_inners.push(entity_name);
+            reader_inners.push(reader_name);
+            union_items.push(item_name);
+            union_ids.push(item_id);
+            entity_union_item_paths.push(entity_union_item_path);
+            reader_union_item_paths.push(reader_union_item_path);
             (
-                Vec::with_capacity(info.inner.len()),
-                Vec::with_capacity(info.inner.len()),
-                Vec::with_capacity(info.inner.len()),
-                Vec::with_capacity(info.inner.len()),
-            ),
-            |(mut entity_inners, mut reader_inners, mut union_items, mut union_ids),
-             (index, inner)| {
-                let entity_name = entity_name(&inner.typ.name);
-                let reader_name = reader_name(&inner.typ.name);
-                let item_name = union_item_name(&inner.typ.name);
-                let item_id = usize_lit(index + 1);
-                entity_inners.push(entity_name);
-                reader_inners.push(reader_name);
-                union_items.push(item_name);
-                union_ids.push(item_id);
-                (entity_inners, reader_inners, union_items, union_ids)
-            },
-        );
+                entity_inners,
+                reader_inners,
+                union_items,
+                union_ids,
+                entity_union_item_paths,
+                reader_union_item_paths,
+            )
+        },
+    );
     {
         let entity_default = {
             let inner = &info.inner[0];
@@ -187,6 +249,44 @@ where
             impl ::std::default::Default for #entity_union {
                 fn default() -> Self {
                     #entity_union::#entity_default
+                }
+            }
+
+            impl ::std::fmt::Display for #entity_union {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    match self {
+                        #(
+                            #entity_union_item_paths(ref item) => {
+                                write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
+                            }
+                        )*
+                    }
+                }
+            }
+            impl<'r> ::std::fmt::Display for #reader_union<'r> {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    match self {
+                        #(
+                            #reader_union_item_paths(ref item) => {
+                                write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
+                            }
+                        )*
+                    }
+                }
+            }
+
+            impl #entity_union {
+                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    match self {
+                        #( #entity_union_item_paths(ref item) => write!(f, "{}", item), )*
+                    }
+                }
+            }
+            impl<'r> #reader_union<'r> {
+                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    match self {
+                        #( #reader_union_item_paths(ref item) => write!(f, "{}", item), )*
+                    }
                 }
             }
         );
@@ -219,46 +319,48 @@ where
     {
         let code = quote!(
             impl #entity_union {
+                pub const NAME: &'static str = #entity_union_string;
                 pub fn as_bytes(&self) -> molecule::bytes::Bytes {
                     match self {
-                        #( #entity_unions::#union_items(item) => item.as_bytes(), )*
+                        #( #entity_union_item_paths(item) => item.as_bytes(), )*
                     }
                 }
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
-                        #( #entity_unions::#union_items(item) => item.as_slice(), )*
+                        #( #entity_union_item_paths(item) => item.as_slice(), )*
                     }
                 }
                 pub fn item_id(&self) -> usize {
                     match self {
-                        #( #entity_unions::#union_items(_) => #union_ids, )*
+                        #( #entity_union_item_paths(_) => #union_ids, )*
                     }
                 }
                 pub fn item_name(&self) -> &str {
                     match self {
-                        #( #entity_unions::#union_items(_) => #union_items_string, )*
+                        #( #entity_union_item_paths(_) => #union_items_string, )*
                     }
                 }
                 pub fn as_reader(&self) -> #reader_union<'_> {
                     match self {
-                        #( #entity_unions::#union_items(item) => item.as_reader().into(), )*
+                        #( #entity_union_item_paths(item) => item.as_reader().into(), )*
                     }
                 }
             }
             impl<'r> #reader_union<'r> {
+                pub const NAME: &'r str = #reader_union_string;
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
-                        #( #reader_unions::#union_items(item) => item.as_slice(), )*
+                        #( #reader_union_item_paths(item) => item.as_slice(), )*
                     }
                 }
                 pub fn item_id(&self) -> usize {
                     match self {
-                        #( #reader_unions::#union_items(_) => #union_ids, )*
+                        #( #reader_union_item_paths(_) => #union_ids, )*
                     }
                 }
                 pub fn item_name(&self) -> &str {
                     match self {
-                        #( #reader_unions::#union_items(_) => #union_items_string, )*
+                        #( #reader_union_item_paths(_) => #union_items_string, )*
                     }
                 }
             }
@@ -308,9 +410,11 @@ where
     W: io::Write,
 {
     let entity = entity_name(origin_name);
+    let entity_string = entity.to_string();
     let reader = reader_name(origin_name);
     let code = quote!(
         impl #entity {
+            pub const NAME: &'static str = #entity_string;
             pub fn as_reader(&self) -> #reader<'_> {
                 #reader::new_unchecked(self.as_slice())
             }
@@ -381,7 +485,6 @@ where
     W: io::Write,
 {
     let builder = builder_name(origin_name);
-    let builder_string = builder.to_string();
     let inner = entity_name(&info.typ.name);
     let item_count = usize_lit(info.item_count);
     let code = quote!(
@@ -389,7 +492,7 @@ where
 
         impl ::std::fmt::Debug for #builder {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                write!(f, "{} ({:?})", #builder_string, &self.0[..])
+                write!(f, "{}({:?})", Self::NAME, &self.0[..])
             }
         }
 
@@ -494,8 +597,10 @@ where
     W: io::Write,
 {
     let builder = builder_name(origin_name);
+    let builder_string = builder.to_string();
     let code = quote!(
         impl #builder {
+            pub const NAME: &'static str = #builder_string;
             #( #funcs )*
         }
     );
@@ -576,6 +681,16 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        quote!({
+            if let Some(v) = self.get() {
+                write!(f, "{}(Some({}))", Self::NAME, v)
+            } else {
+                write!(f, "{}(None)", Self::NAME)
+            }
+        })
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_option(writer, origin_name, info)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -759,6 +874,14 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        quote!(
+            write!(f, "{}(", Self::NAME)?;
+            self.get().display_inner(f)?;
+            write!(f, ")")
+        )
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_items_for_union(writer, origin_name, info)?;
     def_builder_for_union(writer, origin_name)?;
     let funcs = {
@@ -914,6 +1037,31 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        if info.typ.is_atom() {
+            quote!(write!(
+                f,
+                "{}(0x{})",
+                Self::NAME,
+                hex_string(self.as_slice()).unwrap()
+            ))
+        } else {
+            let display_items = (0..info.item_count).map(|idx| {
+                let func = func_name(&format!("nth{}", idx));
+                if idx == 0 {
+                    quote!(write!(f, "{}", self.#func())?;)
+                } else {
+                    quote!(write!(f, ", {}", self.#func())?;)
+                }
+            });
+            quote!(
+                write!(f, "{} [", Self::NAME)?;
+                #( #display_items )*
+                write!(f, "]")
+            )
+        }
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_array(writer, origin_name, info)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1086,6 +1234,23 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        let display_fields = info.inner.iter().enumerate().map(|(i, f)| {
+            let field = f.name.clone();
+            let func = func_name(&f.name);
+            if i == 0 {
+                quote!(write!(f, "{}: {}", #field, self.#func())?;)
+            } else {
+                quote!(write!(f, ", {}: {}", #field, self.#func())?;)
+            }
+        });
+        quote!(
+            write!(f, "{} {{ ", Self::NAME)?;
+            #( #display_fields )*
+            write!(f, " }}")
+        )
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1262,6 +1427,29 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        if info.typ.is_atom() {
+            quote!(write!(
+                f,
+                "{}(0x{})",
+                Self::NAME,
+                hex_string(&self.as_slice()[4..]).unwrap()
+            ))
+        } else {
+            quote!(
+                write!(f, "{} [", Self::NAME)?;
+                for i in 0..self.len() {
+                    if i == 0 {
+                        write!(f, "{}", self.get(i).unwrap())?;
+                    } else {
+                        write!(f, ", {}", self.get(i).unwrap())?;
+                    }
+                }
+                write!(f, "]")
+            )
+        }
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1467,6 +1655,20 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        quote!(
+            write!(f, "{} [", Self::NAME)?;
+            for i in 0..self.len() {
+                if i == 0 {
+                    write!(f, "{}", self.get(i).unwrap())?;
+                } else {
+                    write!(f, ", {}", self.get(i).unwrap())?;
+                }
+            }
+            write!(f, "]")
+        )
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_vector(writer, origin_name, &info.typ.name)?;
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -1736,6 +1938,33 @@ where
     W: io::Write,
 {
     def_entity_and_reader(writer, origin_name)?;
+    let stmts = {
+        let display_fields = info.inner.iter().enumerate().map(|(i, f)| {
+            let field = f.name.clone();
+            let func = func_name(&f.name);
+            if i == 0 {
+                quote!(write!(f, "{}: {}", #field, self.#func())?;)
+            } else {
+                quote!(write!(f, ", {}: {}", #field, self.#func())?;)
+            }
+        });
+        let field_count = usize_lit(info.inner.len());
+        let display_unresolved = if info.inner.is_empty() {
+            quote!(write!(f, "..")?;)
+        } else {
+            quote!(write!(f, ", ..")?;)
+        };
+        quote!(
+            write!(f, "{} {{ ", Self::NAME)?;
+            #( #display_fields )*
+            let (count, _) = Self::field_offsets(&self);
+            if count != #field_count {
+                #display_unresolved
+            }
+            write!(f, " }}")
+        )
+    };
+    impl_display_for_entity_and_reader(writer, origin_name, stmts)?;
     def_builder_for_struct_or_table(writer, origin_name, &info.inner[..])?;
     impl_default_for_entity(writer, origin_name, info.default_content())?;
     let funcs = {
