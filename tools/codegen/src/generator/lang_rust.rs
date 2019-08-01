@@ -90,7 +90,7 @@ fn usize_lit(num: usize) -> m4::Literal {
     m4::Literal::usize_unsuffixed(num)
 }
 
-fn func_name(name: &str) -> m4::Ident {
+fn snake_name(name: &str) -> m4::Ident {
     let span = m4::Span::call_site();
     m4::Ident::new(&name.to_snake(), span)
 }
@@ -544,7 +544,7 @@ where
 {
     let builder = builder_name(origin_name);
     let fields = inner.iter().map(|f| {
-        let field_name = func_name(&f.name);
+        let field_name = snake_name(&f.name);
         let field_type = entity_name(&f.typ.name);
         quote!(#field_name: #field_type,)
     });
@@ -1047,7 +1047,7 @@ where
             ))
         } else {
             let display_items = (0..info.item_count).map(|idx| {
-                let func = func_name(&format!("nth{}", idx));
+                let func = snake_name(&format!("nth{}", idx));
                 if idx == 0 {
                     quote!(write!(f, "{}", self.#func())?;)
                 } else {
@@ -1067,7 +1067,7 @@ where
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
             let items = (0..info.item_count)
-                .map(|idx| func_name(&format!("nth{}", idx)))
+                .map(|idx| snake_name(&format!("nth{}", idx)))
                 .map(|func| quote!(self.#func()));
             let code = quote!(
                 fn as_builder(self) -> Self::Builder {
@@ -1096,7 +1096,7 @@ where
         }
         for idx in 0..info.item_count {
             let start = usize_lit(idx * info.item_size);
-            let func = func_name(&format!("nth{}", idx));
+            let func = snake_name(&format!("nth{}", idx));
             let code = if info.typ.is_atom() {
                 quote!(
                     pub fn #func(&self) -> #inner {
@@ -1160,7 +1160,7 @@ where
         }
         for idx in 0..info.item_count {
             let start = usize_lit(idx * info.item_size);
-            let func = func_name(&format!("nth{}", idx));
+            let func = snake_name(&format!("nth{}", idx));
             let code = if info.typ.is_atom() {
                 quote!(
                     pub fn #func(&self) -> #inner {
@@ -1214,7 +1214,7 @@ where
         }
         for idx in 0..info.item_count {
             let index = usize_lit(idx);
-            let func = func_name(&format!("nth{}", idx));
+            let func = snake_name(&format!("nth{}", idx));
             let code = quote!(
                 pub fn #func(mut self, v: #inner) -> Self {
                     self.0[#index] = v;
@@ -1237,7 +1237,7 @@ where
     let stmts = {
         let display_fields = info.inner.iter().enumerate().map(|(i, f)| {
             let field = f.name.clone();
-            let func = func_name(&f.name);
+            let func = snake_name(&f.name);
             if i == 0 {
                 quote!(write!(f, "{}: {}", #field, self.#func())?;)
             } else {
@@ -1255,7 +1255,7 @@ where
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
-            let fields = info.inner.iter().map(|f| func_name(&f.name));
+            let fields = info.inner.iter().map(|f| snake_name(&f.name));
             let fields_func = fields.clone();
             let code = quote!(
                 fn as_builder(self) -> Self::Builder {
@@ -1285,7 +1285,7 @@ where
         {
             let mut offset = 0;
             for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
-                let func = func_name(&f.name);
+                let func = snake_name(&f.name);
                 let inner = entity_name(&f.typ.name);
                 let start = usize_lit(offset);
                 offset += s;
@@ -1358,7 +1358,7 @@ where
         {
             let mut offset = 0;
             for (f, s) in info.inner.iter().zip(info.field_size.iter()) {
-                let func = func_name(&f.name);
+                let func = snake_name(&f.name);
                 let inner = reader_name(&f.typ.name);
                 let start = usize_lit(offset);
                 offset += s;
@@ -1385,7 +1385,7 @@ where
     let code = {
         let total_size = usize_lit(info.field_size.iter().sum());
         let fields = info.inner.iter().map(|f| {
-            let field_name = func_name(&f.name);
+            let field_name = snake_name(&f.name);
             if f.typ.is_atom() {
                 quote!(writer.write_all(&[self.#field_name])?;)
             } else {
@@ -1406,7 +1406,7 @@ where
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         for f in info.inner.iter() {
-            let field_name = func_name(&f.name);
+            let field_name = snake_name(&f.name);
             let field_type = entity_name(&f.typ.name);
             let code = quote!(
                 pub fn #field_name(mut self, v: #field_type) -> Self {
@@ -1941,7 +1941,7 @@ where
     let stmts = {
         let display_fields = info.inner.iter().enumerate().map(|(i, f)| {
             let field = f.name.clone();
-            let func = func_name(&f.name);
+            let func = snake_name(&f.name);
             if i == 0 {
                 quote!(write!(f, "{}: {}", #field, self.#func())?;)
             } else {
@@ -1970,7 +1970,7 @@ where
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         {
-            let fields = info.inner.iter().map(|f| func_name(&f.name));
+            let fields = info.inner.iter().map(|f| snake_name(&f.name));
             let fields_func = fields.clone();
             let code = quote!(
                 fn as_builder(self) -> Self::Builder {
@@ -2004,7 +2004,7 @@ where
         {
             let field_count = usize_lit(info.inner.len());
             for (i, f) in info.inner.iter().enumerate() {
-                let func = func_name(&f.name);
+                let func = snake_name(&f.name);
                 let inner = entity_name(&f.typ.name);
                 let start = usize_lit(i);
                 let code = if f.typ.is_atom() {
@@ -2127,7 +2127,7 @@ where
         {
             let field_count = usize_lit(info.inner.len());
             for (i, f) in info.inner.iter().enumerate() {
-                let func = func_name(&f.name);
+                let func = snake_name(&f.name);
                 let inner = reader_name(&f.typ.name);
                 let start = usize_lit(i);
                 let code = if f.typ.is_atom() {
@@ -2183,7 +2183,7 @@ where
         let mut lengths: Vec<m4::TokenStream> = Vec::new();
         let field_count = usize_lit(info.inner.len());
         for f in info.inner.iter() {
-            let field_name = func_name(&f.name);
+            let field_name = snake_name(&f.name);
             let code = if f.typ.is_atom() {
                 quote!(writer.write_all(&[self.#field_name])?;)
             } else {
@@ -2223,7 +2223,7 @@ where
     let funcs = {
         let mut funcs: Vec<m4::TokenStream> = Vec::new();
         for f in info.inner.iter() {
-            let field_name = func_name(&f.name);
+            let field_name = snake_name(&f.name);
             let field_type = entity_name(&f.typ.name);
             let code = quote!(
                 pub fn #field_name(mut self, v: #field_type) -> Self {
