@@ -1,6 +1,6 @@
 [package]
 name = "moleculec"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Boyu Yang <yangby@cryptape.com>"]
 edition = "2018"
 description = "Schema compiler for molecule."
@@ -19,7 +19,7 @@ license = "MIT"
 
 [dependencies.codegen]
 package ="molecule-codegen"
-version = "=0.0.4"
+version = "=0.0.5"
 path = "../codegen"
 
 [badges]
