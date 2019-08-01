@@ -491,7 +491,7 @@ fn def_access_funcs_for_option(is_entity: bool, info: &ast::Option_) -> Vec<m4::
     {
         let code = if info.typ.is_atom() {
             quote!(
-                pub fn get(&self) -> Option<#inner> {
+                pub fn to_opt(&self) -> Option<#inner> {
                     if self.is_none() {
                         None
                     } else {
@@ -501,7 +501,7 @@ fn def_access_funcs_for_option(is_entity: bool, info: &ast::Option_) -> Vec<m4::
             )
         } else {
             quote!(
-                pub fn get(&self) -> Option<#getter_ret> {
+                pub fn to_opt(&self) -> Option<#getter_ret> {
                     if self.is_none() {
                         None
                     } else {
@@ -538,8 +538,8 @@ fn def_access_funcs_for_union(
             pub const ITEM_COUNT: usize = #item_count;
 
             pub fn item_id(&self) -> usize {
-                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                u32::from_le(ptr[0]) as usize
+                let le = self.as_slice().as_ptr() as *const u32;
+                u32::from_le(unsafe { *le }) as usize
             }
         );
         funcs.push(code);
@@ -555,7 +555,7 @@ fn def_access_funcs_for_union(
             quote!(#item_id => #inner::new_unchecked(inner).into(),)
         });
         let code = quote!(
-            pub fn get(&self) -> #getter_ret {
+            pub fn to_enum(&self) -> #getter_ret {
                 let inner = #getter_stmt;
                 match self.item_id() {
                     #( #match_stmts )*
@@ -569,14 +569,18 @@ fn def_access_funcs_for_union(
 }
 
 fn def_access_funcs_for_array(is_entity: bool, info: &ast::Array) -> Vec<m4::TokenStream> {
-    let (inner, getter_ret) = if is_entity {
+    let (inner, getter_ret, getter_ret_atom, getter_stmt_atom) = if is_entity {
         let inner = entity_name(&info.typ.name);
         let getter_ret = quote!(#inner);
-        (inner, getter_ret)
+        let getter_ret_atom = quote!(molecule::bytes::Bytes);
+        let getter_stmt_atom = quote!(self.as_bytes());
+        (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
     } else {
         let inner = reader_name(&info.typ.name);
         let getter_ret = quote!(#inner<'_>);
-        (inner, getter_ret)
+        let getter_ret_atom = quote!(&[u8]);
+        let getter_stmt_atom = quote!(self.as_slice());
+        (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
     };
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
     {
@@ -590,18 +594,21 @@ fn def_access_funcs_for_array(is_entity: bool, info: &ast::Array) -> Vec<m4::Tok
         );
         funcs.push(code);
     }
+    if info.typ.is_atom() {
+        let code = quote!(
+            pub fn raw_data(&self) -> #getter_ret_atom {
+                #getter_stmt_atom
+            }
+        );
+        funcs.push(code);
+    }
     for idx in 0..info.item_count {
         let start = usize_lit(idx * info.item_size);
         let func = snake_name(&format!("nth{}", idx));
         let code = if info.typ.is_atom() {
-            let getter_stmt = if is_entity {
-                quote!(self.0[#start])
-            } else {
-                quote!(self.as_slice()[#start])
-            };
             quote!(
                 pub fn #func(&self) -> #inner {
-                    #getter_stmt
+                    self.0[#start]
                 }
             )
         } else {
@@ -651,14 +658,9 @@ fn def_access_funcs_for_struct(is_entity: bool, info: &ast::Struct) -> Vec<m4::T
             let start = usize_lit(offset);
             offset += s;
             let code = if f.typ.is_atom() {
-                let getter_stmt = if is_entity {
-                    quote!(self.0[#start])
-                } else {
-                    quote!(self.as_slice()[#start])
-                };
                 quote!(
                     pub fn #func(&self) -> #inner {
-                        #getter_stmt
+                        self.0[#start]
                     }
                 )
             } else {
@@ -681,18 +683,32 @@ fn def_access_funcs_for_struct(is_entity: bool, info: &ast::Struct) -> Vec<m4::T
 }
 
 fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec<m4::TokenStream> {
-    let (inner, getter_ret, getter_stmt_atom, getter_stmt) = if is_entity {
+    let (inner, getter_ret, getter_stmt, getter_ret_atom, getter_stmt_atom) = if is_entity {
         let inner = entity_name(&info.typ.name);
         let getter_ret = quote!(#inner);
-        let getter_stmt_atom = quote!(self.0[4 + idx]);
         let getter_stmt = quote!(self.0.slice(start, end));
-        (inner, getter_ret, getter_stmt_atom, getter_stmt)
+        let getter_ret_atom = quote!(molecule::bytes::Bytes);
+        let getter_stmt_atom = quote!(self.0.slice_from(4));
+        (
+            inner,
+            getter_ret,
+            getter_stmt,
+            getter_ret_atom,
+            getter_stmt_atom,
+        )
     } else {
         let inner = reader_name(&info.typ.name);
         let getter_ret = quote!(#inner<'_>);
-        let getter_stmt_atom = quote!(self.as_slice()[4 + idx]);
         let getter_stmt = quote!(&self.as_slice()[start..end]);
-        (inner, getter_ret, getter_stmt_atom, getter_stmt)
+        let getter_ret_atom = quote!(&[u8]);
+        let getter_stmt_atom = quote!(&self.as_slice()[4..]);
+        (
+            inner,
+            getter_ret,
+            getter_stmt,
+            getter_ret_atom,
+            getter_stmt_atom,
+        )
     };
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
     let item_size = usize_lit(info.item_size);
@@ -701,8 +717,8 @@ fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec
             pub const ITEM_SIZE: usize = #item_size;
 
             pub fn len(&self) -> usize {
-                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                u32::from_le(ptr[0]) as usize
+                let le = self.as_slice().as_ptr() as *const u32;
+                u32::from_le(unsafe { *le }) as usize
             }
             pub fn is_empty(&self) -> bool {
                 self.len() == 0
@@ -714,12 +730,18 @@ fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec
         let item_size = usize_lit(info.item_size);
         let code = if info.typ.is_atom() {
             quote!(
+                pub fn raw_data(&self) -> #getter_ret_atom {
+                    #getter_stmt_atom
+                }
                 pub fn get(&self, idx: usize) -> Option<#inner> {
                     if idx >= self.len() {
                         None
                     } else {
-                        Some(#getter_stmt_atom)
+                        Some(self.get_unchecked(idx))
                     }
+                }
+                pub fn get_unchecked(&self, idx: usize) -> #inner {
+                    self.0[4 + idx]
                 }
             )
         } else {
@@ -728,10 +750,13 @@ fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec
                     if idx >= self.len() {
                         None
                     } else {
-                        let start = 4 + idx * #item_size;
-                        let end = start + #item_size;
-                        Some(#inner::new_unchecked(#getter_stmt))
+                        Some(self.get_unchecked(idx))
                     }
+                }
+                pub fn get_unchecked(&self, idx: usize) -> #getter_ret {
+                    let start = 4 + idx * #item_size;
+                    let end = start + #item_size;
+                    #inner::new_unchecked(#getter_stmt)
                 }
             )
         };
@@ -760,9 +785,10 @@ fn def_access_funcs_for_dyn_vec(
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
     {
         let code = quote!(
-            pub fn offsets(&self) -> &[u32] {
+            pub fn offsets(&self) -> (usize, &[u32]) {
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                &ptr[1..]
+                let bytes_len = u32::from_le(ptr[0]) as usize;
+                (bytes_len, &ptr[1..])
             }
         );
         funcs.push(code);
@@ -770,12 +796,11 @@ fn def_access_funcs_for_dyn_vec(
     {
         let code = quote!(
             pub fn len(&self) -> usize {
-                let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
-                let bytes_len = u32::from_le(ptr[0]) as usize;
+                let (bytes_len, offsets) = self.offsets();
                 if bytes_len == 4 {
                     0
                 } else {
-                    let first = u32::from_le(ptr[1]) as usize;
+                    let first = u32::from_le(offsets[0]) as usize;
                     (first - 4) / 4
                 }
             }
@@ -792,14 +817,18 @@ fn def_access_funcs_for_dyn_vec(
                 if idx >= len {
                     None
                 } else {
-                    let offsets = self.offsets();
-                    let start = u32::from_le(offsets[idx]) as usize;
-                    if idx == len - 1 {
-                        Some(#inner::new_unchecked(#getter_stmt_last))
-                    } else {
-                        let end = u32::from_le(offsets[idx+1]) as usize;
-                        Some(#inner::new_unchecked(#getter_stmt))
-                    }
+                    Some(self.get_unchecked(idx))
+                }
+            }
+            pub fn get_unchecked(&self, idx: usize) -> #getter_ret {
+                let len = self.len();
+                let (_, offsets) = self.offsets();
+                let start = u32::from_le(offsets[idx]) as usize;
+                if idx == len - 1 {
+                    #inner::new_unchecked(#getter_stmt_last)
+                } else {
+                    let end = u32::from_le(offsets[idx+1]) as usize;
+                    #inner::new_unchecked(#getter_stmt)
                 }
             }
         );
@@ -809,16 +838,14 @@ fn def_access_funcs_for_dyn_vec(
 }
 
 fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::TokenStream> {
-    let (getter_stmt_atom, getter_stmt_last, getter_stmt) = if is_entity {
-        let getter_stmt_atom = quote!(self.0[offset]);
+    let (getter_stmt_last, getter_stmt) = if is_entity {
         let getter_stmt_last = quote!(self.0.slice_from(start));
         let getter_stmt = quote!(self.0.slice(start, end));
-        (getter_stmt_atom, getter_stmt_last, getter_stmt)
+        (getter_stmt_last, getter_stmt)
     } else {
-        let getter_stmt_atom = quote!(self.as_slice()[offset]);
         let getter_stmt_last = quote!(&self.as_slice()[start..]);
         let getter_stmt = quote!(&self.as_slice()[start..end]);
-        (getter_stmt_atom, getter_stmt_last, getter_stmt)
+        (getter_stmt_last, getter_stmt)
     };
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
     {
@@ -828,11 +855,12 @@ fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::Tok
     }
     {
         let code = quote!(
-            pub fn field_offsets(&self) -> (usize, &[u32]) {
+            pub fn field_offsets(&self) -> (usize, usize, &[u32]) {
                 let ptr: &[u32] = unsafe { ::std::mem::transmute(self.as_slice()) };
+                let bytes_len = u32::from_le(ptr[0]) as usize;
                 let first = u32::from_le(ptr[1]) as usize;
                 let count = (first - 4) / 4;
-                (count, &ptr[1..])
+                (bytes_len, count, &ptr[1..])
             }
         );
         funcs.push(code);
@@ -854,15 +882,15 @@ fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::Tok
             let code = if f.typ.is_atom() {
                 quote!(
                     pub fn #func(&self) -> #inner {
-                        let (_, offsets) = Self::field_offsets(self);
+                        let (_, _, offsets) = Self::field_offsets(self);
                         let offset = u32::from_le(offsets[#start]) as usize;
-                        #getter_stmt_atom
+                        self.0[offset]
                     }
                 )
             } else if i == info.inner.len() - 1 {
                 quote!(
                     pub fn #func(&self) -> #getter_ret {
-                        let (count, offsets) = Self::field_offsets(self);
+                        let (_, count, offsets) = Self::field_offsets(self);
                         let start = u32::from_le(offsets[#start]) as usize;
                         if count == #field_count {
                             #inner::new_unchecked(#getter_stmt_last)
@@ -875,7 +903,7 @@ fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::Tok
             } else {
                 quote!(
                     pub fn #func(&self) -> #getter_ret {
-                        let (_, offsets) = Self::field_offsets(self);
+                        let (_, _, offsets) = Self::field_offsets(self);
                         let start = u32::from_le(offsets[#start]) as usize;
                         let end = u32::from_le(offsets[#start+1]) as usize;
                         #inner::new_unchecked(#getter_stmt)
@@ -1055,7 +1083,7 @@ where
                 if self.1 >= self.2 {
                     None
                 } else {
-                    let ret = self.0.get(self.1).unwrap();
+                    let ret = self.0.get_unchecked(self.1);
                     self.1 += 1;
                     Some(ret)
                 }
@@ -1085,7 +1113,7 @@ where
                     if self.1 >= self.2 {
                         None
                     } else {
-                        let ret = self.0.get(self.1).unwrap();
+                        let ret = self.0.get_unchecked(self.1);
                         self.1 += 1;
                         Some(ret)
                     }
@@ -1108,7 +1136,7 @@ where
     def_entity_and_reader(writer, origin_name)?;
     let stmts = {
         quote!({
-            if let Some(v) = self.get() {
+            if let Some(v) = self.to_opt() {
                 write!(f, "{}(Some({}))", Self::NAME, v)
             } else {
                 write!(f, "{}(None)", Self::NAME)
@@ -1122,7 +1150,7 @@ where
         {
             let code = quote!(
                 fn as_builder(self) -> Self::Builder {
-                    Self::new_builder().set(self.get())
+                    Self::new_builder().set(self.to_opt())
                 }
             );
             funcs.push(code);
@@ -1222,7 +1250,7 @@ where
     let stmts = {
         quote!(
             write!(f, "{}(", Self::NAME)?;
-            self.get().display_inner(f)?;
+            self.to_enum().display_inner(f)?;
             write!(f, ")")
         )
     };
@@ -1234,7 +1262,7 @@ where
         {
             let code = quote!(
                 fn as_builder(self) -> Self::Builder {
-                    Self::new_builder().set(self.get())
+                    Self::new_builder().set(self.to_enum())
                 }
             );
             funcs.push(code);
@@ -1322,7 +1350,7 @@ where
                 f,
                 "{}(0x{})",
                 Self::NAME,
-                hex_string(self.as_slice()).unwrap()
+                hex_string(&self.raw_data()).unwrap()
             ))
         } else {
             let display_items = (0..info.item_count).map(|idx| {
@@ -1568,16 +1596,16 @@ where
                 f,
                 "{}(0x{})",
                 Self::NAME,
-                hex_string(&self.as_slice()[4..]).unwrap()
+                hex_string(&self.raw_data()).unwrap()
             ))
         } else {
             quote!(
                 write!(f, "{} [", Self::NAME)?;
                 for i in 0..self.len() {
                     if i == 0 {
-                        write!(f, "{}", self.get(i).unwrap())?;
+                        write!(f, "{}", self.get_unchecked(i))?;
                     } else {
-                        write!(f, ", {}", self.get(i).unwrap())?;
+                        write!(f, ", {}", self.get_unchecked(i))?;
                     }
                 }
                 write!(f, "]")
@@ -1703,9 +1731,9 @@ where
             write!(f, "{} [", Self::NAME)?;
             for i in 0..self.len() {
                 if i == 0 {
-                    write!(f, "{}", self.get(i).unwrap())?;
+                    write!(f, "{}", self.get_unchecked(i))?;
                 } else {
-                    write!(f, ", {}", self.get(i).unwrap())?;
+                    write!(f, ", {}", self.get_unchecked(i))?;
                 }
             }
             write!(f, "]")
@@ -1868,7 +1896,7 @@ where
         quote!(
             write!(f, "{} {{ ", Self::NAME)?;
             #( #display_fields )*
-            let (count, _) = Self::field_offsets(&self);
+            let (_, count, _) = Self::field_offsets(&self);
             if count != #field_count {
                 #display_unresolved
             }
