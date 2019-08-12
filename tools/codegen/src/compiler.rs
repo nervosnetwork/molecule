@@ -23,7 +23,7 @@ impl Compiler {
         Self {
             language: None,
             file_path: None,
-            out_dir: PathBuf::from(&env::var("OUT_DIR").unwrap()),
+            out_dir: PathBuf::from(&env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string())),
         }
     }
 
