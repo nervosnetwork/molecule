@@ -29,5 +29,5 @@ pub trait Builder: Default {
     type Entity: Entity;
     fn expected_length(&self) -> usize;
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
-    fn build(&self) -> io::Result<Self::Entity>;
+    fn build(&self) -> Self::Entity;
 }

@@ -1035,10 +1035,10 @@ where
         impl molecule::prelude::Builder for #builder {
             type Entity = #entity;
             #funcs
-            fn build(&self) -> ::std::io::Result<Self::Entity> {
+            fn build(&self) -> Self::Entity {
                 let mut inner = Vec::with_capacity(self.expected_length());
-                self.write(&mut inner)?;
-                Ok(#entity::new_unchecked(inner.into()))
+                self.write(&mut inner).expect("write vector should be ok");
+                #entity::new_unchecked(inner.into())
             }
         }
     );
