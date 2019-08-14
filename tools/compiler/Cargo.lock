@@ -104,7 +104,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "molecule-codegen"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "case 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -115,10 +115,10 @@ dependencies = [
 
 [[package]]
 name = "moleculec"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "molecule-codegen 0.2.0",
+ "molecule-codegen 0.2.1",
 ]
 
 [[package]]
