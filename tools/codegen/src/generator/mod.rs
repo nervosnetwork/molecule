@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::io;
 
 use crate::{Ast, Parser};
@@ -14,6 +15,17 @@ pub enum Language {
 #[derive(Debug)]
 pub(crate) struct Generator {
     ast: Ast,
+}
+
+impl TryFrom<&str> for Language {
+    type Error = String;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "c" => Ok(Language::C),
+            "rust" => Ok(Language::Rust),
+            lang => Err(format!("unsupport language: [{}]", lang)),
+        }
+    }
 }
 
 impl Language {
