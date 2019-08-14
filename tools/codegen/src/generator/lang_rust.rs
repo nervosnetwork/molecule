@@ -1089,7 +1089,12 @@ where
                 }
             }
         }
-        impl IntoIterator for #entity {
+        impl ::std::iter::ExactSizeIterator for #entity_iterator {
+            fn len(&self) -> usize {
+                self.2 - self.1
+            }
+        }
+        impl ::std::iter::IntoIterator for #entity {
             type Item = #entity_inner;
             type IntoIter = #entity_iterator;
             fn into_iter(self) -> Self::IntoIter {
@@ -1117,6 +1122,11 @@ where
                         self.1 += 1;
                         Some(ret)
                     }
+                }
+            }
+            impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for #reader_iterator<'t, 'r> {
+                fn len(&self) -> usize {
+                    self.2 - self.1
                 }
             }
         );
