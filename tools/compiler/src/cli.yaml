@@ -14,4 +14,5 @@ args:
         takes_value: true
         required: true
         possible_values:
+            - c
             - rust

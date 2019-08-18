@@ -14,11 +14,14 @@ impl Generator {
     where
         W: io::Write,
     {
+        writeln!(writer, "// Generate by Molecule")?; // TODO add version
+        writeln!(writer)?;
         let code = quote!(
             use molecule::prelude::{Entity as _, Reader as _};
             use molecule::faster_hex::hex_string;
         );
         write!(writer, "{}", code)?;
+        writeln!(writer)?;
         for decl in &self.ast.decls[..] {
             match decl.typ {
                 ast::TopDeclType::Option_(ref info) => {
