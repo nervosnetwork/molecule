@@ -1,6 +1,6 @@
 [package]
 name = "molecule-codegen"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Code generator for molecule."
