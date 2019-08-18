@@ -1973,6 +1973,9 @@ where
                         Self::NAME.to_owned(), total_size, len);
                     Err(err)?;
                 }
+                if #field_count == 0 && total_size == 4 {
+                    return Ok(());
+                }
                 let expected = 4 + 4 * #field_count;
                 if total_size < expected {
                     let err = VerificationError::HeaderIsBroken(
