@@ -5,7 +5,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::Generator;
-use crate::ast::verified as ast;
+use crate::{ast::verified as ast, VERSION};
 
 const ATOM_NAME: &str = "u8";
 
@@ -14,7 +14,7 @@ impl Generator {
     where
         W: io::Write,
     {
-        writeln!(writer, "// Generate by Molecule")?; // TODO add version
+        writeln!(writer, "// Generate by Molecule {}", VERSION)?;
         writeln!(writer)?;
         let code = quote!(
             use molecule::prelude::{Entity as _, Reader as _};

@@ -1,5 +1,4 @@
 name: Moleculec
-version: "0.2.2"
 about: Schema compiler for molecule.
 author: Nervos Core Dev <dev@nervos.org>
 args:

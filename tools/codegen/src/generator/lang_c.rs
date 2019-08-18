@@ -1,14 +1,14 @@
 use std::io;
 
 use super::Generator;
-use crate::ast::verified as ast;
+use crate::{ast::verified as ast, VERSION};
 
 impl Generator {
     pub(crate) fn generate_c<W>(&self, writer: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        writeln!(writer, "// Generate by Molecule")?; // TODO add version
+        writeln!(writer, "// Generate by Molecule {}", VERSION)?;
         writeln!(writer)?;
         writeln!(writer, r#"#include "molecule.h""#)?;
         writeln!(writer)?;

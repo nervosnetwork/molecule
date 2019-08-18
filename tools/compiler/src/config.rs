@@ -9,7 +9,9 @@ pub(crate) struct AppConfig {
 
 pub(crate) fn build_commandline() -> AppConfig {
     let yaml = clap::load_yaml!("cli.yaml");
-    let matches = clap::App::from_yaml(yaml).get_matches();
+    let matches = clap::App::from_yaml(yaml)
+        .version(clap::crate_version!())
+        .get_matches();
     AppConfig::from(&matches)
 }
 

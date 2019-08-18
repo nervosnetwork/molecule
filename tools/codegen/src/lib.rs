@@ -11,3 +11,5 @@ pub use compiler::Compiler;
 pub(crate) use generator::Generator;
 pub use generator::Language;
 pub(crate) use parser::Parser;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
