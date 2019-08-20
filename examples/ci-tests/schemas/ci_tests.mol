@@ -1,0 +1,154 @@
+option ByteOpt (byte);
+option BytesOpt (Bytes);
+option WordsOpt (Words);
+option ByteAndWordOpt (ByteAndWord);
+option BytesAndWordsOpt (BytesAndWords);
+option BytesOrWordsOpt (BytesOrWords);
+option HybridBytesOpt (HybridBytes);
+
+union BytesOrWords {
+    Bytes,
+    BytesOpt,
+    Words,
+    WordsOpt,
+}
+
+union HybridBytes {
+    ByteOpt,
+    Byte2,
+    Byte3,
+    Bytes,
+    BytesVec,
+    BytesOptVec,
+}
+
+array Byte2 [byte; 2];
+array Byte3 [byte; 3];
+array Byte4 [byte; 4];
+array Byte5 [byte; 5];
+array Byte6 [byte; 6];
+array Byte7 [byte; 7];
+array Byte8 [byte; 8];
+array Byte9 [byte; 9];
+array Byte10 [byte; 10];
+array Byte11 [byte; 11];
+array Byte12 [byte; 12];
+array Byte13 [byte; 13];
+array Byte14 [byte; 14];
+array Byte15 [byte; 15];
+array Byte16 [byte; 16];
+
+array Word [byte; 2];
+array Word2 [Word; 2];
+array Word3 [Word; 3];
+array Word4 [Word; 4];
+array Word5 [Word; 5];
+array Word6 [Word; 6];
+array Word7 [Word; 7];
+array Word8 [Word; 8];
+
+struct ByteAndWord {
+    one: byte,
+    two: Word,
+}
+
+struct Byte66 {
+    one:    byte,
+    two:    Byte2,
+    three:  Byte3,
+    four:   Byte4,
+    five:   Byte5,
+    six:    Byte6,
+    seven:  Byte7,
+    eight:  Byte8,
+    nine:   Byte9,
+    ten:    Byte10,
+    eleven: Byte11,
+}
+struct DoubleByte3 {
+    one: Byte3,
+    two: Byte3,
+}
+struct TripleByte7 {
+    one: Byte7,
+    two: Byte7,
+    three: Byte7,
+}
+
+vector Bytes <byte>;
+vector Words <Word>;
+
+vector Byte3Vec <Byte3>;
+vector Byte7Vec <Byte7>;
+
+vector BytesVec <Bytes>;
+vector ByteOptVec <ByteOpt>;
+vector BytesOptVec <BytesOpt>;
+
+table BytesAndWords {
+    one: Bytes,
+    two: Words,
+}
+
+table ManyBytes {
+    one:    byte,
+    two:    Byte2,
+    three:  Byte3,
+    four:   Byte4,
+    five:   Byte5,
+    six:    Byte6,
+    seven:  Byte7,
+    eight:  Byte8,
+    nine:   Byte9,
+    ten:    Byte10,
+    eleven: Byte11,
+    some:   Bytes,
+}
+
+table AllInOne {
+    c01: ByteOpt,
+    c02: BytesOpt,
+    c03: WordsOpt,
+    c04: ByteAndWordOpt,
+    c05: BytesAndWordsOpt,
+    c06: BytesOrWordsOpt,
+    c07: HybridBytesOpt,
+    c08: BytesOrWords,
+    c09: HybridBytes,
+    c10: Byte2,
+    c11: Byte3,
+    c12: Byte4,
+    c13: Byte5,
+    c14: Byte6,
+    c15: Byte7,
+    c16: Byte8,
+    c17: Byte9,
+    c18: Byte10,
+    c19: Byte11,
+    c20: Byte12,
+    c21: Byte13,
+    c22: Byte14,
+    c23: Byte15,
+    c24: Byte16,
+    c25: Word,
+    c26: Word2,
+    c27: Word3,
+    c28: Word4,
+    c29: Word5,
+    c30: Word6,
+    c31: Word7,
+    c32: Word8,
+    c33: ByteAndWord,
+    c34: Byte66,
+    c35: DoubleByte3,
+    c36: TripleByte7,
+    c37: Bytes,
+    c38: Words,
+    c39: Byte3Vec,
+    c40: Byte7Vec,
+    c41: BytesVec,
+    c42: ByteOptVec,
+    c43: BytesOptVec,
+    c44: BytesAndWords,
+    c45: ManyBytes,
+}

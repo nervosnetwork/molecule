@@ -1,0 +1,8 @@
+language: rust
+compiler: gcc
+os: linux
+rust: stable
+script:
+  - rustup component add rustfmt
+  - rustup component add clippy
+  - make ci
