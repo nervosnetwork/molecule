@@ -242,10 +242,12 @@ where
         let code = quote!(
             #[derive(Debug, Clone)]
             pub enum #entity_union {
+                NotSet,
                 #( #union_items(#entity_inners), )*
             }
             #[derive(Debug, Clone, Copy)]
             pub enum #reader_union<'r> {
+                NotSet,
                 #( #union_items(#reader_inners<'r>), )*
             }
 
@@ -263,6 +265,7 @@ where
                                 write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
                             }
                         )*
+                        #entity_union::NotSet => { write!(f, "NotSet") }
                     }
                 }
             }
@@ -274,6 +277,7 @@ where
                                 write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
                             }
                         )*
+                        #reader_union::NotSet => { write!(f, "NotSet") }
                     }
                 }
             }
@@ -282,6 +286,7 @@ where
                 pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                     match self {
                         #( #entity_union_item_paths(ref item) => write!(f, "{}", item), )*
+                        #entity_union::NotSet => { write!(f, "NotSet") }
                     }
                 }
             }
@@ -289,6 +294,7 @@ where
                 pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                     match self {
                         #( #reader_union_item_paths(ref item) => write!(f, "{}", item), )*
+                        #reader_union::NotSet => { write!(f, "NotSet") }
                     }
                 }
             }
@@ -326,26 +332,31 @@ where
                 pub fn as_bytes(&self) -> molecule::bytes::Bytes {
                     match self {
                         #( #entity_union_item_paths(item) => item.as_bytes(), )*
+                        #entity_union::NotSet => Default::default(),
                     }
                 }
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
                         #( #entity_union_item_paths(item) => item.as_slice(), )*
+                        #entity_union::NotSet => &[],
                     }
                 }
                 pub fn item_id(&self) -> usize {
                     match self {
                         #( #entity_union_item_paths(_) => #union_ids, )*
+                        #entity_union::NotSet => 0,
                     }
                 }
                 pub fn item_name(&self) -> &str {
                     match self {
                         #( #entity_union_item_paths(_) => #union_items_string, )*
+                        #entity_union::NotSet => "NotSet",
                     }
                 }
                 pub fn as_reader(&self) -> #reader_union<'_> {
                     match self {
                         #( #entity_union_item_paths(item) => item.as_reader().into(), )*
+                        #entity_union::NotSet => #reader_union::NotSet,
                     }
                 }
             }
@@ -354,16 +365,19 @@ where
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
                         #( #reader_union_item_paths(item) => item.as_slice(), )*
+                        #reader_union::NotSet => &[],
                     }
                 }
                 pub fn item_id(&self) -> usize {
                     match self {
                         #( #reader_union_item_paths(_) => #union_ids, )*
+                        #reader_union::NotSet => 0,
                     }
                 }
                 pub fn item_name(&self) -> &str {
                     match self {
                         #( #reader_union_item_paths(_) => #union_items_string, )*
+                        #reader_union::NotSet => "NotSet",
                     }
                 }
             }
@@ -530,7 +544,7 @@ fn def_access_funcs_for_union(
         (getter_ret, getter_stmt)
     } else {
         let union = reader_union_name(origin_name);
-        let getter_ret = quote!(#union<'_>);
+        let getter_ret = quote!(#union);
         let getter_stmt = quote!(&self.as_slice()[4..]);
         (getter_ret, getter_stmt)
     };
@@ -562,6 +576,7 @@ fn def_access_funcs_for_union(
                 let inner = #getter_stmt;
                 match self.item_id() {
                     #( #match_stmts )*
+                    0 => #getter_ret::NotSet,
                     _ => unreachable!(),
                 }
             }
