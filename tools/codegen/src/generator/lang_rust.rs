@@ -353,7 +353,7 @@ where
                         #entity_union::NotSet => "NotSet",
                     }
                 }
-                pub fn as_reader(&self) -> #reader_union<'_> {
+                pub fn as_reader<'r>(&'r self) -> #reader_union<'r> {
                     match self {
                         #( #entity_union_item_paths(item) => item.as_reader().into(), )*
                         #entity_union::NotSet => #reader_union::NotSet,
@@ -362,7 +362,7 @@ where
             }
             impl<'r> #reader_union<'r> {
                 pub const NAME: &'r str = #reader_union_string;
-                pub fn as_slice(&self) -> &[u8] {
+                pub fn as_slice(&self) -> &'r [u8] {
                     match self {
                         #( #reader_union_item_paths(item) => item.as_slice(), )*
                         #reader_union::NotSet => &[],
@@ -432,7 +432,7 @@ where
     let code = quote!(
         impl #entity {
             pub const NAME: &'static str = #entity_string;
-            pub fn as_reader(&self) -> #reader<'_> {
+            pub fn as_reader<'r>(&'r self) -> #reader<'r> {
                 #reader::new_unchecked(self.as_slice())
             }
             #( #funcs )*
@@ -456,7 +456,7 @@ where
             fn new_unchecked(slice: &'r [u8]) -> Self {
                 #reader(slice)
             }
-            fn as_slice(&self) -> &[u8] {
+            fn as_slice(&self) -> &'r [u8] {
                 self.0
             }
             #funcs
@@ -488,7 +488,7 @@ fn def_access_funcs_for_option(is_entity: bool, info: &ast::Option_) -> Vec<m4::
         (inner, getter_ret, getter_stmt)
     } else {
         let inner = reader_name(&info.typ.name);
-        let getter_ret = quote!(#inner<'_>);
+        let getter_ret = quote!(#inner<'r>);
         let getter_stmt = quote!(self.as_slice());
         (inner, getter_ret, getter_stmt)
     };
@@ -537,16 +537,18 @@ fn def_access_funcs_for_union(
     origin_name: &str,
     info: &ast::Union,
 ) -> Vec<m4::TokenStream> {
-    let (getter_ret, getter_stmt) = if is_entity {
+    let (union_name, getter_ret, getter_stmt) = if is_entity {
         let union = entity_union_name(origin_name);
+        let union_name = quote!(#union);
         let getter_ret = quote!(#union);
         let getter_stmt = quote!(self.0.slice_from(molecule::ITEM_ID_SIZE));
-        (getter_ret, getter_stmt)
+        (union_name, getter_ret, getter_stmt)
     } else {
         let union = reader_union_name(origin_name);
-        let getter_ret = quote!(#union);
+        let union_name = quote!(#union);
+        let getter_ret = quote!(#union<'r>);
         let getter_stmt = quote!(&self.as_slice()[molecule::ITEM_ID_SIZE..]);
-        (getter_ret, getter_stmt)
+        (union_name, getter_ret, getter_stmt)
     };
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
     {
@@ -575,7 +577,7 @@ fn def_access_funcs_for_union(
                 let inner = #getter_stmt;
                 match self.item_id() {
                     #( #match_stmts )*
-                    0 => #getter_ret::NotSet,
+                    0 => #union_name::NotSet,
                     _ => unreachable!(),
                 }
             }
@@ -594,8 +596,8 @@ fn def_access_funcs_for_array(is_entity: bool, info: &ast::Array) -> Vec<m4::Tok
         (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
     } else {
         let inner = reader_name(&info.typ.name);
-        let getter_ret = quote!(#inner<'_>);
-        let getter_ret_atom = quote!(&[u8]);
+        let getter_ret = quote!(#inner<'r>);
+        let getter_ret_atom = quote!(&'r [u8]);
         let getter_stmt_atom = quote!(self.as_slice());
         (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
     };
@@ -669,7 +671,7 @@ fn def_access_funcs_for_struct(is_entity: bool, info: &ast::Struct) -> Vec<m4::T
                 (inner, getter_ret)
             } else {
                 let inner = reader_name(&f.typ.name);
-                let getter_ret = quote!(#inner<'_>);
+                let getter_ret = quote!(#inner<'r>);
                 (inner, getter_ret)
             };
             let start = usize_lit(offset);
@@ -715,9 +717,9 @@ fn def_access_funcs_for_fix_vec(is_entity: bool, info: &ast::FixedVector) -> Vec
         )
     } else {
         let inner = reader_name(&info.typ.name);
-        let getter_ret = quote!(#inner<'_>);
+        let getter_ret = quote!(#inner<'r>);
         let getter_stmt = quote!(&self.as_slice()[start..end]);
-        let getter_ret_atom = quote!(&[u8]);
+        let getter_ret_atom = quote!(&'r [u8]);
         let getter_stmt_atom = quote!(&self.as_slice()[4..]);
         (
             inner,
@@ -794,7 +796,7 @@ fn def_access_funcs_for_dyn_vec(
         (inner, getter_ret, getter_stmt_last, getter_stmt)
     } else {
         let inner = reader_name(&info.typ.name);
-        let getter_ret = quote!(#inner<'_>);
+        let getter_ret = quote!(#inner<'r>);
         let getter_stmt_last = quote!(&self.as_slice()[start..]);
         let getter_stmt = quote!(&self.as_slice()[start..end]);
         (inner, getter_ret, getter_stmt_last, getter_stmt)
@@ -892,7 +894,7 @@ fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::Tok
                 (inner, getter_ret)
             } else {
                 let inner = reader_name(&f.typ.name);
-                let getter_ret = quote!(#inner<'_>);
+                let getter_ret = quote!(#inner<'r>);
                 (inner, getter_ret)
             };
             let start = usize_lit(i);
@@ -1124,7 +1126,7 @@ where
     if !is_atom {
         let code = quote!(
             impl<'r> #reader<'r> {
-                pub fn iter(&self) -> #reader_iterator<'_, 'r> {
+                pub fn iter<'t>(&'t self) -> #reader_iterator<'t, 'r> {
                     #reader_iterator(&self, 0, self.len())
                 }
             }

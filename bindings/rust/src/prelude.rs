@@ -18,7 +18,7 @@ pub trait Reader<'r>: Sized + fmt::Debug + Clone + Copy {
     type Entity: Entity;
     fn verify(slice: &[u8]) -> VerificationResult<()>;
     fn new_unchecked(slice: &'r [u8]) -> Self;
-    fn as_slice(&self) -> &[u8];
+    fn as_slice(&self) -> &'r [u8];
     fn from_slice(slice: &'r [u8]) -> VerificationResult<Self> {
         Self::verify(slice).map(|_| Reader::new_unchecked(slice))
     }
