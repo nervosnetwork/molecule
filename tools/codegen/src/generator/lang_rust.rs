@@ -123,12 +123,12 @@ where
         pub struct #reader<'r>(&'r [u8]);
 
         impl ::std::fmt::Debug for #entity {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
             }
         }
         impl<'r> ::std::fmt::Debug for #reader<'r> {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
             }
         }
@@ -148,12 +148,12 @@ where
     let reader = reader_name(origin_name);
     let code = quote!(
         impl ::std::fmt::Display for #entity {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 #stmts
             }
         }
         impl<'r> ::std::fmt::Display for #reader<'r> {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 #stmts
             }
         }
@@ -258,7 +258,7 @@ where
             }
 
             impl ::std::fmt::Display for #entity_union {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match self {
                         #(
                             #entity_union_item_paths(ref item) => {
@@ -270,7 +270,7 @@ where
                 }
             }
             impl<'r> ::std::fmt::Display for #reader_union<'r> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match self {
                         #(
                             #reader_union_item_paths(ref item) => {
@@ -283,7 +283,7 @@ where
             }
 
             impl #entity_union {
-                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match self {
                         #( #entity_union_item_paths(ref item) => write!(f, "{}", item), )*
                         #entity_union::NotSet => { write!(f, "NotSet") }
@@ -291,7 +291,7 @@ where
                 }
             }
             impl<'r> #reader_union<'r> {
-                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     match self {
                         #( #reader_union_item_paths(ref item) => write!(f, "{}", item), )*
                         #reader_union::NotSet => { write!(f, "NotSet") }
@@ -963,7 +963,7 @@ where
         pub struct #builder (pub(crate) [#inner; #item_count]);
 
         impl ::std::fmt::Debug for #builder {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 write!(f, "{}({:?})", Self::NAME, &self.0[..])
             }
         }
