@@ -3,7 +3,7 @@ ci: ci-example ci-rust ci-c
 ci-rust:
 	set -eu; \
 	export RUSTFLAGS='-F warnings'; \
-	for dir in tools/codegen tools/compiler bindings/rust; do \
+	for dir in tools/compiler tools/codegen bindings/rust; do \
 		cd "$${dir}"; \
 		cargo clean; \
 		cargo fmt --all -- --check; \

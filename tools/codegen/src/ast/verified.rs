@@ -108,7 +108,8 @@ impl Option_ {
 
 impl Union {
     pub fn default_content(&self) -> Vec<u8> {
-        (&0u32.to_le_bytes()[..]).to_owned()
+        let v: molecule::ItemId = 0;
+        (&v.to_le_bytes()[..]).to_owned()
     }
 }
 

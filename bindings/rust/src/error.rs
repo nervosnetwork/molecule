@@ -1,11 +1,13 @@
 use std::{error, fmt, result};
 
+use crate::ItemId;
+
 #[derive(Debug)]
 pub enum VerificationError {
     TotalSizeNotMatch(String, usize, usize),
     TotalSizeNotAsExpected(String, usize, usize, usize),
     HeaderIsBroken(String, usize, usize),
-    UnknownItem(String, usize, usize),
+    UnknownItem(String, usize, ItemId),
     FirstOffsetIsBroken(String, usize),
     FirstOffsetIsShort(String, usize, usize),
     DataIsShort(String, usize, usize),

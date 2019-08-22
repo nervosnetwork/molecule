@@ -341,7 +341,7 @@ where
                         #entity_union::NotSet => &[],
                     }
                 }
-                pub fn item_id(&self) -> usize {
+                pub fn item_id(&self) -> molecule::ItemId {
                     match self {
                         #( #entity_union_item_paths(_) => #union_ids, )*
                         #entity_union::NotSet => 0,
@@ -368,7 +368,7 @@ where
                         #reader_union::NotSet => &[],
                     }
                 }
-                pub fn item_id(&self) -> usize {
+                pub fn item_id(&self) -> molecule::ItemId {
                     match self {
                         #( #reader_union_item_paths(_) => #union_ids, )*
                         #reader_union::NotSet => 0,
@@ -540,12 +540,12 @@ fn def_access_funcs_for_union(
     let (getter_ret, getter_stmt) = if is_entity {
         let union = entity_union_name(origin_name);
         let getter_ret = quote!(#union);
-        let getter_stmt = quote!(self.0.slice_from(4));
+        let getter_stmt = quote!(self.0.slice_from(molecule::ITEM_ID_SIZE));
         (getter_ret, getter_stmt)
     } else {
         let union = reader_union_name(origin_name);
         let getter_ret = quote!(#union);
-        let getter_stmt = quote!(&self.as_slice()[4..]);
+        let getter_stmt = quote!(&self.as_slice()[molecule::ITEM_ID_SIZE..]);
         (getter_ret, getter_stmt)
     };
     let mut funcs: Vec<m4::TokenStream> = Vec::new();
@@ -554,9 +554,8 @@ fn def_access_funcs_for_union(
         let code = quote!(
             pub const ITEM_COUNT: usize = #item_count;
 
-            pub fn item_id(&self) -> usize {
-                let le = self.as_slice().as_ptr() as *const u32;
-                u32::from_le(unsafe { *le }) as usize
+            pub fn item_id(&self) -> molecule::ItemId {
+                molecule::extract_item_id(self.as_slice())
             }
         );
         funcs.push(code);
@@ -1306,18 +1305,17 @@ where
         let verify_inners = info.inner.iter().enumerate().map(|(index, inner)| {
             let item_id = usize_lit(index + 1);
             let inner = reader_name(&inner.typ.name);
-            quote!(#item_id => #inner::verify(&slice[4..]),)
+            quote!(#item_id => #inner::verify(&slice[molecule::ITEM_ID_SIZE..]),)
         });
         quote!(
             fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
-                if slice.len() < 4 {
+                if slice.len() < molecule::ITEM_ID_SIZE {
                     let err = VerificationError::HeaderIsBroken(
-                        Self::NAME.to_owned(), 4, slice.len());
+                        Self::NAME.to_owned(), molecule::ITEM_ID_SIZE, slice.len());
                     Err(err)?;
                 }
-                let ptr: &[u32] = unsafe { ::std::mem::transmute(slice) };
-                let item_id = u32::from_le(ptr[0]) as usize;
+                let item_id = molecule::extract_item_id(slice);
                 match item_id {
                     #( #verify_inners )*
                     _ => {
@@ -1336,10 +1334,10 @@ where
     let code = {
         quote!(
             fn expected_length(&self) -> usize {
-                4 + self.0.as_slice().len()
+                molecule::ITEM_ID_SIZE + self.0.as_slice().len()
             }
             fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
-                let item_id = (self.0.item_id() as u32).to_le_bytes();
+                let item_id = self.0.item_id().to_le_bytes();
                 writer.write_all(&item_id[..])?;
                 writer.write_all(self.0.as_slice())
             }
