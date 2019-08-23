@@ -127,7 +127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "molecule"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "faster-hex 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -135,10 +135,10 @@ dependencies = [
 
 [[package]]
 name = "molecule-codegen"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "case 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "molecule 0.2.0",
+ "molecule 0.2.5",
  "pest 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pest_derive 2.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -147,10 +147,10 @@ dependencies = [
 
 [[package]]
 name = "moleculec"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "molecule-codegen 0.2.4",
+ "molecule-codegen 0.2.5",
 ]
 
 [[package]]
