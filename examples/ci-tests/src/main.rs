@@ -1,8 +1,6 @@
 use molecule::prelude::*;
 
-pub mod types {
-    include!(concat!(env!("OUT_DIR"), "/", "ci_tests", ".rs"));
-}
+use molecule_ci_tests::types;
 
 fn main() {
     let data = types::AllInOne::default();

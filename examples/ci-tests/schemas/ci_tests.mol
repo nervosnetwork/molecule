@@ -152,3 +152,45 @@ table AllInOne {
     c44: BytesAndWords,
     c45: ManyBytes,
 }
+
+table StrictTableA {
+    one:    byte,
+    two:    Byte2,
+    three:  Byte3,
+    four:   Byte4,
+    five:   Byte5,
+    six:    Byte6,
+    seven:  Byte7,
+    eight:  Byte8,
+    nine:   Byte9,
+    ten:    Byte10,
+}
+
+table StrictTableB {
+    one:    byte,
+    two:    Byte2,
+    three:  Byte3,
+    four:   Byte4,
+    five:   Byte5,
+    six:    Byte6,
+    seven:  Byte7,
+    eight:  Byte8,
+    nine:   Byte9,
+    ten:    Byte10,
+    eleven: Byte11,
+}
+
+table StrictTableC {
+    one:    byte,
+    two:    Byte2,
+    three:  Byte3,
+    four:   Byte4,
+    five:   Byte5,
+    six:    Byte6,
+    seven:  Byte7,
+    eight:  Byte8,
+    nine:   Byte9,
+    ten:    Byte10,
+    eleven: Byte11,
+    twelve: Bytes,
+}

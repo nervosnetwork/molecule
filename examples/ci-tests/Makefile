@@ -6,3 +6,4 @@ debug:
 
 test:
 	@cargo run
+	@cargo test --all
