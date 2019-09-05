@@ -37,7 +37,7 @@ The size of a `struct` is the sum of all fields' size.
 
 Serialize a `struct` only need to serialize all fields in it. No extra cost for `struct` itself.
 
-Fields in an `struct`  are stored in the order they are declared.
+Fields in a `struct`  are stored in the order they are declared.
 Each fields in an `struct` are close to the previous field and the next field.
 There are no extra space between two adjacent fields.
 
@@ -108,7 +108,7 @@ If we define `vector BytesVec <Bytes>;`:
   # five items (28 bytes in total)
   02 00 00 00, 12 34
   00 00 00 00,
-  02 00 00 00, 56 07
+  02 00 00 00, 05 67
   01 00 00 00, 89
   03 00 00 00, ab cd ef
   ```
