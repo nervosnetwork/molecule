@@ -13,7 +13,7 @@ letter                  =   lowercase | uppercase;
 ifs                     =   " " | "\t";
 newline                 =   "\n" | "\r\n";
 
-identifier              =   letter , { letter | digit | "_" };
+identifier              =   letter, { letter | digit | "_" };
 number                  =   nonzero, { digit };
 
 whitespace              =   ifs | newline;
@@ -26,7 +26,7 @@ stmt_end                =   ";";
 
 item_decl               =   identifier, break_opt,
                             item_end;
-field_decl              =   identifier, break, ":", break_opt,
+field_decl              =   identifier, break_opt, ":", break_opt,
                             identifier, break_opt,
                             field_end;
 option_decl             =   "option", break, identifier, break_opt,
