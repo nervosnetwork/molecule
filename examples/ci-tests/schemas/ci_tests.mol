@@ -153,7 +153,7 @@ table AllInOne {
     c45: ManyBytes,
 }
 
-table StrictTableA {
+table TableA {
     one:    byte,
     two:    Byte2,
     three:  Byte3,
@@ -166,7 +166,7 @@ table StrictTableA {
     ten:    Byte10,
 }
 
-table StrictTableB {
+table TableB {
     one:    byte,
     two:    Byte2,
     three:  Byte3,
@@ -180,7 +180,7 @@ table StrictTableB {
     eleven: Byte11,
 }
 
-table StrictTableC {
+table TableC {
     one:    byte,
     two:    Byte2,
     three:  Byte3,

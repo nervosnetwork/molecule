@@ -19,4 +19,4 @@ ci-c:
 ci-example:
 	set -eu; \
 	cd examples/ci-tests; \
-	make test
+	make clean test

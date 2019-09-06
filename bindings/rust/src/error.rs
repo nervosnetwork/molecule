@@ -10,6 +10,7 @@ pub enum VerificationError {
     UnknownItem(String, usize, ItemId),
     FirstOffsetIsBroken(String, usize),
     FirstOffsetIsShort(String, usize, usize),
+    FirstOffsetIsOverflow(String, usize, usize),
     DataIsShort(String, usize, usize),
     OffsetsNotMatch(String),
     FieldIsBroken(String, usize),
@@ -55,6 +56,13 @@ impl fmt::Display for VerificationError {
                 write!(
                     f,
                     "{} first offset is short, expect {}, actual {}",
+                    st, expected, actual
+                )?;
+            }
+            VerificationError::FirstOffsetIsOverflow(st, expected, actual) => {
+                write!(
+                    f,
+                    "{} first offset is overflow, expect {}, actual {}",
                     st, expected, actual
                 )?;
             }

@@ -413,6 +413,9 @@ where
             fn from_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
                 #reader::from_slice(slice).map(|reader| reader.to_entity())
             }
+            fn from_compatible_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
+                #reader::from_compatible_slice(slice).map(|reader| reader.to_entity())
+            }
             fn new_builder() -> Self::Builder {
                 ::std::default::Default::default()
             }
@@ -881,6 +884,10 @@ fn def_access_funcs_for_table(is_entity: bool, info: &ast::Table) -> Vec<m4::Tok
                 let count = (first - 4) / 4;
                 (bytes_len, count, &ptr[1..])
             }
+            pub fn has_extra_fields(&self) -> bool {
+                let (_, real_fields_count, _) = Self::field_offsets(self);
+                Self::FIELD_COUNT == real_fields_count
+            }
         );
         funcs.push(code);
     }
@@ -1194,7 +1201,10 @@ where
         let inner = reader_name(&info.typ.name);
         if info.typ.is_atom() {
             quote!(
-                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                fn verify(
+                    slice: &[u8],
+                    _compatible: bool,
+                ) -> molecule::error::VerificationResult<()> {
                     use molecule::error::VerificationError;
                     if slice.len() > 1 {
                         let err = VerificationError::TotalSizeNotAsExpected(
@@ -1210,9 +1220,9 @@ where
             )
         } else {
             quote!(
-                fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+                fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                     if !slice.is_empty() {
-                        #inner::verify(&slice[..])?;
+                        #inner::verify(&slice[..], compatible)?;
                     }
                     Ok(())
                 }
@@ -1307,10 +1317,10 @@ where
         let verify_inners = info.inner.iter().enumerate().map(|(index, inner)| {
             let item_id = usize_lit(index + 1);
             let inner = reader_name(&inner.typ.name);
-            quote!(#item_id => #inner::verify(&slice[molecule::ITEM_ID_SIZE..]),)
+            quote!(#item_id => #inner::verify(&slice[molecule::ITEM_ID_SIZE..], _compatible),)
         });
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], _compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 if slice.len() < molecule::ITEM_ID_SIZE {
                     let err = VerificationError::HeaderIsBroken(
@@ -1427,12 +1437,12 @@ where
                 .map(|i| {
                     let start = usize_lit(info.item_size * i);
                     let end = usize_lit(info.item_size * (i + 1));
-                    quote!(#inner::verify(&slice[#start..#end])?;)
+                    quote!(#inner::verify(&slice[#start..#end], _compatible)?;)
                 })
                 .collect()
         };
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], _compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
@@ -1550,7 +1560,7 @@ where
                 let end = usize_lit(offset);
                 if !f.typ.is_atom() {
                     let code = quote!(
-                        #field::verify(&slice[#start..#end])?;
+                        #field::verify(&slice[#start..#end], _compatible)?;
                     );
                     codes.push(code);
                 }
@@ -1558,7 +1568,7 @@ where
             codes
         };
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], _compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 if slice.len() != #total_size {
                     let err = VerificationError::TotalSizeNotMatch(
@@ -1668,12 +1678,12 @@ where
                 for i in 0..item_count {
                     let start = #item_size * i;
                     let end = start + #item_size;
-                    #inner::verify(&slice[start..end])?;
+                    #inner::verify(&slice[start..end], _compatible)?;
                 }
             )
         };
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], _compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
                 if len < 4 {
@@ -1788,7 +1798,7 @@ where
     let code = {
         let inner = reader_name(&info.typ.name);
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], _compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
                 if len < 4 {
@@ -1841,7 +1851,7 @@ where
                 for i in 0..=(offsets.len()-2) {
                     let start = offsets[i];
                     let end = offsets[i+1];
-                    #inner::verify(&slice[start..end])?;
+                    #inner::verify(&slice[start..end], _compatible)?;
                 }
                 Ok(())
             }
@@ -1968,12 +1978,12 @@ where
                 )
             } else {
                 quote!(
-                    #field::verify(&slice[offsets[#start]..offsets[#end]])?;
+                    #field::verify(&slice[offsets[#start]..offsets[#end]], compatible)?;
                 )
             }
         });
         quote!(
-            fn verify(slice: &[u8]) -> molecule::error::VerificationResult<()> {
+            fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::error::VerificationError;
                 let len = slice.len();
                 if len < 4 {
@@ -1997,15 +2007,38 @@ where
                         Self::NAME.to_owned(), expected, total_size);
                     Err(err)?;
                 }
-                let mut offsets: Vec<usize> = ptr[1..=#field_count]
+                let offset_first = u32::from_le(ptr[1]) as usize;
+                if offset_first % 4 != 0 {
+                    let err = VerificationError::FirstOffsetIsBroken(
+                        Self::NAME.to_owned(), offset_first);
+                    Err(err)?;
+                }
+                if offset_first < expected {
+                    let err = VerificationError::FirstOffsetIsShort(
+                        Self::NAME.to_owned(), expected, offset_first);
+                    Err(err)?;
+                }
+                let real_field_count = if compatible {
+                    let real_field_count = offset_first / 4 - 1;
+                    let real_expected = 4 + 4 * real_field_count;
+                    if total_size < real_expected {
+                        let err = VerificationError::DataIsShort(
+                            Self::NAME.to_owned(), real_expected, total_size);
+                        Err(err)?;
+                    }
+                    real_field_count
+                } else {
+                    if offset_first > expected {
+                        let err = VerificationError::FirstOffsetIsOverflow(
+                            Self::NAME.to_owned(), expected, offset_first);
+                        Err(err)?;
+                    }
+                    #field_count
+                };
+                let mut offsets: Vec<usize> = ptr[1..=real_field_count]
                     .iter()
                     .map(|x| u32::from_le(*x) as usize)
                     .collect();
-                if offsets[0] != expected {
-                    let err = VerificationError::FirstOffsetIsShort(
-                        Self::NAME.to_owned(), expected, offsets[0]);
-                    Err(err)?;
-                }
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] > i[1]) {
                     let err = VerificationError::OffsetsNotMatch(Self::NAME.to_owned());
