@@ -1,6 +1,6 @@
 [package]
 name = "molecule-codegen"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Code generator for molecule."
@@ -16,7 +16,7 @@ categories = [
 license = "MIT"
 
 [dependencies]
-molecule = { version = "=0.3.0", path = "../../bindings/rust" }
+molecule = { version = "=0.3.1", path = "../../bindings/rust" }
 pest = "~2.1"
 pest_derive = "~2.1"
 quote = "~0.6"
