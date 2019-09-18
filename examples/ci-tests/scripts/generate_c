@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCHEMA_FILE="$1"
+GENERATED_FILE="$2"
+
+TYPES="option union array struct vector table"
+
+function generate_macro_for () {
+    local type="$1"
+    if [ "${type}" = "all" ]; then
+        echo                                            >> "${GENERATED_FILE}"
+        echo "#define testset_apply_${type}(test) {\\"  >> "${GENERATED_FILE}"
+        for t in ${TYPES}; do
+            echo "    testset_apply_${t}(test);\\"      >> "${GENERATED_FILE}"
+        done
+        echo "}"                                        >> "${GENERATED_FILE}"
+    else
+        echo                                            >> "${GENERATED_FILE}"
+        echo "#define testset_apply_${type}(test) {\\"  >> "${GENERATED_FILE}"
+        grep -r "^${type} " "${SCHEMA_FILE}" \
+            | awk '{ print "    test("$2"); \\" }'      >> "${GENERATED_FILE}"
+        echo "}"                                        >> "${GENERATED_FILE}"
+    fi
+}
+
+function main () {
+    echo "// This is A Generated File"                  > "${GENERATED_FILE}"
+    for type in ${TYPES}; do
+        generate_macro_for ${type}
+    done
+    generate_macro_for all
+}
+
+main
