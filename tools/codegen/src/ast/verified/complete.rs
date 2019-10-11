@@ -30,7 +30,12 @@ impl CompleteRawDecl for raw::OptionDecl {
         deps.get(self.typ.as_str()).map(|dep| {
             let name = self.name().to_owned();
             let typ = Rc::clone(dep);
-            super::Option_ { name, typ }.into()
+            super::Option_ {
+                name,
+                typ,
+                imported_depth: self.imported_depth,
+            }
+            .into()
         })
     }
 }
@@ -50,7 +55,12 @@ impl CompleteRawDecl for raw::UnionDecl {
             .collect::<Option<Vec<_>>>()
             .map(|inner| {
                 let name = self.name().to_owned();
-                super::Union { name, inner }.into()
+                super::Union {
+                    name,
+                    inner,
+                    imported_depth: self.imported_depth,
+                }
+                .into()
             })
     }
 }
@@ -76,6 +86,7 @@ impl CompleteRawDecl for raw::ArrayDecl {
                 item_size,
                 item_count,
                 typ,
+                imported_depth: self.imported_depth,
             }
             .into()
         })
@@ -119,6 +130,7 @@ impl CompleteRawDecl for raw::StructDecl {
                 name,
                 field_size,
                 inner,
+                imported_depth: self.imported_depth,
             }
             .into(),
         )
@@ -135,10 +147,16 @@ impl CompleteRawDecl for raw::VectorDecl {
                     name,
                     item_size,
                     typ,
+                    imported_depth: self.imported_depth,
                 }
                 .into()
             } else {
-                super::DynVec { name, typ }.into()
+                super::DynVec {
+                    name,
+                    typ,
+                    imported_depth: self.imported_depth,
+                }
+                .into()
             }
         })
     }
@@ -159,7 +177,12 @@ impl CompleteRawDecl for raw::TableDecl {
             .collect::<Option<Vec<_>>>()
             .map(|inner| {
                 let name = self.name().to_owned();
-                super::Table { name, inner }.into()
+                super::Table {
+                    name,
+                    inner,
+                    imported_depth: self.imported_depth,
+                }
+                .into()
             })
     }
 }

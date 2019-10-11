@@ -7,16 +7,11 @@ use super::{
 use crate::ast::verified::{self as ast};
 
 pub(super) trait Generator {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write;
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
 }
 
 impl Generator for ast::Option_ {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -25,10 +20,7 @@ impl Generator for ast::Option_ {
 }
 
 impl Generator for ast::Union {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -38,10 +30,7 @@ impl Generator for ast::Union {
 }
 
 impl Generator for ast::Array {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -50,10 +39,7 @@ impl Generator for ast::Array {
 }
 
 impl Generator for ast::Struct {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -62,10 +48,7 @@ impl Generator for ast::Struct {
 }
 
 impl Generator for ast::FixVec {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -75,10 +58,7 @@ impl Generator for ast::FixVec {
 }
 
 impl Generator for ast::DynVec {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
@@ -88,10 +68,7 @@ impl Generator for ast::DynVec {
 }
 
 impl Generator for ast::Table {
-    fn generate<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;

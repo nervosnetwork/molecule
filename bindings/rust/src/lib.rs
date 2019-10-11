@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 pub mod error;
 pub mod prelude;
-pub mod primitive;
+mod primitive;
 
 pub use bytes;
 pub use faster_hex;

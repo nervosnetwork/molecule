@@ -1,3 +1,5 @@
+use std::{path::PathBuf, rc::Rc};
+
 #[derive(Debug)]
 pub(crate) struct ItemDecl {
     pub(crate) typ: String,
@@ -13,12 +15,14 @@ pub(crate) struct FieldDecl {
 pub(crate) struct OptionDecl {
     pub(crate) name: String,
     pub(crate) typ: String,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct UnionDecl {
     pub(crate) name: String,
     pub(crate) inner: Vec<ItemDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -26,24 +30,28 @@ pub(crate) struct ArrayDecl {
     pub(crate) name: String,
     pub(crate) typ: String,
     pub(crate) length: usize,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct StructDecl {
     pub(crate) name: String,
     pub(crate) inner: Vec<FieldDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct VectorDecl {
     pub(crate) name: String,
     pub(crate) typ: String,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct TableDecl {
     pub(crate) name: String,
     pub(crate) inner: Vec<FieldDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -56,16 +64,19 @@ pub(crate) enum TopDecl {
     Table(TableDecl),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct ImportStmt {
     pub(crate) name: String,
     pub(crate) path: Vec<String>,
     pub(crate) depth: usize,
+    pub(crate) imported_base: PathBuf,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Ast {
-    pub(crate) imports: Vec<ImportStmt>,
+    pub(crate) namespace: String,
+    pub(crate) imports: Vec<Rc<ImportStmt>>,
     pub(crate) decls: Vec<TopDecl>,
 }
 
@@ -119,7 +130,7 @@ impl TopDecl {
 
 impl Ast {
     pub(crate) fn add_import(&mut self, stmt: ImportStmt) {
-        self.imports.push(stmt);
+        self.imports.push(Rc::new(stmt));
     }
 
     pub(crate) fn add_decl(&mut self, decl: impl Into<TopDecl>) {

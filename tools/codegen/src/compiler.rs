@@ -1,6 +1,6 @@
 use std::{
     env, fs,
-    io::{self, Read as _, Write as _},
+    io::{self, Write as _},
     path::{Path, PathBuf},
 };
 
@@ -37,10 +37,7 @@ impl Compiler {
         self
     }
 
-    pub fn file_path<P>(&mut self, path: P) -> &mut Self
-    where
-        P: AsRef<Path>,
-    {
+    pub fn file_path<P: AsRef<Path>>(&mut self, path: P) -> &mut Self {
         self.file_path.replace(path.as_ref().to_path_buf());
         self
     }
@@ -51,10 +48,7 @@ impl Compiler {
         self
     }
 
-    pub fn out_dir<P>(&mut self, path: P) -> &mut Self
-    where
-        P: AsRef<Path>,
-    {
+    pub fn out_dir<P: AsRef<Path>>(&mut self, path: P) -> &mut Self {
         self.output = Output::Directory(path.as_ref().to_path_buf());
         self
     }
@@ -62,13 +56,7 @@ impl Compiler {
     pub fn run(&mut self) {
         let lang = self.language.unwrap();
 
-        let mut file_in = fs::OpenOptions::new()
-            .read(true)
-            .open(&self.file_path.as_ref().unwrap())
-            .unwrap();
-        let mut buffer = String::new();
-        file_in.read_to_string(&mut buffer).unwrap();
-        let generator = Generator::new(&buffer);
+        let generator = Generator::new(&self.file_path.as_ref().unwrap());
 
         match self.output {
             Output::Directory(ref out_dir) => {

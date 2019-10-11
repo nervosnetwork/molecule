@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{path::Path, str::FromStr};
 
 use pest::iterators::Pairs;
 
@@ -9,7 +9,11 @@ pub(crate) trait PairsUtils {
     fn next_usize(&mut self) -> usize;
     fn next_items(&mut self) -> Vec<ast::raw::ItemDecl>;
     fn next_fields(&mut self) -> Vec<ast::raw::FieldDecl>;
-    fn next_import(&mut self) -> ast::raw::ImportStmt;
+    fn next_import<P: AsRef<Path>>(
+        &mut self,
+        imported_base: &P,
+        imported_depth: usize,
+    ) -> ast::raw::ImportStmt;
     fn next_should_be_none(self);
 }
 
@@ -55,7 +59,11 @@ impl<'i> PairsUtils for Pairs<'i, parser::Rule> {
         ret
     }
 
-    fn next_import(&mut self) -> ast::raw::ImportStmt {
+    fn next_import<P: AsRef<Path>>(
+        &mut self,
+        imported_base: &P,
+        imported_depth: usize,
+    ) -> ast::raw::ImportStmt {
         let mut path = Vec::new();
         let mut depth = 0;
         if let Some(inner) = self.next() {
@@ -81,6 +89,8 @@ impl<'i> PairsUtils for Pairs<'i, parser::Rule> {
             name: path.pop().unwrap(),
             path,
             depth,
+            imported_base: imported_base.as_ref().to_path_buf(),
+            imported_depth,
         }
     }
 

@@ -1,14 +1,18 @@
 use std::io;
 
+use case::CaseExt;
+
 use crate::{ast::verified as ast, VERSION};
 
 #[macro_use]
 pub(self) mod utilities;
 
+mod import;
+
 mod builder;
 mod reader;
 
-use self::{builder::GenBuilder, reader::GenReader};
+use self::{builder::GenBuilder, import::GenImport, reader::GenReader};
 
 pub(crate) struct Generator;
 
@@ -19,6 +23,31 @@ impl Generator {
         writeln!(writer, " */")?;
         writeln!(writer)
     }
+
+    fn ifndef<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
+        let n = name.to_snake().to_uppercase();
+        w!(o, "#ifndef {}_H                                        ", n);
+        w!(o, "#define {}_H                                        ", n);
+        w!(o, "                                                       ");
+        w!(o, "#ifdef __cplusplus                                     ");
+        w!(o, "#define _CPP_BEGIN extern \"C\" {{                     ");
+        w!(o, "#define _CPP_END }}                                    ");
+        w!(o, "_CPP_BEGIN                                             ");
+        w!(o, "#endif /* __cplusplus */                               ");
+        Ok(())
+    }
+
+    fn endif<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
+        let n = name.to_snake().to_uppercase();
+        w!(o, "#ifdef __cplusplus                                     ");
+        w!(o, "_CPP_END                                               ");
+        w!(o, "#undef _CPP_BEGIN                                      ");
+        w!(o, "#undef _CPP_END                                        ");
+        w!(o, "#endif /* __cplusplus */                               ");
+        w!(o, "                                                       ");
+        w!(o, "#endif /* {}_H */                                   ", n);
+        Ok(())
+    }
 }
 
 impl super::LanguageGenerator for Generator {
@@ -28,34 +57,44 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer, r#"#include "molecule_reader.h""#)?;
         writeln!(writer, r#"#include "molecule_builder.h""#)?;
         writeln!(writer)?;
+        Self::ifndef(writer, &ast.namespace)?;
+        let major_imports = ast.major_imports();
+        if !major_imports.is_empty() {
+            writeln!(writer)?;
+            for import in major_imports {
+                import.gen_import(writer)?;
+            }
+        }
+        writeln!(writer)?;
         Self::title(writer, "Reader APIs")?;
-        for decl in &ast.decls[..] {
+        for decl in ast.major_decls() {
             decl.gen_reader_interfaces(writer)?;
         }
         writeln!(writer)?;
         Self::title(writer, "Builder APIs")?;
-        for decl in &ast.decls[..] {
+        for decl in ast.major_decls() {
             decl.gen_builder_interfaces(writer)?;
         }
         writeln!(writer)?;
         Self::title(writer, "Default Value")?;
         writeln!(writer, r#"#define ____ 0x00"#)?;
         writeln!(writer)?;
-        for decl in &ast.decls[..] {
+        for decl in ast.major_decls() {
             decl.gen_default(writer)?;
         }
         writeln!(writer)?;
         writeln!(writer, r#"#undef ____"#)?;
         writeln!(writer)?;
         Self::title(writer, "Reader Functions")?;
-        for decl in &ast.decls[..] {
+        for decl in ast.major_decls() {
             decl.gen_reader_functions(writer)?;
         }
         writeln!(writer)?;
         Self::title(writer, "Builder Functions")?;
-        for decl in &ast.decls[..] {
+        for decl in ast.major_decls() {
             decl.gen_builder_functions(writer)?;
         }
+        Self::endif(writer, &ast.namespace)?;
         Ok(())
     }
 }

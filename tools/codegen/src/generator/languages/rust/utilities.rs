@@ -5,6 +5,10 @@ pub(super) fn usize_lit(num: usize) -> m4::Literal {
     m4::Literal::usize_unsuffixed(num)
 }
 
+pub(super) fn ident_new(ident: &str) -> m4::Ident {
+    m4::Ident::new(ident, m4::Span::call_site())
+}
+
 pub(super) fn ident_name(name: &str, suffix: &str) -> m4::Ident {
     let span = m4::Span::call_site();
     m4::Ident::new(&format!("{}{}", name, suffix).to_camel(), span)

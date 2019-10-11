@@ -22,7 +22,7 @@ pub enum VerificationError {
 pub type VerificationResult<T> = result::Result<T, VerificationError>;
 
 impl fmt::Display for VerificationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             VerificationError::TotalSizeNotMatch(st, expected, actual) => {
                 write!(
@@ -70,7 +70,7 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::Verification(err) => {
                 write!(f, "VerificationError: {}", err)?;

@@ -1,0 +1,5 @@
+import ../a/a;
+
+table B {
+    a: A,
+}

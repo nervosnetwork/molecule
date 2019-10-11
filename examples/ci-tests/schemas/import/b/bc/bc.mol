@@ -1,0 +1,11 @@
+import ../../a/a;
+import ../b;
+import ../bb/bb;
+import ../../c/c;
+
+table BC {
+    a: A,
+    b: B,
+    c: C,
+    bb: BB,
+}

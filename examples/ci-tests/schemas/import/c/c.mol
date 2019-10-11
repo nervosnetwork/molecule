@@ -1,0 +1,7 @@
+import ../a/a;
+import ../b/b;
+
+table C {
+    a: A,
+    b: B,
+}

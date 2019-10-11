@@ -4,6 +4,8 @@ use bytes::Bytes;
 
 use crate::error::VerificationResult;
 
+pub use crate::primitive::{Byte, ByteReader};
+
 pub trait Entity: fmt::Debug + Default + Clone {
     type Builder: Builder;
     const NAME: &'static str;

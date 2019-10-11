@@ -3,6 +3,7 @@ use std::{
     rc::Rc,
 };
 
+pub(crate) use super::raw::ImportStmt;
 use super::raw::{Ast as RawAst, TopDecl as RawTopDecl};
 
 mod complete;
@@ -19,7 +20,9 @@ pub(crate) const ATOM_PRIMITIVE_NAME: &str = "Byte";
 
 #[derive(Debug)]
 pub(crate) struct Ast {
-    pub(crate) decls: Vec<Rc<TopDecl>>,
+    pub(crate) namespace: String,
+    pub(self) imports: Vec<Rc<ImportStmt>>,
+    pub(self) decls: Vec<Rc<TopDecl>>,
 }
 
 #[derive(Debug)]
@@ -44,12 +47,14 @@ pub(crate) struct Atom {
 pub(crate) struct Option_ {
     pub(crate) name: String,
     pub(crate) typ: Rc<TopDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct Union {
     pub(crate) name: String,
     pub(crate) inner: Vec<ItemDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -58,6 +63,7 @@ pub(crate) struct Array {
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
     pub(crate) typ: Rc<TopDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -65,6 +71,7 @@ pub(crate) struct Struct {
     pub(crate) name: String,
     pub(crate) field_size: Vec<usize>,
     pub(crate) inner: Vec<FieldDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -72,18 +79,21 @@ pub(crate) struct FixVec {
     pub(crate) name: String,
     pub(crate) item_size: usize,
     pub(crate) typ: Rc<TopDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct DynVec {
     pub(crate) name: String,
     pub(crate) typ: Rc<TopDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct Table {
     pub(crate) name: String,
     pub(crate) inner: Vec<FieldDecl>,
+    pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
@@ -122,6 +132,19 @@ impl TopDecl {
         match self {
             TopDecl::Atom(_) => true,
             _ => false,
+        }
+    }
+
+    fn imported_depth(&self) -> usize {
+        match self {
+            TopDecl::Atom(_) => unreachable!(),
+            TopDecl::Option_(ref typ) => typ.imported_depth,
+            TopDecl::Union(ref typ) => typ.imported_depth,
+            TopDecl::Array(ref typ) => typ.imported_depth,
+            TopDecl::Struct(ref typ) => typ.imported_depth,
+            TopDecl::FixVec(ref typ) => typ.imported_depth,
+            TopDecl::DynVec(ref typ) => typ.imported_depth,
+            TopDecl::Table(ref typ) => typ.imported_depth,
         }
     }
 
@@ -191,6 +214,26 @@ impl Ast {
             let result = decls_result.get(decl.name()).unwrap();
             decls.push(Rc::clone(result));
         }
-        Self { decls }
+        Self {
+            namespace: raw.namespace,
+            imports: raw.imports,
+            decls,
+        }
+    }
+
+    pub(crate) fn major_decls(&self) -> Vec<Rc<TopDecl>> {
+        self.decls
+            .iter()
+            .filter(|x| x.imported_depth() == 0)
+            .map(Rc::clone)
+            .collect()
+    }
+
+    pub(crate) fn major_imports(&self) -> Vec<Rc<ImportStmt>> {
+        self.imports
+            .iter()
+            .filter(|x| x.imported_depth == 0)
+            .map(Rc::clone)
+            .collect()
     }
 }

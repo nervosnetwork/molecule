@@ -1,0 +1,7 @@
+import ../../a/a;
+import ../b;
+
+table BB {
+    a: A,
+    b: B,
+}

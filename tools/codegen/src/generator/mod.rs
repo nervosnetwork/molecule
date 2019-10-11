@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, path::Path};
 
 use crate::{Ast, Parser};
 
@@ -12,15 +12,12 @@ pub(crate) struct Generator {
 }
 
 impl Generator {
-    pub(crate) fn new(input: &str) -> Self {
-        let ast = Parser::parse(input);
+    pub(crate) fn new<P: AsRef<Path>>(path: &P) -> Self {
+        let ast = Parser::parse(path);
         Self { ast }
     }
 
-    pub(crate) fn generate<W>(&self, lang: Language, writer: &mut W) -> io::Result<()>
-    where
-        W: io::Write,
-    {
+    pub(crate) fn generate<W: io::Write>(&self, lang: Language, writer: &mut W) -> io::Result<()> {
         lang.generate(writer, &self.ast)
     }
 }

@@ -10,7 +10,7 @@ fn display_empty_data() {
 }
 
 fn display_test_data() {
-    let f0: molecule::primitive::Byte = 0x12u8.into();
+    let f0: types::Byte = 0x12u8.into();
     let f2 = types::Byte3::new_builder().nth1(f0).build();
     let f29 = types::StructB::new_builder()
         .f2(0x34u8.into())

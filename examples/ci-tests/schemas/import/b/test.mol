@@ -1,0 +1,5 @@
+import ../c/cc/cc;
+
+table Test {
+    cc: CC,
+}
