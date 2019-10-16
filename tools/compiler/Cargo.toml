@@ -1,6 +1,6 @@
 [package]
 name = "moleculec"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Schema compiler for molecule."
@@ -20,7 +20,7 @@ clap = { version = "~2.33", features = ["yaml"] }
 
 [dependencies.codegen]
 package ="molecule-codegen"
-version = "=0.4.0"
+version = "=0.4.1"
 path = "../codegen"
 
 [badges]
