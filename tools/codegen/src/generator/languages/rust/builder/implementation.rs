@@ -104,7 +104,7 @@ impl ImplBuilder for ast::FixVec {
         });
         quote!(
             fn expected_length(&self) -> usize {
-                molecule::NUMBER_SIZE * (self.0.len() + 1)
+                molecule::NUMBER_SIZE + Self::ITEM_SIZE * self.0.len()
             }
             fn write<W: ::std::io::Write>(&self, writer: &mut W) -> ::std::io::Result<()> {
                 writer.write_all(&molecule::pack_number(self.0.len() as molecule::Number))?;

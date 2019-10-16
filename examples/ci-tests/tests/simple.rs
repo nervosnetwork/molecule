@@ -24,10 +24,16 @@ macro_rules! test_default {
 
 macro_rules! test_option_set_default {
     ($type:ident, $type_inner:ident) => {
-        let result = types::$type::new_builder()
-            .set(Some(Default::default()))
-            .build();
         let expected = types::$type_inner::default();
+        let builder = types::$type::new_builder().set(Some(Default::default()));
+        assert_eq!(
+            expected.as_slice().len(),
+            builder.expected_length(),
+            "failed to check expected length for {}'s builder with {}",
+            stringify!($type),
+            stringify!($type_inner),
+        );
+        let result = builder.build();
         assert_eq!(
             result.as_slice(),
             expected.as_slice(),
@@ -46,8 +52,9 @@ macro_rules! test_vector_push_default {
         let _ = test_vector_push_default!($type, t, $expected3);
     };
     ($type:ident, $input:ident, $expected:expr) => {{
-        let result = $input.as_builder().push(Default::default()).build();
         let expected = $expected;
+        let builder = $input.as_builder().push(Default::default());
+        let result = builder.build();
         assert_eq!(
             result.as_slice(),
             &expected[..],
@@ -58,6 +65,13 @@ macro_rules! test_vector_push_default {
         assert!(
             types::$type::from_slice(result.as_slice()).is_ok(),
             "failed to verify {} with {} items",
+            stringify!($type),
+            result.len(),
+        );
+        assert_eq!(
+            expected.len(),
+            builder.expected_length(),
+            "failed to check expected length for {}'s builder with {} items",
             stringify!($type),
             result.len(),
         );

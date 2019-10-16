@@ -7,7 +7,14 @@ use molecule_ci_tests::testset;
 macro_rules! build_empty {
     ($type:ident) => {
         let expected = $type::default();
-        let result = $type::new_builder().build();
+        let builder = $type::new_builder();
+        assert_eq!(
+            expected.as_slice().len(),
+            builder.expected_length(),
+            "failed to check expected length for {}'s builder",
+            $type::NAME
+        );
+        let result = builder.build();
         assert_eq!(
             result.as_slice(),
             expected.as_slice(),
