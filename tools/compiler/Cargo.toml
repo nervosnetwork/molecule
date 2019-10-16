@@ -4,8 +4,8 @@ version = "0.4.0"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Schema compiler for molecule."
-homepage = "https://github.com/yangby-cryptape/molecule"
-repository = "https://github.com/yangby-cryptape/molecule"
+homepage = "https://github.com/nervosnetwork/molecule"
+repository = "https://github.com/nervosnetwork/molecule"
 keywords = ["molecule", "code-generation", "serialization"]
 categories = [
     "parser-implementations",

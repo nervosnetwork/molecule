@@ -1,12 +1,12 @@
 # Molecule
 
 [![License]](#license)
-[![Travis CI]](https://travis-ci.com/yangby-cryptape/molecule)
+[![Travis CI]](https://travis-ci.com/nervosnetwork/molecule)
 
 Another serialization system: minimalist and canonicalization.
 
 [License]: https://img.shields.io/badge/License-MIT-blue.svg
-[Travis CI]: https://img.shields.io/travis/com/yangby-cryptape/molecule.svg
+[Travis CI]: https://img.shields.io/travis/com/nervosnetwork/molecule.svg
 
 ## Grammar of the Schema Language
 
