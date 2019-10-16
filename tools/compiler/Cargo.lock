@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "molecule-codegen"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "case 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "molecule 0.4.0",
@@ -148,10 +148,10 @@ dependencies = [
 
 [[package]]
 name = "moleculec"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "molecule-codegen 0.4.0",
+ "molecule-codegen 0.4.1",
 ]
 
 [[package]]
