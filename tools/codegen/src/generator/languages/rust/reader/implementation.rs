@@ -59,7 +59,7 @@ impl ImplReader for ast::Union {
                 use molecule::verification_error as ve;
                 let slice_len = slice.len();
                 if slice_len < molecule::NUMBER_SIZE {
-                    ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len)?;
+                    return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                 }
                 let item_id = molecule::unpack_number(slice);
                 let inner_slice = &slice[molecule::NUMBER_SIZE..];
@@ -80,7 +80,7 @@ impl ImplReader for ast::Array {
                 use molecule::verification_error as ve;
                 let slice_len = slice.len();
                 if slice_len != Self::TOTAL_SIZE {
-                    ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len)?;
+                    return ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len);
                 }
                 Ok(())
             }
@@ -95,7 +95,7 @@ impl ImplReader for ast::Struct {
                 use molecule::verification_error as ve;
                 let slice_len = slice.len();
                 if slice_len != Self::TOTAL_SIZE {
-                    ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len)?;
+                    return ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len);
                 }
                 Ok(())
             }
@@ -110,18 +110,18 @@ impl ImplReader for ast::FixVec {
                 use molecule::verification_error as ve;
                 let slice_len = slice.len();
                 if slice_len < molecule::NUMBER_SIZE {
-                    ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len)?;
+                    return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                 }
                 let item_count = molecule::unpack_number(slice) as usize;
                 if item_count == 0 {
                     if slice_len != molecule::NUMBER_SIZE {
-                        ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE, slice_len)?;
+                        return ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE, slice_len);
                     }
                     return Ok(());
                 }
                 let total_size = molecule::NUMBER_SIZE + Self::ITEM_SIZE * item_count;
                 if slice_len != total_size {
-                    ve!(Self, TotalSizeNotMatch, total_size, slice_len)?;
+                    return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                 }
                 Ok(())
             }
@@ -137,26 +137,26 @@ impl ImplReader for ast::DynVec {
                 use molecule::verification_error as ve;
                 let slice_len = slice.len();
                 if slice_len < molecule::NUMBER_SIZE {
-                    ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len)?;
+                    return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                 }
                 let total_size = molecule::unpack_number(slice) as usize;
                 if slice_len != total_size {
-                    ve!(Self, TotalSizeNotMatch, total_size, slice_len)?;
+                    return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                 }
                 if slice_len == molecule::NUMBER_SIZE {
-                    return Ok(())
+                    return Ok(());
                 }
                 if slice_len < molecule::NUMBER_SIZE * 2 {
-                    ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE * 2, slice_len)?;
+                    return ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE * 2, slice_len);
                 }
                 let offset_first = molecule::unpack_number(&slice[molecule::NUMBER_SIZE..]) as usize;
                 if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
-                    ve!(Self, OffsetsNotMatch)?;
+                    return ve!(Self, OffsetsNotMatch);
                 }
                 let item_count = offset_first / 4 - 1;
                 let header_size = molecule::NUMBER_SIZE * (item_count + 1);
                 if slice_len < header_size {
-                    ve!(Self, HeaderIsBroken, header_size, slice_len)?;
+                    return ve!(Self, HeaderIsBroken, header_size, slice_len);
                 }
                 let ptr = molecule::unpack_number_vec(&slice[molecule::NUMBER_SIZE..]);
                 let mut offsets: Vec<usize> = ptr[..item_count]
@@ -165,7 +165,7 @@ impl ImplReader for ast::DynVec {
                     .collect();
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] > i[1]) {
-                    ve!(Self, OffsetsNotMatch)?;
+                    return ve!(Self, OffsetsNotMatch);
                 }
                 for pair in offsets.windows(2) {
                     let start = pair[0];
@@ -189,14 +189,14 @@ impl ImplReader for ast::Table {
                     use molecule::verification_error as ve;
                     let slice_len = slice.len();
                     if slice_len < molecule::NUMBER_SIZE {
-                        ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len)?;
+                        return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                     }
                     let total_size = molecule::unpack_number(slice) as usize;
                     if slice_len != total_size {
-                        ve!(Self, TotalSizeNotMatch, total_size, slice_len)?;
+                        return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                     }
                     if slice_len > molecule::NUMBER_SIZE && !compatible {
-                        ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, !0)?;
+                        return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, !0);
                     }
                     Ok(())
                 }
@@ -215,31 +215,31 @@ impl ImplReader for ast::Table {
                     use molecule::verification_error as ve;
                     let slice_len = slice.len();
                     if slice_len < molecule::NUMBER_SIZE {
-                        ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len)?;
+                        return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                     }
                     let total_size = molecule::unpack_number(slice) as usize;
                     if slice_len != total_size {
-                        ve!(Self, TotalSizeNotMatch, total_size, slice_len)?;
+                        return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                     }
                     if slice_len == molecule::NUMBER_SIZE && Self::FIELD_COUNT == 0 {
                         return Ok(());
                     }
                     if slice_len < molecule::NUMBER_SIZE * 2 {
-                        ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE * 2, slice_len)?;
+                        return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE * 2, slice_len);
                     }
                     let offset_first = molecule::unpack_number(&slice[molecule::NUMBER_SIZE..]) as usize;
                     if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
-                        ve!(Self, OffsetsNotMatch)?;
+                        return ve!(Self, OffsetsNotMatch);
                     }
                     let field_count = offset_first / 4 - 1;
                     if field_count < Self::FIELD_COUNT {
-                        ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count)?;
+                        return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     } else if !compatible && field_count > Self::FIELD_COUNT {
-                        ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count)?;
+                        return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     };
                     let header_size = molecule::NUMBER_SIZE * (field_count + 1);
                     if slice_len < header_size {
-                        ve!(Self, HeaderIsBroken, header_size, slice_len)?;
+                        return ve!(Self, HeaderIsBroken, header_size, slice_len);
                     }
                     let ptr = molecule::unpack_number_vec(&slice[molecule::NUMBER_SIZE..]);
                     let mut offsets: Vec<usize> = ptr[..field_count]
@@ -248,7 +248,7 @@ impl ImplReader for ast::Table {
                         .collect();
                     offsets.push(total_size);
                     if offsets.windows(2).any(|i| i[0] > i[1]) {
-                        ve!(Self, OffsetsNotMatch)?;
+                        return ve!(Self, OffsetsNotMatch);
                     }
                     #( #verify_fields )*
                     Ok(())
