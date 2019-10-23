@@ -30,10 +30,19 @@ where
             #[derive(Clone, Copy)]
             pub struct #reader<'r>(&'r [u8]);
 
-            impl<'r> ::std::fmt::Debug for #reader<'r> {
+            impl<'r> ::std::fmt::LowerHex for #reader<'r> {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     use molecule::faster_hex::hex_string;
-                    write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
+                    if f.alternate() {
+                        write!(f, "0x")?;
+                    }
+                    write!(f, "{}", hex_string(self.as_slice()).unwrap())
+                }
+            }
+
+            impl<'r> ::std::fmt::Debug for #reader<'r> {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    write!(f, "{}({:#x})", Self::NAME, self)
                 }
             }
 

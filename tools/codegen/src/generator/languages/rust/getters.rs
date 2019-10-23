@@ -77,7 +77,7 @@ impl ImplGetters for ast::Union {
                 let inner = #getter_stmt;
                 match self.item_id() {
                     #( #match_stmts )*
-                    _ => unreachable!(),
+                    _ => panic!("{}: invalid data", Self::NAME),
                 }
             }
         )

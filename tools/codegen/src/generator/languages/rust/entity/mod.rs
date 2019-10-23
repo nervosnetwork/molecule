@@ -36,10 +36,19 @@ where
             #[derive(Clone)]
             pub struct #entity(molecule::bytes::Bytes);
 
-            impl ::std::fmt::Debug for #entity {
+            impl ::std::fmt::LowerHex for #entity {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                     use molecule::faster_hex::hex_string;
-                    write!(f, "{}(0x{})", Self::NAME, hex_string(self.as_slice()).unwrap())
+                    if f.alternate() {
+                        write!(f, "0x")?;
+                    }
+                    write!(f, "{}", hex_string(self.as_slice()).unwrap())
+                }
+            }
+
+            impl ::std::fmt::Debug for #entity {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    write!(f, "{}({:#x})", Self::NAME, self)
                 }
             }
 

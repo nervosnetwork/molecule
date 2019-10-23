@@ -7,6 +7,8 @@ fn display_empty_data() {
     println!("EmptyData Length = {}\n", data.as_slice().len());
     println!("EmptyData Debug:\n{:?}\n", data);
     println!("EmptyData Display:\n{}\n", data);
+    println!("EmptyData LowerHex:\n{:x}\n", data);
+    println!("EmptyData LowerHex (alternate):\n{:#x}\n", data);
 }
 
 fn display_test_data() {
