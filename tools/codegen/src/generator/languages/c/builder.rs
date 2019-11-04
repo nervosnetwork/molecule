@@ -30,7 +30,12 @@ pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
             let macro_content = format!("{}(b)", func_name);
             self.define_builder_macro(writer, "_build(b)", &macro_content)?;
         } else {
-            self.define_builder_function(writer, "_build", "(mol_builder_t)", "mol_seg_res_t")?;
+            self.define_builder_function(
+                writer,
+                "_build",
+                "(mol_builder_t)",
+                "MOLECULE_API_DECORATOR mol_seg_res_t",
+            )?;
         }
         Ok(())
     }
@@ -38,7 +43,7 @@ pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
     fn gen_default<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         let default_content = self.default_content();
         let constant_name = format!(
-            "const uint8_t {}[{}]",
+            "MOLECULE_API_DECORATOR const uint8_t {}[{}]",
             self.default_constant(),
             default_content.len()
         );
@@ -267,7 +272,11 @@ impl GenBuilder for ast::Table {
     fn gen_builder_function_build<W: io::Write>(&self, o: &mut W) -> io::Result<()> {
         let func_name = format!("{}_build", self.builder_prefix());
         let offset = molecule::NUMBER_SIZE * (self.inner.len() + 1);
-        w!(o, "mol_seg_res_t {} (mol_builder_t builder) {{ ", func_name);
+        w!(
+            o,
+            "MOLECULE_API_DECORATOR mol_seg_res_t {} (mol_builder_t builder) {{ ",
+            func_name
+        );
         w!(o, "    mol_seg_res_t res;                                 ");
         w!(o, "    res.errno = MOL_OK;                                ");
         w!(o, "    mol_num_t offset = {};                     ", offset);

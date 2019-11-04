@@ -28,7 +28,7 @@ impl GenReader for ast::Option_ {
                 writer,
                 "_verify",
                 "(const mol_seg_t*, bool)",
-                "mol_errno",
+                "MOLECULE_API_DECORATOR mol_errno",
             )?;
         }
         {
@@ -41,7 +41,7 @@ impl GenReader for ast::Option_ {
         let func_name = format!("{}_verify", self.reader_prefix());
         w!(
             o,
-            "mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
+            "MOLECULE_API_DECORATOR mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
             func_name
         );
         if self.typ.is_atom() {
@@ -67,7 +67,7 @@ impl GenReader for ast::Union {
                 writer,
                 "_verify",
                 "(const mol_seg_t*, bool)",
-                "mol_errno",
+                "MOLECULE_API_DECORATOR mol_errno",
             )?;
         }
         {
@@ -80,7 +80,7 @@ impl GenReader for ast::Union {
         let func_name = format!("{}_verify", self.reader_prefix());
         w!(
             o,
-            "mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
+            "MOLECULE_API_DECORATOR mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
             func_name
         );
         w!(o, "    if (input->size < MOL_NUM_T_SIZE) {{               ");
@@ -171,7 +171,7 @@ impl GenReader for ast::DynVec {
                 writer,
                 "_verify",
                 "(const mol_seg_t*, bool)",
-                "mol_errno",
+                "MOLECULE_API_DECORATOR mol_errno",
             )?;
         }
         {
@@ -188,7 +188,7 @@ impl GenReader for ast::DynVec {
         let f = format!("{}_verify", self.typ.reader_prefix());
         w!(
             o,
-            "mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
+            "MOLECULE_API_DECORATOR mol_errno {} (const mol_seg_t *input, bool compatible) {{    ",
             func_name
         );
         w!(o, "    if (input->size < MOL_NUM_T_SIZE) {{               ");
@@ -249,7 +249,7 @@ impl GenReader for ast::Table {
                 writer,
                 "_verify",
                 "(const mol_seg_t*, bool)",
-                "mol_errno",
+                "MOLECULE_API_DECORATOR mol_errno",
             )?;
         }
         {
@@ -276,7 +276,7 @@ impl GenReader for ast::Table {
         let fc = self.inner.len();
         w!(
             o,
-            "mol_errno {} (const mol_seg_t *input, bool compatible) {{",
+            "MOLECULE_API_DECORATOR mol_errno {} (const mol_seg_t *input, bool compatible) {{",
             func_name
         );
         w!(o, "    if (input->size < MOL_NUM_T_SIZE) {{               ");
