@@ -13,3 +13,4 @@ pub use generator::Language;
 pub(crate) use parser::Parser;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const C_API_VERSION_MIN: &str = "0.4.0";
