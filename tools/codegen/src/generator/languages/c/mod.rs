@@ -33,6 +33,11 @@ impl Generator {
         w!(o, "#define _CPP_BEGIN extern \"C\" {{                     ");
         w!(o, "#define _CPP_END }}                                    ");
         w!(o, "_CPP_BEGIN                                             ");
+        w!(o, "                                                       ");
+        w!(o, "#ifndef MOLECULE_API_DECORATOR                         ");
+        w!(o, "#define MOLECULE_API_DECORATOR                         ");
+        w!(o, "#endif /* MOLECULE_API_DECORATOR */                    ");
+        w!(o, "                                                       ");
         w!(o, "#endif /* __cplusplus */                               ");
         Ok(())
     }

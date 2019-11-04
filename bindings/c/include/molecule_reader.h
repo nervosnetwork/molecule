@@ -10,6 +10,10 @@ _CPP_BEGIN
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifndef MOLECULE_API_DECORATOR
+#define MOLECULE_API_DECORATOR
+#endif /* MOLECULE_API_DECORATOR */
+
 /*
  * This part is not for normal users.
  */
@@ -64,7 +68,7 @@ typedef struct {
 
 /* Utilities. */
 
-mol_num_t mol_unpack_number(const uint8_t *src) {
+MOLECULE_API_DECORATOR mol_num_t mol_unpack_number(const uint8_t *src) {
     if (is_le()) {
         return *(const uint32_t *)src;
     } else {
@@ -86,12 +90,12 @@ mol_num_t mol_unpack_number(const uint8_t *src) {
 /* Verify Functions. */
 
 // Verify Array / Struct.
-mol_errno mol_verify_fixed_size(const mol_seg_t *input, mol_num_t total_size) {
+MOLECULE_API_DECORATOR mol_errno mol_verify_fixed_size(const mol_seg_t *input, mol_num_t total_size) {
     return input->size == total_size ? MOL_OK : MOL_ERR_TOTAL_SIZE;
 }
 
 // Verify FixVec.
-mol_errno mol_fixvec_verify(const mol_seg_t *input, mol_num_t item_size) {
+MOLECULE_API_DECORATOR mol_errno mol_fixvec_verify(const mol_seg_t *input, mol_num_t item_size) {
     if (input->size < MOL_NUM_T_SIZE) {
         return MOL_ERR_HEADER;
     }
@@ -114,12 +118,12 @@ mol_errno mol_fixvec_verify(const mol_seg_t *input, mol_num_t item_size) {
  */
 
 // Check if an Option is None.
-bool mol_option_is_none(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR bool mol_option_is_none(const mol_seg_t *input) {
     return input->size == 0;
 }
 
 // Get the inner of a Union.
-mol_union_t mol_union_unpack(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR mol_union_t mol_union_unpack(const mol_seg_t *input) {
     mol_union_t ret;
     ret.item_id = mol_unpack_number(input->ptr);
     ret.seg.ptr = input->ptr + MOL_NUM_T_SIZE;
@@ -128,12 +132,12 @@ mol_union_t mol_union_unpack(const mol_seg_t *input) {
 }
 
 // Get the length of a FixVec.
-mol_num_t mol_fixvec_length(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR mol_num_t mol_fixvec_length(const mol_seg_t *input) {
     return mol_unpack_number(input->ptr);
 }
 
 // Get the length of a DynVec.
-mol_num_t mol_dynvec_length(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR mol_num_t mol_dynvec_length(const mol_seg_t *input) {
     if (input->size == MOL_NUM_T_SIZE) {
         return 0;
     } else {
@@ -142,17 +146,17 @@ mol_num_t mol_dynvec_length(const mol_seg_t *input) {
 }
 
 // Get the actual field count of a Table.
-mol_num_t mol_table_actual_field_count(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR mol_num_t mol_table_actual_field_count(const mol_seg_t *input) {
     return mol_dynvec_length(input);
 }
 
 // If a Table has extra fields.
-bool mol_table_has_extra_fields(const mol_seg_t *input, mol_num_t field_count) {
+MOLECULE_API_DECORATOR bool mol_table_has_extra_fields(const mol_seg_t *input, mol_num_t field_count) {
     return mol_table_actual_field_count(input) > field_count;
 }
 
 // Slice a segment for Array / Struct by offset.
-mol_seg_t mol_slice_by_offset(const mol_seg_t *input, mol_num_t offset, mol_num_t size) {
+MOLECULE_API_DECORATOR mol_seg_t mol_slice_by_offset(const mol_seg_t *input, mol_num_t offset, mol_num_t size) {
     mol_seg_t seg;
     seg.ptr = input->ptr + offset;
     seg.size = size;
@@ -160,7 +164,7 @@ mol_seg_t mol_slice_by_offset(const mol_seg_t *input, mol_num_t offset, mol_num_
 }
 
 // Slice a segment for FixVec by index.
-mol_seg_res_t mol_fixvec_slice_by_index(const mol_seg_t *input, mol_num_t item_size, mol_num_t item_index) {
+MOLECULE_API_DECORATOR mol_seg_res_t mol_fixvec_slice_by_index(const mol_seg_t *input, mol_num_t item_size, mol_num_t item_index) {
     mol_seg_res_t res;
     mol_num_t item_count = mol_unpack_number(input->ptr);
     if (item_index >= item_count) {
@@ -174,7 +178,7 @@ mol_seg_res_t mol_fixvec_slice_by_index(const mol_seg_t *input, mol_num_t item_s
 }
 
 // Slice a segment for DynVec by index.
-mol_seg_res_t mol_dynvec_slice_by_index(const mol_seg_t *input, mol_num_t item_index) {
+MOLECULE_API_DECORATOR mol_seg_res_t mol_dynvec_slice_by_index(const mol_seg_t *input, mol_num_t item_index) {
     mol_seg_res_t res;
     mol_num_t total_size = mol_unpack_number(input->ptr);
     if (total_size == MOL_NUM_T_SIZE) {
@@ -202,13 +206,13 @@ mol_seg_res_t mol_dynvec_slice_by_index(const mol_seg_t *input, mol_num_t item_i
 
 
 // Slice a segment for Table by index.
-mol_seg_t mol_table_slice_by_index(const mol_seg_t *input, mol_num_t field_index) {
+MOLECULE_API_DECORATOR mol_seg_t mol_table_slice_by_index(const mol_seg_t *input, mol_num_t field_index) {
     mol_seg_res_t res = mol_dynvec_slice_by_index(input, field_index);
     return res.seg;
 }
 
 // Slice the raw bytes from a `vector <byte>` (FixVec, with a header).
-mol_seg_t mol_fixvec_slice_raw_bytes(const mol_seg_t *input) {
+MOLECULE_API_DECORATOR mol_seg_t mol_fixvec_slice_raw_bytes(const mol_seg_t *input) {
     mol_seg_t seg;
     seg.ptr = input->ptr + MOL_NUM_T_SIZE;
     seg.size = mol_unpack_number(input->ptr);
