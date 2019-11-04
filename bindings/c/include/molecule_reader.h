@@ -11,6 +11,7 @@ _CPP_BEGIN
 #include <stdint.h>
 
 #ifndef MOLECULE_API_DECORATOR
+#define __DEFINE_MOLECULE_API_DECORATOR
 #define MOLECULE_API_DECORATOR
 #endif /* MOLECULE_API_DECORATOR */
 
@@ -224,6 +225,11 @@ MOLECULE_API_DECORATOR mol_seg_t mol_fixvec_slice_raw_bytes(const mol_seg_t *inp
  */
 
 #undef is_le
+
+#ifdef __DEFINE_MOLECULE_API_DECORATOR
+#undef MOLECULE_API_DECORATOR
+#undef __DEFINE_MOLECULE_API_DECORATOR
+#endif /* __DEFINE_MOLECULE_API_DECORATOR */
 
 #ifdef __cplusplus
 _CPP_END

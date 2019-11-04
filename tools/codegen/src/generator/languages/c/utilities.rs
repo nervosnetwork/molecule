@@ -2,6 +2,8 @@ use std::io;
 
 use crate::ast::verified::{self as ast, HasName};
 
+pub(super) const API_DECORATOR: &str = "MOLECULE_API_DECORATOR";
+
 macro_rules! w {
     ($writer:ident, $( $args:tt )*) => {
         writeln!($writer, "{}", format!($( $args )*).trim_end())?;
@@ -19,6 +21,10 @@ pub(super) trait IdentPrefix: HasName {
 
     fn default_constant(&self) -> String {
         format!("MolDefault_{}", self.name())
+    }
+
+    fn api_decorator(&self) -> &str {
+        API_DECORATOR
     }
 
     fn define_reader_macro<W: io::Write>(
@@ -74,7 +80,7 @@ pub(super) trait IdentPrefix: HasName {
         let macro_sig = format!("{}{}", prefix, macro_sig_tail);
         writeln!(
             writer,
-            "{:15} {:47} {}",
+            "{:39} {:47} {}",
             "#define", macro_sig, macro_content
         )
     }
@@ -93,7 +99,14 @@ pub(super) trait IdentPrefix: HasName {
             self.builder_prefix()
         };
         let func_name = format!("{}{}", prefix, func_sig_tail);
-        writeln!(writer, "{:15} {:47} {};", func_ret, func_name, func_args)
+        writeln!(
+            writer,
+            "{:23} {:15} {:47} {};",
+            self.api_decorator(),
+            func_ret,
+            func_name,
+            func_args
+        )
     }
 }
 

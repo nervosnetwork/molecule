@@ -26,6 +26,7 @@ impl Generator {
 
     fn ifndef<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
         let n = name.to_snake().to_uppercase();
+        let api_decorator = utilities::API_DECORATOR;
         w!(o, "#ifndef {}_H                                        ", n);
         w!(o, "#define {}_H                                        ", n);
         w!(o, "                                                       ");
@@ -33,17 +34,24 @@ impl Generator {
         w!(o, "#define _CPP_BEGIN extern \"C\" {{                     ");
         w!(o, "#define _CPP_END }}                                    ");
         w!(o, "_CPP_BEGIN                                             ");
-        w!(o, "                                                       ");
-        w!(o, "#ifndef MOLECULE_API_DECORATOR                         ");
-        w!(o, "#define MOLECULE_API_DECORATOR                         ");
-        w!(o, "#endif /* MOLECULE_API_DECORATOR */                    ");
-        w!(o, "                                                       ");
         w!(o, "#endif /* __cplusplus */                               ");
+        w!(o, "                                                       ");
+        w!(o, "#ifndef {}                              ", api_decorator);
+        w!(o, "#define __DEFINE_MOLECULE_API_DECORATOR                ");
+        w!(o, "#define {}                              ", api_decorator);
+        w!(o, "#endif /* {} */                         ", api_decorator);
         Ok(())
     }
 
     fn endif<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
         let n = name.to_snake().to_uppercase();
+        let api_decorator = utilities::API_DECORATOR;
+        w!(o, "                                                       ");
+        w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR                 ");
+        w!(o, "#undef {}                               ", api_decorator);
+        w!(o, "#undef __DEFINE_MOLECULE_API_DECORATOR                 ");
+        w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR */           ");
+        w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
         w!(o, "_CPP_END                                               ");
         w!(o, "#undef _CPP_BEGIN                                      ");
