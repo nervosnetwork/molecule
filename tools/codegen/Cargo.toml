@@ -23,6 +23,7 @@ quote = "~0.6"
 proc-macro2 = "~0.4"
 case = "~1.0"
 same-file = "~1.0"
+semver = "~0.9"
 
 [badges]
 maintenance = { status = "experimental" }

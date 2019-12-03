@@ -14,6 +14,7 @@ _CPP_BEGIN
 #include "molecule_reader.h"
 
 #ifndef MOLECULE_API_DECORATOR
+#define __DEFINE_MOLECULE_API_DECORATOR
 #define MOLECULE_API_DECORATOR
 #endif /* MOLECULE_API_DECORATOR */
 
@@ -279,6 +280,11 @@ MOLECULE_API_DECORATOR mol_seg_res_t mol_dynvec_builder_finalize(mol_builder_t b
  */
 
 #undef is_le
+
+#ifdef __DEFINE_MOLECULE_API_DECORATOR
+#undef MOLECULE_API_DECORATOR
+#undef __DEFINE_MOLECULE_API_DECORATOR
+#endif /* __DEFINE_MOLECULE_API_DECORATOR */
 
 #ifdef __cplusplus
 _CPP_END
