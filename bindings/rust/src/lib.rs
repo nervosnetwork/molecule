@@ -1,4 +1,9 @@
-use std::mem::size_of;
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[macro_use]
+extern crate failure;
+
+use core::mem::size_of;
 
 pub mod error;
 pub mod prelude;

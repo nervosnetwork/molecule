@@ -1,4 +1,4 @@
-use std::{error, fmt, result};
+use core::{fmt, result};
 
 use crate::Number;
 
@@ -6,17 +6,17 @@ use crate::Number;
 #[macro_export]
 macro_rules! verification_error {
     ($self:ident, $err:ident $(, $args:expr )*) => {
-        Err($crate::error::VerificationError::$err($self::NAME.to_owned() $(, $args )*))
+        Err($crate::error::VerificationError::$err($self::NAME $(, $args )*))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum VerificationError {
-    TotalSizeNotMatch(String, usize, usize),
-    HeaderIsBroken(String, usize, usize),
-    UnknownItem(String, usize, Number),
-    OffsetsNotMatch(String),
-    FieldCountNotMatch(String, usize, usize),
+    TotalSizeNotMatch(&'static str, usize, usize),
+    HeaderIsBroken(&'static str, usize, usize),
+    UnknownItem(&'static str, usize, Number),
+    OffsetsNotMatch(&'static str),
+    FieldCountNotMatch(&'static str, usize, usize),
 }
 
 pub type VerificationResult<T> = result::Result<T, VerificationError>;
@@ -60,9 +60,7 @@ impl fmt::Display for VerificationError {
     }
 }
 
-impl error::Error for VerificationError {}
-
-#[derive(Debug)]
+#[derive(Debug, Fail)]
 pub enum Error {
     Verification(VerificationError),
 }
@@ -79,5 +77,3 @@ impl fmt::Display for Error {
         Ok(())
     }
 }
-
-impl error::Error for Error {}

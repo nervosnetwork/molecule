@@ -10,9 +10,14 @@ keywords = ["serialization"]
 categories = ["encoding", "data-structures"]
 license = "MIT"
 
+[features]
+default = ["std"]
+std = []
+
 [dependencies]
 bytes = "~0.4"
 faster-hex = "~0.4"
+failure = { version = "0.1", default-features = false, features = ["derive"] }
 
 [badges]
 maintenance = { status = "experimental" }

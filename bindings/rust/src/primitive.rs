@@ -1,4 +1,4 @@
-use std::{default::Default, fmt};
+use core::{default::Default, fmt};
 
 use crate::{bytes::Bytes, error::VerificationResult, verification_error};
 
@@ -80,7 +80,7 @@ impl Byte {
 
 // As Reader
 impl<'r> ByteReader<'r> {
-    pub const NAME: &'r str = "ByteReader";
+    pub const NAME: &'static str = "ByteReader";
 
     #[inline]
     pub fn to_entity(self) -> Byte {
