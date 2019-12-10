@@ -1,6 +1,6 @@
 ci: ci-example ci-rust ci-c
 
-RUST_PROJS = examples/ci-tests bindings/rust tools/codegen tools/compiler
+RUST_PROJS = examples/ci-tests examples/nostd-tests bindings/rust tools/codegen tools/compiler
 C_PROJS = examples/ci-tests
 
 clean:

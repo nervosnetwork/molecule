@@ -30,8 +30,8 @@ where
             #[derive(Clone, Copy)]
             pub struct #reader<'r>(&'r [u8]);
 
-            impl<'r> ::std::fmt::LowerHex for #reader<'r> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl<'r> ::core::fmt::LowerHex for #reader<'r> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     use molecule::faster_hex::hex_string;
                     if f.alternate() {
                         write!(f, "0x")?;
@@ -40,14 +40,14 @@ where
                 }
             }
 
-            impl<'r> ::std::fmt::Debug for #reader<'r> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl<'r> ::core::fmt::Debug for #reader<'r> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     write!(f, "{}({:#x})", Self::NAME, self)
                 }
             }
 
-            impl<'r> ::std::fmt::Display for #reader<'r> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl<'r> ::core::fmt::Display for #reader<'r> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     #display_stmts
                 }
             }

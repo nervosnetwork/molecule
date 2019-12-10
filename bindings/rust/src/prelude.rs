@@ -41,5 +41,6 @@ pub trait Builder: Default {
     fn expected_length(&self) -> usize;
     #[cfg(feature = "std")]
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
+    fn write_buf<B: bytes::BufMut>(&self, buf: &mut B);
     fn build(&self) -> Self::Entity;
 }
