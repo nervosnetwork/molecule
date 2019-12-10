@@ -38,11 +38,11 @@ where
 
             impl ::core::fmt::LowerHex for #entity {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                    use molecule::faster_hex::hex_string;
+                    use molecule::hex_string;
                     if f.alternate() {
                         write!(f, "0x")?;
                     }
-                    write!(f, "{}", hex_string(self.as_slice()).unwrap())
+                    write!(f, "{}", hex_string(self.as_slice()))
                 }
             }
 

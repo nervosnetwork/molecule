@@ -6,11 +6,12 @@ extern crate failure;
 use core::mem::size_of;
 
 pub mod error;
+mod hex;
 pub mod prelude;
 mod primitive;
 
 pub use bytes;
-pub use faster_hex;
+pub use hex::hex_string;
 
 // Little Endian
 pub type Number = u32;

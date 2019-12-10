@@ -1,0 +1,9 @@
+target/
+Cargo.lock
+
+c/ci_tests_api.h
+c/ci_tests_gen.h
+
+/tmp
+/ci_test_simple
+/ci_test_build

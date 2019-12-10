@@ -74,7 +74,7 @@ impl GenEnumerator for ast::Union {
         let entity_default = {
             let inner = &self.inner[0];
             let item_name = union_item_name(inner.typ.name());
-            quote!(#item_name(::std::default::Default::default()))
+            quote!(#item_name(::core::default::Default::default()))
         };
         let code_union_definitions_and_impl_traits = quote!(
             #[derive(Debug, Clone)]
@@ -86,14 +86,14 @@ impl GenEnumerator for ast::Union {
                 #( #union_items(#reader_inners<'r>), )*
             }
 
-            impl ::std::default::Default for #entity_union {
+            impl ::core::default::Default for #entity_union {
                 fn default() -> Self {
                     #entity_union::#entity_default
                 }
             }
 
-            impl ::std::fmt::Display for #entity_union {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl ::core::fmt::Display for #entity_union {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #(
                             #entity_union_item_paths(ref item) => {
@@ -103,8 +103,8 @@ impl GenEnumerator for ast::Union {
                     }
                 }
             }
-            impl<'r> ::std::fmt::Display for #reader_union<'r> {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl<'r> ::core::fmt::Display for #reader_union<'r> {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #(
                             #reader_union_item_paths(ref item) => {
@@ -116,14 +116,14 @@ impl GenEnumerator for ast::Union {
             }
 
             impl #entity_union {
-                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                pub(crate) fn display_inner(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #( #entity_union_item_paths(ref item) => write!(f, "{}", item), )*
                     }
                 }
             }
             impl<'r> #reader_union<'r> {
-                pub(crate) fn display_inner(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                pub(crate) fn display_inner(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #( #reader_union_item_paths(ref item) => write!(f, "{}", item), )*
                     }
@@ -135,7 +135,7 @@ impl GenEnumerator for ast::Union {
             .zip(entity_inners.iter())
             .map(|(item_name, entity_name)| {
                 quote!(
-                    impl ::std::convert::From<#entity_name> for #entity_union {
+                    impl ::core::convert::From<#entity_name> for #entity_union {
                         fn from(item: #entity_name) -> Self {
                             #entity_union::#item_name(item)
                         }
@@ -148,7 +148,7 @@ impl GenEnumerator for ast::Union {
             .zip(reader_inners.iter())
             .map(|(item_name, reader_name)| {
                 quote!(
-                    impl<'r> ::std::convert::From<#reader_name<'r>> for #reader_union<'r> {
+                    impl<'r> ::core::convert::From<#reader_name<'r>> for #reader_union<'r> {
                         fn from(item: #reader_name<'r>) -> Self {
                             #reader_union::#item_name(item)
                         }

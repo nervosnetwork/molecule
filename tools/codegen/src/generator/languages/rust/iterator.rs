@@ -29,7 +29,7 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> 
     let reader_inner = reader_name(inner_name);
     let common_part = quote!(
         pub struct #entity_iterator (#entity, usize, usize);
-        impl ::std::iter::Iterator for #entity_iterator {
+        impl ::core::iter::Iterator for #entity_iterator {
             type Item = #entity_inner;
             fn next(&mut self) -> Option<Self::Item> {
                 if self.1 >= self.2 {
@@ -41,12 +41,12 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> 
                 }
             }
         }
-        impl ::std::iter::ExactSizeIterator for #entity_iterator {
+        impl ::core::iter::ExactSizeIterator for #entity_iterator {
             fn len(&self) -> usize {
                 self.2 - self.1
             }
         }
-        impl ::std::iter::IntoIterator for #entity {
+        impl ::core::iter::IntoIterator for #entity {
             type Item = #entity_inner;
             type IntoIter = #entity_iterator;
             fn into_iter(self) -> Self::IntoIter {
@@ -67,7 +67,7 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> 
                 }
             }
             pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, usize, usize);
-            impl<'t: 'r, 'r> ::std::iter::Iterator for #reader_iterator<'t, 'r> {
+            impl<'t: 'r, 'r> ::core::iter::Iterator for #reader_iterator<'t, 'r> {
                 type Item = #reader_inner<'t>;
                 fn next(&mut self) -> Option<Self::Item> {
                     if self.1 >= self.2 {
@@ -79,7 +79,7 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> 
                     }
                 }
             }
-            impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for #reader_iterator<'t, 'r> {
+            impl<'t: 'r, 'r> ::core::iter::ExactSizeIterator for #reader_iterator<'t, 'r> {
                 fn len(&self) -> usize {
                     self.2 - self.1
                 }

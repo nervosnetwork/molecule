@@ -1,6 +1,4 @@
 use core::{clone::Clone, default::Default, fmt};
-#[cfg(feature = "std")]
-use std::io;
 
 use bytes::Bytes;
 
@@ -39,8 +37,6 @@ pub trait Builder: Default {
     type Entity: Entity;
     const NAME: &'static str;
     fn expected_length(&self) -> usize;
-    #[cfg(feature = "std")]
-    fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
     fn write_buf<B: bytes::BufMut>(&self, buf: &mut B);
     fn build(&self) -> Self::Entity;
 }

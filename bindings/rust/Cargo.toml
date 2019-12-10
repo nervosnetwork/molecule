@@ -12,12 +12,12 @@ license = "MIT"
 
 [features]
 default = ["std"]
-std = []
+std = ["faster-hex"]
 
 [dependencies]
-bytes = "~0.4"
-faster-hex = "~0.4"
+bytes = { version = "~0.5", default-features = false }
 failure = { version = "0.1", default-features = false, features = ["derive"] }
+faster-hex = { version = "~0.4", optional = true }
 
 [badges]
 maintenance = { status = "experimental" }

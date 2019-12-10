@@ -55,7 +55,7 @@ impl ImplGetters for ast::Union {
         let (getter_ret, getter_stmt) = if is_entity {
             let union = entity_union_name(self.name());
             let getter_ret = quote!(#union);
-            let getter_stmt = quote!(self.0.slice_from(molecule::NUMBER_SIZE));
+            let getter_stmt = quote!(self.0.slice(molecule::NUMBER_SIZE..));
             (getter_ret, getter_stmt)
         } else {
             let union = reader_union_name(self.name());
@@ -105,7 +105,7 @@ impl ImplGetters for ast::Array {
                 let start = usize_lit(self.item_size * i);
                 let end = usize_lit(self.item_size * (i + 1));
                 let getter_stmt = if is_entity {
-                    quote!(self.0.slice(#start, #end))
+                    quote!(self.0.slice(#start..#end))
                 } else {
                     quote!(&self.as_slice()[#start..#end])
                 };
@@ -150,7 +150,7 @@ impl ImplGetters for ast::Struct {
                 offset += s;
                 let end = usize_lit(offset);
                 let getter_stmt = if is_entity {
-                    quote!(self.0.slice(#start, #end))
+                    quote!(self.0.slice(#start..#end))
                 } else {
                     quote!(&self.as_slice()[#start..#end])
                 };
@@ -174,9 +174,9 @@ impl ImplGetters for ast::FixVec {
         let (inner, getter_ret, getter_stmt, getter_ret_atom, getter_stmt_atom) = if is_entity {
             let inner = entity_name(self.typ.name());
             let getter_ret = quote!(#inner);
-            let getter_stmt = quote!(self.0.slice(start, end));
+            let getter_stmt = quote!(self.0.slice(start..end));
             let getter_ret_atom = quote!(molecule::bytes::Bytes);
-            let getter_stmt_atom = quote!(self.0.slice_from(molecule::NUMBER_SIZE));
+            let getter_stmt_atom = quote!(self.0.slice(molecule::NUMBER_SIZE..));
             (
                 inner,
                 getter_ret,
@@ -230,8 +230,8 @@ impl ImplGetters for ast::DynVec {
         let (inner, getter_ret, getter_stmt_last, getter_stmt) = if is_entity {
             let inner = entity_name(self.typ.name());
             let getter_ret = quote!(#inner);
-            let getter_stmt_last = quote!(self.0.slice_from(start));
-            let getter_stmt = quote!(self.0.slice(start, end));
+            let getter_stmt_last = quote!(self.0.slice(start..));
+            let getter_stmt = quote!(self.0.slice(start..end));
             (inner, getter_ret, getter_stmt_last, getter_stmt)
         } else {
             let inner = reader_name(self.typ.name());
@@ -265,8 +265,8 @@ impl ImplGetters for ast::DynVec {
 impl ImplGetters for ast::Table {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let (getter_stmt_last, getter_stmt) = if is_entity {
-            let getter_stmt_last = quote!(self.0.slice_from(start));
-            let getter_stmt = quote!(self.0.slice(start, end));
+            let getter_stmt_last = quote!(self.0.slice(start..));
+            let getter_stmt = quote!(self.0.slice(start..end));
             (getter_stmt_last, getter_stmt)
         } else {
             let getter_stmt_last = quote!(&self.as_slice()[start..]);

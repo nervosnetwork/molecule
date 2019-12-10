@@ -42,6 +42,8 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer)?;
         let code = quote!(
             use molecule::prelude::*;
+            extern crate alloc;
+            use alloc::vec::Vec;
         );
         write!(writer, "{}", code)?;
         let major_imports = ast.major_imports();
