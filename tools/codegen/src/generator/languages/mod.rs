@@ -3,12 +3,14 @@ use std::{convert::TryFrom, io};
 use crate::ast::verified as ast;
 
 mod c;
+mod go;
 mod rust;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Language {
     C,
     Rust,
+    Go,
 }
 
 pub(super) trait LanguageGenerator {
@@ -21,6 +23,7 @@ impl TryFrom<&str> for Language {
         match value {
             "c" => Ok(Language::C),
             "rust" => Ok(Language::Rust),
+            "go" => Ok(Language::Go),
             lang => Err(format!("unsupport language: [{}]", lang)),
         }
     }
@@ -31,6 +34,7 @@ impl Language {
         match *self {
             Language::C => "h",
             Language::Rust => "rs",
+            Language::Go => "go",
         }
     }
 
@@ -38,6 +42,7 @@ impl Language {
         match self {
             Language::C => c::Generator::generate(writer, ast),
             Language::Rust => rust::Generator::generate(writer, ast),
+            Language::Go => go::Generator::generate(writer, ast),
         }
     }
 }
