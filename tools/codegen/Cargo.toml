@@ -16,7 +16,7 @@ categories = [
 license = "MIT"
 
 [dependencies]
-molecule = { version = "=0.4.0", path = "../../bindings/rust" }
+molecule = { version = "=0.4.0", path = "../../bindings/rust", default-features = false }
 pest = "~2.1"
 pest_derive = "~2.1"
 quote = "~0.6"

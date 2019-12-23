@@ -1,8 +1,7 @@
-use std::{clone::Clone, default::Default, fmt, io};
+pub use alloc::{borrow::ToOwned, vec, vec::Vec};
+use core::{clone::Clone, default::Default, fmt};
 
-use bytes::Bytes;
-
-use crate::error::VerificationResult;
+use crate::{bytes::Bytes, error::VerificationResult, io};
 
 pub use crate::primitive::{Byte, ByteReader};
 

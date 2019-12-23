@@ -26,7 +26,7 @@ impl ImplSetters for ast::Union {
         quote!(
             pub fn set<I>(mut self, v: I) -> Self
             where
-                I: ::std::convert::Into<#entity_union>
+                I: ::core::convert::Into<#entity_union>
             {
                 self.0 = v.into();
                 self
@@ -118,7 +118,7 @@ fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
             self.0.push(v);
             self
         }
-        pub fn extend<T: ::std::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
+        pub fn extend<T: ::core::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
             for elem in iter {
                 self.0.push(elem);
             }

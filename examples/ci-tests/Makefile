@@ -34,18 +34,23 @@ refresh-comipler:
 debug:
 	@cargo build
 
-test: test-rust test-c test-mixed
+test: test-rust test-rust-no-std test-c test-mixed
 
 test-rust:
 	@cargo test --all
+
+test-rust-no-std:
+	@cargo test --all --no-default-features
 
 test-c: ci_test_build
 	@./ci_test_build
 
 test-mixed: tmpdir ci_test_simple
 	@set -eu; \
-	cargo run        | grep "^AllInOneTestData :  " > "${TMPDIR}/testdata-rust"; \
-	./ci_test_simple | grep "^AllInOneTestData :  " > "${TMPDIR}/testdata-c"; \
+	cargo run                       | grep "^AllInOneTestData :  " > "${TMPDIR}/testdata-rust"; \
+	cargo run --no-default-features | grep "^AllInOneTestData :  " > "${TMPDIR}/testdata-rust-no-std"; \
+	./ci_test_simple                | grep "^AllInOneTestData :  " > "${TMPDIR}/testdata-c"; \
+	diff "${TMPDIR}/testdata-rust" "${TMPDIR}/testdata-rust-no-std"; \
 	diff "${TMPDIR}/testdata-rust" "${TMPDIR}/testdata-c"; \
 	echo "Passed: Test Mixed."
 
