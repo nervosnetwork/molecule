@@ -4,6 +4,7 @@ use std::io;
 
 mod generator;
 use generator::Generator as _;
+mod builder;
 mod union;
 
 pub(crate) struct Generator;
@@ -15,14 +16,14 @@ impl super::LanguageGenerator for Generator {
 
         let import = format!(
             r#"
-                    package {}
+package {}
 
-                    import (
-                        "bytes"
-                        "encoding/binary"
-                        "errors"
-                        "strconv"
-                        "strings"
+import (
+    "bytes"
+    "encoding/binary"
+    "errors"
+    "strconv"
+    "strings"
                     )"#,
             ast.namespace
         );
@@ -32,49 +33,53 @@ impl super::LanguageGenerator for Generator {
         if major_imports.is_empty() {
             let primitive = String::from(
                 r#"
-                    type Number uint32
-                    const HeaderSizeUint uint32 = 4
+type Number uint32
+const HeaderSizeUint uint32 = 4
 
-                    // Byte is the primitive type
-                    type Byte [1]byte
+// Byte is the primitive type
+type Byte [1]byte
 
-                    func NewByte(b byte) Byte {
-                        return Byte([1]byte{b})
-                    }
+func NewByte(b byte) Byte {
+    return Byte([1]byte{b})
+}
 
-                    func ByteFromSliceUnchecked(slice []byte) *Byte {
-                        b := new(Byte)
-                        b[0] = slice[0]
-                        return b
-                    }
+func ByteDefault() Byte {
+    return Byte([1]byte{0})
+}
 
-                    func (b *Byte) AsSlice() []byte {
-                        return b[:]
-                    }
+func ByteFromSliceUnchecked(slice []byte) *Byte {
+    b := new(Byte)
+    b[0] = slice[0]
+    return b
+}
 
-                    func ByteFromSlice(slice []byte, _compatible bool) (*Byte, error) {
-                        if len(slice) != 1 {
-                            return nil, errors.New("TotalSizeNotMatch")
-                        }
-                        b := new(Byte)
-                        b[0] = slice[0]
-                        return b, nil
-                    }
+func (b *Byte) AsSlice() []byte {
+    return b[:]
+}
 
-                    func unpackNumber(b []byte) Number {
-                        bytesBuffer := bytes.NewBuffer(b)
+func ByteFromSlice(slice []byte, _compatible bool) (*Byte, error) {
+    if len(slice) != 1 {
+        return nil, errors.New("TotalSizeNotMatch")
+    }
+    b := new(Byte)
+    b[0] = slice[0]
+    return b, nil
+}
 
-                        var x Number
-                        binary.Read(bytesBuffer, binary.LittleEndian, &x)
+func unpackNumber(b []byte) Number {
+    bytesBuffer := bytes.NewBuffer(b)
 
-                        return x
-                    }
+    var x Number
+    binary.Read(bytesBuffer, binary.LittleEndian, &x)
 
-                    func packNumber(num Number) []byte {
-                        b := make([]byte, 4)
-                        binary.LittleEndian.PutUint32(b, uint32(num))
-                        return b
-                    }
+    return x
+}
+
+func packNumber(num Number) []byte {
+    b := make([]byte, 4)
+    binary.LittleEndian.PutUint32(b, uint32(num))
+    return b
+}
                     "#,
             );
 

@@ -13,16 +13,16 @@ impl GenUnion for ast::Union {
 
         let define = format!(
             r#"
-            type {union_name} struct {{
-                itemID Number
-                inner []byte
-            }}
-            func (s *{union_name}) AsSlice() []byte {{
-                return s.inner
-            }}
-            func (s *{union_name}) ItemID() Number {{
-                return s.itemID
-            }}
+type {union_name} struct {{
+    itemID Number
+    inner []byte
+}}
+func (s *{union_name}) AsSlice() []byte {{
+    return s.inner
+}}
+func (s *{union_name}) ItemID() Number {{
+    return s.itemID
+}}
         "#,
             union_name = union_name
         );
@@ -42,9 +42,9 @@ impl GenUnion for ast::Union {
                     union_ids.push(item_id);
                     let part = format!(
                         r#"
-                        func {union_name}From{item_name}(v {item_name}) {union_name} {{
-                            return {union_name}{{itemID: {item_id}, inner: v.AsSlice()}}
-                        }}
+func {union_name}From{item_name}(v {item_name}) {union_name} {{
+    return {union_name}{{itemID: {item_id}, inner: v.AsSlice()}}
+}}
                         "#,
                         union_name = union_name,
                         item_name = item_name,
@@ -62,8 +62,8 @@ impl GenUnion for ast::Union {
             .map(|(id, item)| {
                 format!(
                     r#"
-                	case {}:
-                        return "{}"
+    case {}:
+        return "{}"
                 "#,
                     id, item
                 )
@@ -76,8 +76,8 @@ impl GenUnion for ast::Union {
             .map(|id| {
                 format!(
                     r#"
-                	case {id}:
-                        return &{union_name}{{itemID: {id}, inner: s.inner[HeaderSizeUint:]}}
+    case {id}:
+        return &{union_name}{{itemID: {id}, inner: s.inner[HeaderSizeUint:]}}
                 "#,
                     id = id,
                     union_name = union_name
@@ -92,11 +92,11 @@ impl GenUnion for ast::Union {
             .map(|(id, item)| {
                 format!(
                     r#"
-                	case {id}:
-                        _, err := {item}FromSlice(innerSlice, compatible)
-                        if err != nil {{
-                            return nil, err
-                        }}
+    case {id}:
+        _, err := {item}FromSlice(innerSlice, compatible)
+        if err != nil {{
+            return nil, err
+        }}
                 "#,
                     id = id,
                     item = item
@@ -107,13 +107,13 @@ impl GenUnion for ast::Union {
 
         let union_switch = format!(
             r#"
-            func (s *{union_name}) ItemName() string {{
-                switch s.itemID {{
-                {union_switch_impl}
-                default:
-                    panic("invalid data: OrUnion")
-                }}
-            }}
+func (s *{union_name}) ItemName() string {{
+    switch s.itemID {{
+    {union_switch_impl}
+    default:
+        panic("invalid data: OrUnion")
+    }}
+}}
             "#,
             union_switch_impl = union_switch_impl,
             union_name = union_name
@@ -121,13 +121,13 @@ impl GenUnion for ast::Union {
 
         let to_union = format!(
             r#"
-        func (s *{struct_name}) ToUnion() *{union_name} {{
-            switch s.ItemID() {{
-            {to_union_switch_iml}
-            default:
-                panic("invalid data: Or")
-            }}
-        }}
+func (s *{struct_name}) ToUnion() *{union_name} {{
+    switch s.ItemID() {{
+    {to_union_switch_iml}
+    default:
+        panic("invalid data: Or")
+    }}
+}}
         "#,
             to_union_switch_iml = to_union_switch_iml,
             union_name = union_name,
