@@ -1,4 +1,5 @@
-use std::{default::Default, fmt};
+use alloc::borrow::ToOwned;
+use core::{default::Default, fmt};
 
 use crate::{bytes::Bytes, error::VerificationResult, verification_error};
 

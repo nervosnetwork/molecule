@@ -36,29 +36,29 @@ where
             #[derive(Clone)]
             pub struct #entity(molecule::bytes::Bytes);
 
-            impl ::std::fmt::LowerHex for #entity {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    use molecule::faster_hex::hex_string;
+            impl ::core::fmt::LowerHex for #entity {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                    use molecule::hex_string;
                     if f.alternate() {
                         write!(f, "0x")?;
                     }
-                    write!(f, "{}", hex_string(self.as_slice()).unwrap())
+                    write!(f, "{}", hex_string(self.as_slice()))
                 }
             }
 
-            impl ::std::fmt::Debug for #entity {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl ::core::fmt::Debug for #entity {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     write!(f, "{}({:#x})", Self::NAME, self)
                 }
             }
 
-            impl ::std::fmt::Display for #entity {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl ::core::fmt::Display for #entity {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     #display_stmts
                 }
             }
 
-            impl ::std::default::Default for #entity {
+            impl ::core::default::Default for #entity {
                 fn default() -> Self {
                     let v: Vec<u8> = vec![#( #default_content, )*];
                     #entity::new_unchecked(v.into())

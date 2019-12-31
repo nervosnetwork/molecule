@@ -1,4 +1,5 @@
-use std::{error, fmt, result};
+use alloc::string::String;
+use core::{fmt, result};
 
 use crate::Number;
 
@@ -60,8 +61,6 @@ impl fmt::Display for VerificationError {
     }
 }
 
-impl error::Error for VerificationError {}
-
 #[derive(Debug)]
 pub enum Error {
     Verification(VerificationError),
@@ -80,4 +79,9 @@ impl fmt::Display for Error {
     }
 }
 
-impl error::Error for Error {}
+cfg_if::cfg_if! {
+    if #[cfg(feature = "std")] {
+        impl ::std::error::Error for VerificationError {}
+        impl ::std::error::Error for Error {}
+    }
+}

@@ -1,3 +1,5 @@
+#![no_std]
+
 pub mod types {
     #![allow(clippy::all)]
     pub use molecule::prelude::{Byte, ByteReader};

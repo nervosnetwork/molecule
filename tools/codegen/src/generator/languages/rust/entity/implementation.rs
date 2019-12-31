@@ -33,7 +33,7 @@ pub(in super::super) trait ImplEntity: HasName {
                     #reader::from_compatible_slice(slice).map(|reader| reader.to_entity())
                 }
                 fn new_builder() -> Self::Builder {
-                    ::std::default::Default::default()
+                    ::core::default::Default::default()
                 }
                 #internal
             }

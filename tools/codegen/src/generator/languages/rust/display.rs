@@ -32,8 +32,8 @@ impl ImplDisplay for ast::Array {
     fn impl_display(&self) -> m4::TokenStream {
         if self.typ.is_atom() {
             quote!(
-                use molecule::faster_hex::hex_string;
-                let raw_data = hex_string(&self.raw_data()).unwrap();
+                use molecule::hex_string;
+                let raw_data = hex_string(&self.raw_data());
                 write!(f, "{}(0x{})", Self::NAME, raw_data)
             )
         } else {
@@ -77,8 +77,8 @@ impl ImplDisplay for ast::FixVec {
     fn impl_display(&self) -> m4::TokenStream {
         if self.typ.is_atom() {
             quote!(
-                use molecule::faster_hex::hex_string;
-                let raw_data = hex_string(&self.raw_data()).unwrap();
+                use molecule::hex_string;
+                let raw_data = hex_string(&self.raw_data());
                 write!(f, "{}(0x{})", Self::NAME, raw_data)
             )
         } else {

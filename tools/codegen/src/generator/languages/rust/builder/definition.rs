@@ -43,13 +43,13 @@ impl DefBuilder for ast::Array {
         quote!(
             pub struct #builder (pub(crate) [#inner; #item_count]);
 
-            impl ::std::fmt::Debug for #builder {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            impl ::core::fmt::Debug for #builder {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     write!(f, "{}({:?})", Self::NAME, &self.0[..])
                 }
             }
 
-            impl ::std::default::Default for #builder {
+            impl ::core::default::Default for #builder {
                 fn default() -> Self {
                     #builder([#(#inner_array::default(), )*])
                 }

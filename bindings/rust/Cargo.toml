@@ -11,8 +11,13 @@ categories = ["encoding", "data-structures"]
 license = "MIT"
 
 [dependencies]
-bytes = "~0.4"
-faster-hex = "~0.4"
+cfg-if = "~0.1"
+bytes = { version = "~0.4", optional = true }
+faster-hex = { version = "~0.4", optional = true }
+
+[features]
+default = ["std"]
+std = ["bytes", "faster-hex"]
 
 [badges]
 maintenance = { status = "experimental" }
