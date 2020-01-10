@@ -3,14 +3,14 @@ use std::{
     rc::Rc,
 };
 
-use super::super::raw;
+use crate::ir;
 
-trait CompleteRawDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl>;
+trait RecoverFromIr {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl>;
 }
 
-impl CompleteRawDecl for raw::OptionDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::Option_ {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         deps.get(self.item().typ()).map(|dep| {
             let name = self.name().to_owned();
             let item = super::ItemDecl::new(dep);
@@ -24,14 +24,14 @@ impl CompleteRawDecl for raw::OptionDecl {
     }
 }
 
-impl CompleteRawDecl for raw::UnionDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::Union {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         if self.items().is_empty() {
             panic!("the union ({}) is empty", self.name());
         }
         self.items()
             .iter()
-            .map(|raw_item| deps.get(raw_item.typ()).map(super::ItemDecl::new))
+            .map(|ir_item| deps.get(ir_item.typ()).map(super::ItemDecl::new))
             .collect::<Option<Vec<_>>>()
             .map(|items| {
                 let name = self.name().to_owned();
@@ -45,8 +45,8 @@ impl CompleteRawDecl for raw::UnionDecl {
     }
 }
 
-impl CompleteRawDecl for raw::ArrayDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::Array {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         deps.get(self.item().typ()).map(|dep| {
             let item_size = dep.total_size().unwrap_or_else(|| {
                 panic!(
@@ -73,13 +73,13 @@ impl CompleteRawDecl for raw::ArrayDecl {
     }
 }
 
-impl CompleteRawDecl for raw::StructDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::Struct {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         let mut fields = Vec::with_capacity(self.fields().len());
         let mut field_sizes = Vec::with_capacity(self.fields().len());
-        for raw_field in self.fields() {
-            let field_name = raw_field.name();
-            if let Some(dep) = deps.get(raw_field.typ()) {
+        for ir_field in self.fields() {
+            let field_name = ir_field.name();
+            if let Some(dep) = deps.get(ir_field.typ()) {
                 if let Some(field_size) = dep.total_size() {
                     field_sizes.push(field_size);
                 } else {
@@ -114,38 +114,45 @@ impl CompleteRawDecl for raw::StructDecl {
     }
 }
 
-impl CompleteRawDecl for raw::VectorDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::FixVec {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         deps.get(self.item().typ()).map(|dep| {
             let name = self.name().to_owned();
             let item = super::ItemDecl::new(dep);
-            if let Some(item_size) = dep.total_size() {
-                super::FixVec {
-                    name,
-                    item,
-                    imported_depth: self.imported_depth(),
-                    item_size,
-                }
-                .into()
-            } else {
-                super::DynVec {
-                    name,
-                    item,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
+            let item_size = dep.total_size().unwrap();
+            super::FixVec {
+                name,
+                item,
+                imported_depth: self.imported_depth(),
+                item_size,
             }
+            .into()
         })
     }
 }
 
-impl CompleteRawDecl for raw::TableDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+impl RecoverFromIr for ir::DynVec {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
+        deps.get(self.item().typ()).map(|dep| {
+            let name = self.name().to_owned();
+            let item = super::ItemDecl::new(dep);
+            super::DynVec {
+                name,
+                item,
+                imported_depth: self.imported_depth(),
+            }
+            .into()
+        })
+    }
+}
+
+impl RecoverFromIr for ir::Table {
+    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
         self.fields()
             .iter()
-            .map(|raw_field| {
-                let field_name = raw_field.name();
-                deps.get(raw_field.typ())
+            .map(|ir_field| {
+                let field_name = ir_field.name();
+                deps.get(ir_field.typ())
                     .map(|dep| super::FieldDecl::new(field_name, dep))
             })
             .collect::<Option<Vec<_>>>()
@@ -162,10 +169,10 @@ impl CompleteRawDecl for raw::TableDecl {
 }
 
 impl super::Ast {
-    pub(crate) fn complete(raw: raw::Ast) -> Self {
+    pub(crate) fn recover(ir: ir::Ir) -> Self {
         let mut decls_idx = HashMap::new();
         let mut decls_keys = HashSet::new();
-        for decl in raw.decls() {
+        for decl in ir.decls() {
             let name = decl.name();
             if super::TopDecl::new_primitive(name.to_lowercase().as_str()).is_some() {
                 panic!("the name `{}` is reserved", name);
@@ -183,33 +190,32 @@ impl super::Ast {
             if decls_keys.is_empty() {
                 break;
             }
-            let incompleted = decls_keys.len();
+            let unrecovered = decls_keys.len();
             decls_keys.retain(|&name| {
-                let decl_raw = decls_idx.get(name).unwrap();
-                if let Some(decl) = super::TopDecl::complete(decl_raw, &decls_result) {
+                let decl_ir = decls_idx.get(name).unwrap();
+                if let Some(decl) = super::TopDecl::recover(decl_ir, &decls_result) {
                     decls_result.insert(name, Rc::new(decl));
                     false
                 } else {
                     true
                 }
             });
-            if decls_keys.len() == incompleted {
+            if decls_keys.len() == unrecovered {
                 panic!(
-                    "there are {} types which are unable to be completed: {:?}",
-                    incompleted, decls_keys
+                    "there are {} types which are unable to be recovered: {:?}",
+                    unrecovered, decls_keys
                 );
             }
         }
-        let namespace = raw.namespace().to_owned();
-        let imports = raw
+        let namespace = ir.namespace().to_owned();
+        let imports = ir
             .imports()
             .iter()
-            .filter(|r| r.imported_depth() == 0)
-            .map(super::ImportStmt::complete)
+            .map(super::ImportStmt::recover)
             .collect();
         // remove the primitive types and keep the order
-        let mut decls = Vec::with_capacity(raw.decls().len());
-        for decl in raw.decls() {
+        let mut decls = Vec::with_capacity(ir.decls().len());
+        for decl in ir.decls() {
             let result = decls_result.get(decl.name()).unwrap();
             decls.push(Rc::clone(result));
         }
@@ -222,24 +228,25 @@ impl super::Ast {
 }
 
 impl super::ImportStmt {
-    fn complete(raw: &raw::ImportStmt) -> Self {
+    fn recover(ir: &ir::ImportStmt) -> Self {
         Self {
-            name: raw.name().to_owned(),
-            paths: raw.paths().to_owned(),
-            path_supers: raw.path_supers(),
+            name: ir.name().to_owned(),
+            paths: ir.paths().to_owned(),
+            path_supers: ir.path_supers(),
         }
     }
 }
 
 impl super::TopDecl {
-    fn complete(raw: &raw::TopDecl, deps: &super::Deps) -> Option<Self> {
-        match raw {
-            raw::TopDecl::Option_(inner) => inner.complete(deps),
-            raw::TopDecl::Union(inner) => inner.complete(deps),
-            raw::TopDecl::Array(inner) => inner.complete(deps),
-            raw::TopDecl::Struct(inner) => inner.complete(deps),
-            raw::TopDecl::Vector(inner) => inner.complete(deps),
-            raw::TopDecl::Table(inner) => inner.complete(deps),
+    fn recover(ir: &ir::TopDecl, deps: &super::Deps) -> Option<Self> {
+        match ir {
+            ir::TopDecl::Option_(inner) => inner.recover(deps),
+            ir::TopDecl::Union(inner) => inner.recover(deps),
+            ir::TopDecl::Array(inner) => inner.recover(deps),
+            ir::TopDecl::Struct(inner) => inner.recover(deps),
+            ir::TopDecl::FixVec(inner) => inner.recover(deps),
+            ir::TopDecl::DynVec(inner) => inner.recover(deps),
+            ir::TopDecl::Table(inner) => inner.recover(deps),
         }
     }
 }

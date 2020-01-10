@@ -4,7 +4,7 @@ use super::{
     builder::GenBuilder, entity::GenEntity, enumerator::GenEnumerator, iterator::GenIterator,
     reader::GenReader,
 };
-use crate::ast::verified::{self as ast};
+use crate::ast;
 
 pub(super) trait Generator {
     fn generate<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;

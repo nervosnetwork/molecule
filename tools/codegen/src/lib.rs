@@ -6,11 +6,15 @@ pub(crate) mod generator;
 pub(crate) mod parser;
 pub(crate) mod utils;
 
-pub(crate) use ast::verified::Ast;
+#[cfg(feature = "compiler-plugin")]
+mod ir;
+
 pub use compiler::Compiler;
-pub(crate) use generator::Generator;
 pub use generator::Language;
 pub use parser::Parser;
+
+#[cfg(feature = "compiler-plugin")]
+pub use ir::Format as IntermediateFormat;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const C_API_VERSION_MIN: &str = "0.4.0";

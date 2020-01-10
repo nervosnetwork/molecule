@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(super) const API_DECORATOR: &str = "MOLECULE_API_DECORATOR";
 

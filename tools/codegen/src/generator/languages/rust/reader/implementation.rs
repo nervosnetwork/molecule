@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::super::utilities::{entity_name, reader_name, usize_lit};
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplReader: HasName {
     fn impl_reader_internal(&self) -> m4::TokenStream;
@@ -33,7 +33,7 @@ pub(in super::super) trait ImplReader: HasName {
 
 impl ImplReader for ast::Option_ {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let inner = reader_name(self.typ.name());
+        let inner = reader_name(self.item().typ().name());
         quote!(
             fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                 if !slice.is_empty() {
@@ -47,9 +47,9 @@ impl ImplReader for ast::Option_ {
 
 impl ImplReader for ast::Union {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let verify_inners = self.inner.iter().enumerate().map(|(index, inner)| {
+        let verify_inners = self.items().iter().enumerate().map(|(index, inner)| {
             let item_id = usize_lit(index);
-            let inner = reader_name(inner.typ.name());
+            let inner = reader_name(inner.typ().name());
             quote!(
                 #item_id => #inner::verify(inner_slice, compatible),
             )
@@ -65,7 +65,7 @@ impl ImplReader for ast::Union {
                 let inner_slice = &slice[molecule::NUMBER_SIZE..];
                 match item_id {
                     #( #verify_inners )*
-                    _ => ve!(Self, UnknownItem, Self::ITEM_COUNT, item_id),
+                    _ => ve!(Self, UnknownItem, Self::ITEMS_COUNT, item_id),
                 }?;
                 Ok(())
             }
@@ -131,7 +131,7 @@ impl ImplReader for ast::FixVec {
 
 impl ImplReader for ast::DynVec {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let inner = reader_name(self.typ.name());
+        let inner = reader_name(self.item().typ().name());
         quote!(
             fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::verification_error as ve;
@@ -180,7 +180,7 @@ impl ImplReader for ast::DynVec {
 
 impl ImplReader for ast::Table {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        if self.inner.is_empty() {
+        if self.fields().is_empty() {
             quote!(
                 fn verify(
                     slice: &[u8],
@@ -202,8 +202,8 @@ impl ImplReader for ast::Table {
                 }
             )
         } else {
-            let verify_fields = self.inner.iter().enumerate().map(|(i, f)| {
-                let field = reader_name(f.typ.name());
+            let verify_fields = self.fields().iter().enumerate().map(|(i, f)| {
+                let field = reader_name(f.typ().name());
                 let start = usize_lit(i);
                 let end = usize_lit(i + 1);
                 quote!(

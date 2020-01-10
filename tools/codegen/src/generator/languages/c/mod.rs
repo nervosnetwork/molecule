@@ -2,7 +2,7 @@ use std::io;
 
 use case::CaseExt;
 
-use crate::{ast::verified as ast, C_API_VERSION_MIN, VERSION};
+use crate::{ast, C_API_VERSION_MIN, VERSION};
 
 #[macro_use]
 pub(self) mod utilities;
@@ -84,11 +84,11 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer, r#"#include "molecule_reader.h""#)?;
         writeln!(writer, r#"#include "molecule_builder.h""#)?;
         writeln!(writer)?;
-        Self::ifndef(writer, &ast.namespace)?;
-        let major_imports = ast.major_imports();
-        if !major_imports.is_empty() {
+        Self::ifndef(writer, &ast.namespace())?;
+        let imports = ast.imports();
+        if !imports.is_empty() {
             writeln!(writer)?;
-            for import in major_imports {
+            for import in imports {
                 import.gen_import(writer)?;
             }
         }
@@ -121,7 +121,7 @@ impl super::LanguageGenerator for Generator {
         for decl in ast.major_decls() {
             decl.gen_builder_functions(writer)?;
         }
-        Self::endif(writer, &ast.namespace)?;
+        Self::endif(writer, &ast.namespace())?;
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ pub(crate) mod bytes;
 pub(crate) mod generator;
 pub(crate) mod types;
 
-use std::{collections::HashMap, fs, io::Read};
+use std::{collections::HashMap, fs, io::Read, rc::Rc};
 
 use quote::quote;
 
@@ -42,8 +42,8 @@ pub fn load_tests(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let filepath = &input.schema;
             let ast = codegen::Parser::parse(filepath);
             ast.decls()
-                .into_iter()
-                .map(|decl| (decl.name().to_owned(), decl))
+                .iter()
+                .map(|decl| (decl.name().to_owned(), Rc::clone(decl)))
                 .collect::<HashMap<_, _>>()
         };
         let test_data = {

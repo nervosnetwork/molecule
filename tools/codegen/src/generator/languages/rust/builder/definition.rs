@@ -4,7 +4,7 @@ use quote::quote;
 use super::super::utilities::{
     builder_name, entity_name, entity_union_name, field_name, usize_lit,
 };
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait DefBuilder {
     fn def_builder(&self) -> m4::TokenStream;
@@ -13,7 +13,7 @@ pub(in super::super) trait DefBuilder {
 impl DefBuilder for ast::Option_ {
     fn def_builder(&self) -> m4::TokenStream {
         let builder = builder_name(self.name());
-        let inner = entity_name(self.typ.name());
+        let inner = entity_name(self.item().typ().name());
         quote!(
             #[derive(Debug, Default)]
             pub struct #builder (pub(crate) Option<#inner>);
@@ -35,9 +35,9 @@ impl DefBuilder for ast::Union {
 impl DefBuilder for ast::Array {
     fn def_builder(&self) -> m4::TokenStream {
         let builder = builder_name(self.name());
-        let inner = entity_name(self.typ.name());
-        let item_count = usize_lit(self.item_count);
-        let inner_array = (0..self.item_count)
+        let inner = entity_name(self.item().typ().name());
+        let item_count = usize_lit(self.item_count());
+        let inner_array = (0..self.item_count())
             .map(|_| inner.clone())
             .collect::<Vec<_>>();
         quote!(
@@ -60,33 +60,33 @@ impl DefBuilder for ast::Array {
 
 impl DefBuilder for ast::Struct {
     fn def_builder(&self) -> m4::TokenStream {
-        def_builder_for_struct_or_table(self.name(), &self.inner[..])
+        def_builder_for_struct_or_table(self.name(), self.fields())
     }
 }
 
 impl DefBuilder for ast::FixVec {
     fn def_builder(&self) -> m4::TokenStream {
-        def_builder_for_vector(self.name(), self.typ.name())
+        def_builder_for_vector(self.name(), self.item().typ().name())
     }
 }
 
 impl DefBuilder for ast::DynVec {
     fn def_builder(&self) -> m4::TokenStream {
-        def_builder_for_vector(self.name(), self.typ.name())
+        def_builder_for_vector(self.name(), self.item().typ().name())
     }
 }
 
 impl DefBuilder for ast::Table {
     fn def_builder(&self) -> m4::TokenStream {
-        def_builder_for_struct_or_table(self.name(), &self.inner[..])
+        def_builder_for_struct_or_table(self.name(), self.fields())
     }
 }
 
 fn def_builder_for_struct_or_table(self_name: &str, inner: &[ast::FieldDecl]) -> m4::TokenStream {
     let builder = builder_name(self_name);
     let fields = inner.iter().map(|f| {
-        let field_name = field_name(&f.name);
-        let field_type = entity_name(f.typ.name());
+        let field_name = field_name(f.name());
+        let field_type = entity_name(f.typ().name());
         quote!(#field_name: #field_type,)
     });
     quote!(

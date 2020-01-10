@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::utilities::{entity_iterator_name, entity_name, reader_iterator_name, reader_name};
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(super) trait GenIterator {
     fn gen_iterator(&self) -> m4::TokenStream;
@@ -10,17 +10,21 @@ pub(super) trait GenIterator {
 
 impl GenIterator for ast::FixVec {
     fn gen_iterator(&self) -> m4::TokenStream {
-        gen_iterator_for_vector(self.name(), self.typ.name(), self.typ.is_atom())
+        gen_iterator_for_vector(
+            self.name(),
+            self.item().typ().name(),
+            self.item().typ().is_byte(),
+        )
     }
 }
 
 impl GenIterator for ast::DynVec {
     fn gen_iterator(&self) -> m4::TokenStream {
-        gen_iterator_for_vector(self.name(), self.typ.name(), self.typ.is_atom())
+        gen_iterator_for_vector(self.name(), self.item().typ().name(), false)
     }
 }
 
-fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> m4::TokenStream {
+fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_byte: bool) -> m4::TokenStream {
     let entity_iterator = entity_iterator_name(self_name);
     let entity = entity_name(self_name);
     let entity_inner = entity_name(inner_name);
@@ -55,7 +59,7 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_atom: bool) -> 
             }
         }
     );
-    if is_atom {
+    if is_byte {
         common_part
     } else {
         quote!(

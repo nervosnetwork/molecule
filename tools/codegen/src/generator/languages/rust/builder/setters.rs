@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::super::utilities::{entity_name, entity_union_name, field_name, func_name, usize_lit};
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplSetters {
     fn impl_setters(&self) -> m4::TokenStream;
@@ -10,7 +10,7 @@ pub(in super::super) trait ImplSetters {
 
 impl ImplSetters for ast::Option_ {
     fn impl_setters(&self) -> m4::TokenStream {
-        let inner = entity_name(self.typ.name());
+        let inner = entity_name(self.item().typ().name());
         quote!(
             pub fn set(mut self, v: Option<#inner>) -> Self {
                 self.0 = v;
@@ -37,15 +37,15 @@ impl ImplSetters for ast::Union {
 
 impl ImplSetters for ast::Array {
     fn impl_setters(&self) -> m4::TokenStream {
-        let inner = entity_name(self.typ.name());
-        let item_count = usize_lit(self.item_count);
+        let inner = entity_name(self.item().typ().name());
+        let item_count = usize_lit(self.item_count());
         let entire_setter = quote!(
             pub fn set(mut self, v: [#inner; #item_count]) -> Self {
                 self.0 = v;
                 self
             }
         );
-        let each_setter = (0..self.item_count)
+        let each_setter = (0..self.item_count())
             .map(|idx| {
                 let index = usize_lit(idx);
                 let func = func_name(&format!("nth{}", idx));
@@ -66,25 +66,25 @@ impl ImplSetters for ast::Array {
 
 impl ImplSetters for ast::Struct {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_struct_or_table(&self.inner[..])
+        impl_setters_for_struct_or_table(self.fields())
     }
 }
 
 impl ImplSetters for ast::FixVec {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_vector(self.typ.name())
+        impl_setters_for_vector(self.item().typ().name())
     }
 }
 
 impl ImplSetters for ast::DynVec {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_vector(self.typ.name())
+        impl_setters_for_vector(self.item().typ().name())
     }
 }
 
 impl ImplSetters for ast::Table {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_struct_or_table(&self.inner[..])
+        impl_setters_for_struct_or_table(self.fields())
     }
 }
 
@@ -92,8 +92,8 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
     let each_setter = inner
         .iter()
         .map(|f| {
-            let field_name = field_name(&f.name);
-            let field_type = entity_name(f.typ.name());
+            let field_name = field_name(f.name());
+            let field_type = entity_name(f.typ().name());
             quote!(
                 pub fn #field_name(mut self, v: #field_type) -> Self {
                     self.#field_name = v;

@@ -60,7 +60,7 @@ impl GenTest for types::Option_ {
         let set_stmt = if let Some(item) = self.item() {
             let decl = ast.get(self.name()).unwrap();
             let item_type = if let ast::TopDecl::Option_(ref decl) = decl.as_ref() {
-                utils::entity_name(decl.typ.name())
+                utils::entity_name(decl.item().typ().name())
             } else {
                 panic!("Error: type for {} is incorrect", self.name());
             };
@@ -118,7 +118,7 @@ impl GenTest for types::Array {
         let name = utils::entity_name(self.name());
         let decl = ast.get(self.name()).unwrap();
         let item_type = if let ast::TopDecl::Array(ref decl) = decl.as_ref() {
-            vec![utils::entity_name(decl.typ.name()); self.data().len()]
+            vec![utils::entity_name(decl.item().typ().name()); self.data().len()]
         } else {
             panic!("Error: type for {} is incorrect", self.name());
         };
@@ -155,14 +155,14 @@ impl GenTest for types::StructOrTable {
         let name = utils::entity_name(self.name());
         let decl = ast.get(self.name()).unwrap();
         let field_type_dict = if let ast::TopDecl::Struct(ref decl) = decl.as_ref() {
-            decl.inner
+            decl.fields()
                 .iter()
-                .map(|field| (field.name.as_str(), field.typ.name()))
+                .map(|field| (field.name(), field.typ().name()))
                 .collect::<HashMap<_, _>>()
         } else if let ast::TopDecl::Table(ref decl) = decl.as_ref() {
-            decl.inner
+            decl.fields()
                 .iter()
-                .map(|field| (field.name.as_str(), field.typ.name()))
+                .map(|field| (field.name(), field.typ().name()))
                 .collect::<HashMap<_, _>>()
         } else {
             panic!("Error: type for {} is incorrect", self.name());
@@ -203,9 +203,9 @@ impl GenTest for types::Vector {
         let name = utils::entity_name(self.name());
         let decl = ast.get(self.name()).unwrap();
         let item_type = if let ast::TopDecl::FixVec(ref decl) = decl.as_ref() {
-            vec![utils::entity_name(decl.typ.name()); self.data().len()]
+            vec![utils::entity_name(decl.item().typ().name()); self.data().len()]
         } else if let ast::TopDecl::DynVec(ref decl) = decl.as_ref() {
-            vec![utils::entity_name(decl.typ.name()); self.data().len()]
+            vec![utils::entity_name(decl.item().typ().name()); self.data().len()]
         } else {
             panic!("Error: type for {} is incorrect", self.name());
         };

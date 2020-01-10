@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::utilities::{entity_name, reader_name, usize_lit};
-use crate::ast::verified::{DefaultContent, HasName};
+use crate::ast::{DefaultContent, HasName};
 
 mod implementation;
 

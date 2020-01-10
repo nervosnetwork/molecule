@@ -3,15 +3,17 @@ use codegen::{Compiler, Language};
 fn compile_schema(schema: &str) {
     let mut compiler = Compiler::new();
     compiler
-        .language(Language::Rust)
-        .default_out_dir()
-        .file_path(schema)
-        .run();
+        .input_schema_file(schema)
+        .generate_code(Language::Rust)
+        .output_dir_set_default()
+        .run()
+        .unwrap();
     compiler
-        .language(Language::C)
-        .default_out_dir()
-        .file_path(schema)
-        .run();
+        .input_schema_file(schema)
+        .generate_code(Language::C)
+        .output_dir_set_default()
+        .run()
+        .unwrap();
     println!("cargo:rerun-if-changed={}", schema);
 }
 

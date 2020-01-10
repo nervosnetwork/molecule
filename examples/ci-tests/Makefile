@@ -1,4 +1,5 @@
-MOLC = ../../tools/compiler/target/release/moleculec
+MOLC_DIR = ../../tools/compiler/target/release
+MOLC = ${MOLC_DIR}/moleculec
 MOLINC = ../../bindings/c/include
 SCRIPT_GEN_C = scripts/generate-c
 
@@ -51,12 +52,14 @@ test-mixed: tmpdir ${TMPDIR}/simple-example
 test-import: test-rust-import test-c-import
 
 test-rust-import: tmpdir ${MOL_DEPS}
-	@tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code rust
+	@export PATH="$$(cd ${MOLC_DIR}; pwd):$${PATH}" \
+		; tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code rust
 	@cd "${TMPDIR}/import/rust"; cargo build
 	@echo "Passed: Test Rust Import."
 
 test-c-import: tmpdir ${MOL_DEPS}
-	@tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code c
+	@export PATH="$$(cd ${MOLC_DIR}; pwd):$${PATH}" \
+		; tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code c
 	@${CC} ${CFLAGS} -I${MOLINC} -c "${TMPDIR}/import/c/b/test.c" -o "${TMPDIR}/import/c/b/test.o"
 	@echo "Passed: Test C Import."
 
@@ -64,7 +67,9 @@ ${MOLC}:
 	@cd ../../tools/compiler; cargo build --release
 
 ${HEADER_API}: ${SCHEMA_FILE} ${MOL_DEPS}
-	@"${MOLC}" --language c --schema-file $< > $@
+	@set -eu \
+		; export PATH="$$(cd ${MOLC_DIR}; pwd):$${PATH}" \
+		; "${MOLC}" --language c --schema-file $< > $@
 
 ${HEADER_GEN}: ${SCHEMA_FILE}
 	@${SCRIPT_GEN_C} "${SCHEMA_FILE}" "${HEADER_GEN}"

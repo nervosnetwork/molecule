@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::super::utilities::{builder_name, entity_name, field_name, usize_lit};
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplBuilder: HasName {
     fn impl_builder_internal(&self) -> m4::TokenStream;
@@ -58,7 +58,7 @@ impl ImplBuilder for ast::Union {
 impl ImplBuilder for ast::Array {
     fn impl_builder_internal(&self) -> m4::TokenStream {
         let write_inners = {
-            let idx = (0..self.item_count).map(usize_lit).collect::<Vec<_>>();
+            let idx = (0..self.item_count()).map(usize_lit).collect::<Vec<_>>();
             quote!(
                 #(
                     writer.write_all(self.0[#idx].as_slice())?;
@@ -79,8 +79,8 @@ impl ImplBuilder for ast::Array {
 
 impl ImplBuilder for ast::Struct {
     fn impl_builder_internal(&self) -> m4::TokenStream {
-        let fields = self.inner.iter().map(|f| {
-            let field_name = field_name(&f.name);
+        let fields = self.fields().iter().map(|f| {
+            let field_name = field_name(f.name());
             quote!(
                 writer.write_all(self.#field_name.as_slice())?;
             )
@@ -153,7 +153,7 @@ impl ImplBuilder for ast::DynVec {
 
 impl ImplBuilder for ast::Table {
     fn impl_builder_internal(&self) -> m4::TokenStream {
-        if self.inner.is_empty() {
+        if self.fields().is_empty() {
             quote!(
                 fn expected_length(&self) -> usize {
                     molecule::NUMBER_SIZE
@@ -165,9 +165,9 @@ impl ImplBuilder for ast::Table {
             )
         } else {
             let field = &self
-                .inner
+                .fields()
                 .iter()
-                .map(|f| field_name(&f.name))
+                .map(|f| field_name(f.name()))
                 .collect::<Vec<_>>();
             quote!(
                 fn expected_length(&self) -> usize {

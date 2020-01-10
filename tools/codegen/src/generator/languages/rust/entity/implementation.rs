@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::super::utilities::{builder_name, entity_name, field_name, func_name, reader_name};
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplEntity: HasName {
     fn impl_entity_internal(&self) -> m4::TokenStream;
@@ -63,7 +63,7 @@ impl ImplEntity for ast::Union {
 
 impl ImplEntity for ast::Array {
     fn impl_entity_internal(&self) -> m4::TokenStream {
-        let items = (0..self.item_count)
+        let items = (0..self.item_count())
             .map(|idx| func_name(&format!("nth{}", idx)))
             .map(|func| quote!(self.#func()));
         quote!(
@@ -76,7 +76,7 @@ impl ImplEntity for ast::Array {
 
 impl ImplEntity for ast::Struct {
     fn impl_entity_internal(&self) -> m4::TokenStream {
-        let fields = self.inner.iter().map(|f| field_name(&f.name));
+        let fields = self.fields().iter().map(|f| field_name(f.name()));
         let fields_func = fields.clone();
         quote!(
             fn as_builder(self) -> Self::Builder {
@@ -109,7 +109,7 @@ impl ImplEntity for ast::DynVec {
 
 impl ImplEntity for ast::Table {
     fn impl_entity_internal(&self) -> m4::TokenStream {
-        let fields = self.inner.iter().map(|f| field_name(&f.name));
+        let fields = self.fields().iter().map(|f| field_name(f.name()));
         let fields_func = fields.clone();
         quote!(
             fn as_builder(self) -> Self::Builder {
