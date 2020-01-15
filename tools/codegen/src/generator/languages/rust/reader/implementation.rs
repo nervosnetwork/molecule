@@ -17,7 +17,7 @@ pub(in super::super) trait ImplReader: HasName {
                 type Entity = #entity;
                 const NAME: &'static str = #reader_string;
                 fn to_entity(&self) -> Self::Entity {
-                    Self::Entity::new_unchecked(self.as_slice().into())
+                    Self::Entity::new_unchecked(self.as_slice().to_owned().into())
                 }
                 fn new_unchecked(slice: &'r [u8]) -> Self {
                     #reader(slice)
