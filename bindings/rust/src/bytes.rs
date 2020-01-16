@@ -1,5 +1,8 @@
 use alloc::{borrow::ToOwned, vec::Vec};
-use core::{convert::From, ops::Deref};
+use core::{
+    convert::From,
+    ops::{Bound, Deref, RangeBounds},
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct Bytes(Vec<u8>);
@@ -31,15 +34,18 @@ impl Deref for Bytes {
 }
 
 impl Bytes {
-    pub fn slice(&self, start: usize, end: usize) -> Self {
-        Self::from(&self.0[start..end])
-    }
-
-    pub fn slice_from(&self, start: usize) -> Self {
-        self.slice(start, self.len())
-    }
-
-    pub fn slice_to(&self, end: usize) -> Self {
-        self.slice(0, end)
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+        let len = self.len();
+        let begin = match range.start_bound() {
+            Bound::Included(&n) => n,
+            Bound::Excluded(&n) => n + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&n) => n + 1,
+            Bound::Excluded(&n) => n,
+            Bound::Unbounded => len,
+        };
+        Self::from(&self.0[begin..end])
     }
 }

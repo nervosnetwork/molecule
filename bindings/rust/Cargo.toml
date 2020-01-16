@@ -12,7 +12,7 @@ license = "MIT"
 
 [dependencies]
 cfg-if = "~0.1"
-bytes = { version = "~0.4", optional = true }
+bytes = { version = "~0.5", optional = true }
 faster-hex = { version = "~0.4", optional = true }
 
 [features]

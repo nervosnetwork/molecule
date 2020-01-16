@@ -65,7 +65,7 @@ impl Byte {
 
     #[inline]
     pub fn as_bytes(self) -> Bytes {
-        self.as_slice().into()
+        self.as_slice().to_owned().into()
     }
 
     #[inline]
