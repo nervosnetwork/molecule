@@ -34,7 +34,7 @@ refresh-comipler:
 debug:
 	@cargo build
 
-test: test-rust test-rust-no-std test-c test-mixed
+test: test-rust test-rust-no-std test-c test-mixed test-import
 
 test-rust:
 	@cargo test --all
@@ -89,7 +89,7 @@ test-rust-import: tmpdir ${MOL_DEPS}
 	@echo '[dependencies]'                                              >> "${TMPDIR}/import/rust/Cargo.toml"
 	@echo 'molecule = { path = "../../../../../bindings/rust" }'        >> "${TMPDIR}/import/rust/Cargo.toml"
 	@cd "${TMPDIR}/import/rust"; cargo build
-	echo "Passed: Test Rust Import."
+	@echo "Passed: Test Rust Import."
 
 test-c-import: tmpdir ${MOL_DEPS}
 	@mkdir -p \
@@ -105,7 +105,7 @@ test-c-import: tmpdir ${MOL_DEPS}
 	@"${MOLC}" --language c --schema-file schemas/import/c/cc/cc.mol > "${TMPDIR}/import/c/c/cc/cc.h"
 	@"${MOLC}" --language c --schema-file schemas/import/b/test.mol  > "${TMPDIR}/import/c/b/test.c"
 	@${CC} ${CFLAGS} -I${MOLINC} -c "${TMPDIR}/import/c/b/test.c" -o "${TMPDIR}/import/c/b/test.o"
-	echo "Passed: Test C Import."
+	@echo "Passed: Test C Import."
 
 ${MOLC}:
 	@cd ../../tools/compiler; cargo build --release
