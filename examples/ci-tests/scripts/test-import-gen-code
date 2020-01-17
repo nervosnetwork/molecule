@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+function gen-code () {
+    local language="${1}"
+    local schema="${2}"
+    local output="${3}"
+    "${molc}" --language "${language}" \
+        --schema-file "${schemas_dir}/${schema}" \
+        > "${output}"
+}
+
+function gen-code-for-rust () {
+    local prjdir="${tmpdir}/import/rust"
+    local srcdir="${prjdir}/src"
+    rm -rf "${srcdir}"
+    mkdir -p \
+        "${srcdir}/a" \
+        "${srcdir}/b/bb" \
+        "${srcdir}/b/bc" \
+        "${srcdir}/c/cc"
+    gen-code rust "a/a.mol"     "${srcdir}/a/a.rs"
+    gen-code rust "b/b.mol"     "${srcdir}/b/b.rs"
+    gen-code rust "c/c.mol"     "${srcdir}/c/c.rs"
+    gen-code rust "b/bb/bb.mol" "${srcdir}/b/bb/bb.rs"
+    gen-code rust "b/bc/bc.mol" "${srcdir}/b/bc/bc.rs"
+    gen-code rust "c/cc/cc.mol" "${srcdir}/c/cc/cc.rs"
+    gen-code rust "b/test.mol"  "${srcdir}/b/test.rs"
+    echo "pub mod a;"    >  "${srcdir}/lib.rs"
+    echo "pub mod b;"    >> "${srcdir}/lib.rs"
+    echo "pub mod c;"    >> "${srcdir}/lib.rs"
+    echo "pub mod a;"    >  "${srcdir}/a/mod.rs"
+    echo "pub mod b;"    >  "${srcdir}/b/mod.rs"
+    echo "pub mod c;"    >  "${srcdir}/c/mod.rs"
+    echo "pub mod bb;"   >  "${srcdir}/b/bb/mod.rs"
+    echo "pub mod bb;"   >> "${srcdir}/b/mod.rs"
+    echo "pub mod bc;"   >  "${srcdir}/b/bc/mod.rs"
+    echo "pub mod bc;"   >> "${srcdir}/b/mod.rs"
+    echo "pub mod cc;"   >  "${srcdir}/c/cc/mod.rs"
+    echo "pub mod cc;"   >> "${srcdir}/c/mod.rs"
+    echo "pub mod test;" >> "${srcdir}/b/mod.rs"
+    cat > "${prjdir}/Cargo.toml" <<EOF
+[package]
+name = "molecule-test-impot"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+molecule = { path = "../../../../../../bindings/rust" }
+EOF
+}
+
+function gen-code-for-c () {
+    local prjdir="${tmpdir}/import/c"
+    rm -rf "${prjdir}"
+    mkdir -p \
+        "${prjdir}/a" \
+        "${prjdir}/b/bb" \
+        "${prjdir}/b/bc" \
+        "${prjdir}/c/cc"
+    gen-code c "a/a.mol"     "${prjdir}/a/a.h"
+    gen-code c "b/b.mol"     "${prjdir}/b/b.h"
+    gen-code c "c/c.mol"     "${prjdir}/c/c.h"
+    gen-code c "b/bb/bb.mol" "${prjdir}/b/bb/bb.h"
+    gen-code c "b/bc/bc.mol" "${prjdir}/b/bc/bc.h"
+    gen-code c "c/cc/cc.mol" "${prjdir}/c/cc/cc.h"
+    gen-code c "b/test.mol"  "${prjdir}/b/test.c"
+}
+
+function main () {
+    local target="${1}"
+    gen-code-for-${target}
+}
+
+main "$@"

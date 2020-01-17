@@ -8,10 +8,10 @@ use crate::{ast, utils::PairsUtils as _};
 mod inner;
 pub(crate) use inner::Rule;
 
-pub(crate) struct Parser;
+pub struct Parser;
 
 impl Parser {
-    pub(crate) fn parse<P: AsRef<Path>>(path: &P) -> ast::verified::Ast {
+    pub fn parse<P: AsRef<Path>>(path: &P) -> ast::verified::Ast {
         let ast_raw = Self::preprocess(path).unwrap();
         ast::verified::Ast::new(ast_raw)
     }

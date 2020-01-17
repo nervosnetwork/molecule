@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+function gen-testdata-for-rust () {
+    local target="${1}"
+    cargo run --bin ${target} \
+        | grep "^AllInOneTestData :  " \
+        > "${tmpfile_prefix}-rust"; \
+}
+
+function gen-testdata-for-rust-no-std () {
+    local target="${1}"
+    cargo run --bin ${target} --no-default-features \
+        | grep "^AllInOneTestData :  " \
+        > "${tmpfile_prefix}-rust-no-std"; \
+}
+
+function gen-testdata-for-c () {
+    local target="${1}"
+    "${tmpdir}/${target}" \
+        | grep "^AllInOneTestData :  " \
+        > "${tmpfile_prefix}-c"; \
+}
+
+function cmp-testdata () {
+    diff \
+        "${tmpfile_prefix}-${1}" \
+        "${tmpfile_prefix}-${2}"
+}
+
+function test () {
+    local target="${1}"
+    gen-testdata-for-rust           "${target}"
+    gen-testdata-for-rust-no-std    "${target}"
+    gen-testdata-for-c              "${target}"
+    cmp-testdata rust rust-no-std
+    cmp-testdata rust c
+}
+
+function main () {
+    tmpfile_prefix="${tmpdir}/testdata"
+    local target="${1}"
+    test ${target}
+    echo "Passed: Test Mixed."
+}
+
+main "$@"

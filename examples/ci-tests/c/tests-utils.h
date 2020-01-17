@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "ci_tests_api.h"
-#include "ci_tests_gen.h"
+#include "tests-api.h"
+#include "tests-gen.h"
 
 #define ____ 0x00
 

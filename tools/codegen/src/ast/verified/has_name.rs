@@ -1,4 +1,4 @@
-pub(crate) trait HasName {
+pub trait HasName {
     const TYPE_NAME: &'static str;
     fn name(&self) -> &str;
     fn type_name(&self) -> &str;

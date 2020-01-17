@@ -12,21 +12,21 @@ mod has_name;
 
 use complete::CompleteRawDecl;
 pub(crate) use default_content::DefaultContent;
-pub(crate) use has_name::HasName;
+pub use has_name::HasName;
 
 pub(crate) const ATOM_NAME: &str = "byte";
 pub(crate) const ATOM_SIZE: usize = 1;
 pub(crate) const ATOM_PRIMITIVE_NAME: &str = "Byte";
 
 #[derive(Debug)]
-pub(crate) struct Ast {
+pub struct Ast {
     pub(crate) namespace: String,
     pub(self) imports: Vec<Rc<ImportStmt>>,
     pub(self) decls: Vec<Rc<TopDecl>>,
 }
 
 #[derive(Debug)]
-pub(crate) enum TopDecl {
+pub enum TopDecl {
     Atom(Atom),
     Option_(Option_),
     Union(Union),
@@ -38,61 +38,61 @@ pub(crate) enum TopDecl {
 }
 
 #[derive(Debug)]
-pub(crate) struct Atom {
+pub struct Atom {
     pub(crate) name: String,
     pub(crate) size: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Option_ {
+pub struct Option_ {
     pub(crate) name: String,
-    pub(crate) typ: Rc<TopDecl>,
+    pub typ: Rc<TopDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Union {
+pub struct Union {
     pub(crate) name: String,
     pub(crate) inner: Vec<ItemDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Array {
+pub struct Array {
     pub(crate) name: String,
     pub(crate) item_size: usize,
     pub(crate) item_count: usize,
-    pub(crate) typ: Rc<TopDecl>,
+    pub typ: Rc<TopDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Struct {
+pub struct Struct {
     pub(crate) name: String,
     pub(crate) field_size: Vec<usize>,
-    pub(crate) inner: Vec<FieldDecl>,
+    pub inner: Vec<FieldDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct FixVec {
+pub struct FixVec {
     pub(crate) name: String,
     pub(crate) item_size: usize,
-    pub(crate) typ: Rc<TopDecl>,
+    pub typ: Rc<TopDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct DynVec {
+pub struct DynVec {
     pub(crate) name: String,
-    pub(crate) typ: Rc<TopDecl>,
+    pub typ: Rc<TopDecl>,
     pub(crate) imported_depth: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct Table {
+pub struct Table {
     pub(crate) name: String,
-    pub(crate) inner: Vec<FieldDecl>,
+    pub inner: Vec<FieldDecl>,
     pub(crate) imported_depth: usize,
 }
 
@@ -102,9 +102,9 @@ pub(crate) struct ItemDecl {
 }
 
 #[derive(Debug)]
-pub(crate) struct FieldDecl {
-    pub(crate) name: String,
-    pub(crate) typ: Rc<TopDecl>,
+pub struct FieldDecl {
+    pub name: String,
+    pub typ: Rc<TopDecl>,
 }
 
 impl Array {
@@ -227,6 +227,10 @@ impl Ast {
             .filter(|x| x.imported_depth() == 0)
             .map(Rc::clone)
             .collect()
+    }
+
+    pub fn decls(&self) -> Vec<Rc<TopDecl>> {
+        self.decls.clone()
     }
 
     pub(crate) fn major_imports(&self) -> Vec<Rc<ImportStmt>> {

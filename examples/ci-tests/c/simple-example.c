@@ -1,4 +1,4 @@
-#include "ci_tests.h"
+#include "tests-utils.h"
 
 #define test_build_simple_for(Name)                                     \
     {                                                                   \

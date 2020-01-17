@@ -178,22 +178,16 @@ union UnionA {
 }
 
 table TableA {
-    f0: Table0,
-    f1: Table1,
-    f2: Table2,
-    f3: Table3,
-    f4: Table4,
-    f5: Table5,
-    f6: Table6,
+    f1: Word2,
+    f2: StructA,
+    f3: Bytes,
+    f4: BytesVec,
+    f5: Table1,
+    f6: BytesOpt,
     f7: UnionA,
+    f8: byte,
 }
 
-/*
- * ```sh
- * grep -r "^\(option\|union\|array\|struct\|vector\|table\) " ci_tests.mol \
- *     | awk '{ print $2 }' | cat -n | awk '{ print "f"$1": "$2"," }'
- * ```
- */
 table AllInOne {
     f0: byte,
     f1: Byte2,
