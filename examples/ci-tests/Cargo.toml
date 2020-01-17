@@ -4,6 +4,10 @@ version = "0.4.0"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 
+[[bin]]
+name = "simple-example"
+path = "src/simple-example.rs"
+
 [dependencies]
 molecule = { path = "../../bindings/rust", default-features = false }
 
@@ -11,6 +15,7 @@ molecule = { path = "../../bindings/rust", default-features = false }
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
 
 [dev-dependencies]
+molecule-tests-utils = { path = "../tests-utils" }
 slices = "~0.1"
 
 [features]

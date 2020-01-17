@@ -1,0 +1,18 @@
+[package]
+name = "molecule-tests-utils"
+version = "0.4.2"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
+syn = "~1.0"
+quote = "~1.0"
+proc-macro2 = "~1.0"
+serde = { version = "~1.0", features = ["derive"] }
+serde_yaml = "~0.8"
+faster-hex = "~0.4"
+property = "~0.3"

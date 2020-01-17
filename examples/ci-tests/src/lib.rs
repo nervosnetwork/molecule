@@ -3,7 +3,27 @@
 pub mod types {
     #![allow(clippy::all)]
     pub use molecule::prelude::{Byte, ByteReader};
-    include!(concat!(env!("OUT_DIR"), "/", "ci_tests", ".rs"));
+    include!(concat!(env!("OUT_DIR"), "/", "types", ".rs"));
+}
+
+#[cfg(test)]
+mod test_vectors {
+    mod default {
+        use crate::types::*;
+        use molecule::prelude::*;
+        molecule_tests_utils::load_tests!(
+            "../../test/schemas/types.mol",
+            "../../test/vectors/default.yaml",
+        );
+    }
+    mod simple {
+        use crate::types::*;
+        use molecule::prelude::*;
+        molecule_tests_utils::load_tests!(
+            "../../test/schemas/types.mol",
+            "../../test/vectors/simple.yaml"
+        );
+    }
 }
 
 #[macro_export]
@@ -84,6 +104,8 @@ macro_rules! testset {
         $callback!(Table4);
         $callback!(Table5);
         $callback!(Table6);
+
+        $callback!(TableA);
     };
     (option, $callback:ident) => {
         use $crate::types::*;
