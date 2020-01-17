@@ -37,7 +37,7 @@ impl Generator {
         w!(o, "#endif /* __cplusplus */                               ");
         w!(o, "                                                       ");
         w!(o, "#ifndef {}                              ", api_decorator);
-        w!(o, "#define __DEFINE_MOLECULE_API_DECORATOR                ");
+        w!(o, "#define __DEFINE_MOLECULE_API_DECORATOR_{}          ", n);
         w!(o, "#define {}                              ", api_decorator);
         w!(o, "#endif /* {} */                         ", api_decorator);
         Ok(())
@@ -47,10 +47,10 @@ impl Generator {
         let n = name.to_snake().to_uppercase();
         let api_decorator = utilities::API_DECORATOR;
         w!(o, "                                                       ");
-        w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR                 ");
+        w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
         w!(o, "#undef {}                               ", api_decorator);
-        w!(o, "#undef __DEFINE_MOLECULE_API_DECORATOR                 ");
-        w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR */           ");
+        w!(o, "#undef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
+        w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR_{} */     ", n);
         w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
         w!(o, "_CPP_END                                               ");
