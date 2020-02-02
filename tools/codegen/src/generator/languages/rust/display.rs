@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::utilities::func_name;
-use crate::ast::verified as ast;
+use crate::ast;
 
 pub(super) trait ImplDisplay {
     fn impl_display(&self) -> m4::TokenStream;
@@ -30,14 +30,14 @@ impl ImplDisplay for ast::Union {
 
 impl ImplDisplay for ast::Array {
     fn impl_display(&self) -> m4::TokenStream {
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             quote!(
                 use molecule::hex_string;
                 let raw_data = hex_string(&self.raw_data());
                 write!(f, "{}(0x{})", Self::NAME, raw_data)
             )
         } else {
-            let display_items = (0..self.item_count).map(|idx| {
+            let display_items = (0..self.item_count()).map(|idx| {
                 let func = func_name(&format!("nth{}", idx));
                 if idx == 0 {
                     quote!(write!(f, "{}", self.#func())?;)
@@ -56,9 +56,9 @@ impl ImplDisplay for ast::Array {
 
 impl ImplDisplay for ast::Struct {
     fn impl_display(&self) -> m4::TokenStream {
-        let display_fields = self.inner.iter().enumerate().map(|(i, f)| {
-            let field = f.name.clone();
-            let func = func_name(&f.name);
+        let display_fields = self.fields().iter().enumerate().map(|(i, f)| {
+            let field = f.name().to_owned();
+            let func = func_name(f.name());
             if i == 0 {
                 quote!(write!(f, "{}: {}", #field, self.#func())?;)
             } else {
@@ -75,7 +75,7 @@ impl ImplDisplay for ast::Struct {
 
 impl ImplDisplay for ast::FixVec {
     fn impl_display(&self) -> m4::TokenStream {
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             quote!(
                 use molecule::hex_string;
                 let raw_data = hex_string(&self.raw_data());
@@ -115,16 +115,16 @@ impl ImplDisplay for ast::DynVec {
 
 impl ImplDisplay for ast::Table {
     fn impl_display(&self) -> m4::TokenStream {
-        let display_fields = self.inner.iter().enumerate().map(|(i, f)| {
-            let field = f.name.clone();
-            let func = func_name(&f.name);
+        let display_fields = self.fields().iter().enumerate().map(|(i, f)| {
+            let field = f.name().to_owned();
+            let func = func_name(f.name());
             if i == 0 {
                 quote!(write!(f, "{}: {}", #field, self.#func())?;)
             } else {
                 quote!(write!(f, ", {}: {}", #field, self.#func())?;)
             }
         });
-        let display_unresolved = if self.inner.is_empty() {
+        let display_unresolved = if self.fields().is_empty() {
             quote!(write!(f, ".. ({} fields)", extra_count)?;)
         } else {
             quote!(write!(f, ", .. ({} fields)", extra_count)?;)

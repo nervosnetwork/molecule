@@ -1,10 +1,10 @@
 use molecule::{pack_number, Number, NUMBER_SIZE};
 
-pub(crate) trait DefaultContent {
+pub trait DefaultContent {
     fn default_content(&self) -> Vec<u8>;
 }
 
-impl DefaultContent for super::Atom {
+impl DefaultContent for super::Primitive {
     fn default_content(&self) -> Vec<u8> {
         vec![0]
     }
@@ -19,7 +19,7 @@ impl DefaultContent for super::Option_ {
 impl DefaultContent for super::Union {
     fn default_content(&self) -> Vec<u8> {
         let item_id = 0;
-        let inner_content = self.inner[item_id].typ.default_content();
+        let inner_content = self.items()[item_id].typ.default_content();
         let total_size = NUMBER_SIZE + inner_content.len();
         let mut content = Vec::with_capacity(total_size);
         content.extend_from_slice(&pack_number(item_id as Number));
@@ -60,14 +60,14 @@ impl DefaultContent for super::DynVec {
 
 impl DefaultContent for super::Table {
     fn default_content(&self) -> Vec<u8> {
-        let field_count = self.inner.len();
+        let field_count = self.fields().len();
         let (total_size, content) = if field_count == 0 {
             let total_size = NUMBER_SIZE;
             let mut content = Vec::with_capacity(total_size);
             content.extend_from_slice(&pack_number(total_size as Number));
             (total_size, content)
         } else {
-            let (total_size, offsets, field_data) = self.inner.iter().fold(
+            let (total_size, offsets, field_data) = self.fields().iter().fold(
                 (
                     NUMBER_SIZE * (field_count + 1),
                     Vec::with_capacity(field_count),
@@ -99,7 +99,7 @@ impl DefaultContent for super::Table {
 impl DefaultContent for super::TopDecl {
     fn default_content(&self) -> Vec<u8> {
         match self {
-            super::TopDecl::Atom(inner) => inner.default_content(),
+            super::TopDecl::Primitive(inner) => inner.default_content(),
             super::TopDecl::Option_(inner) => inner.default_content(),
             super::TopDecl::Union(inner) => inner.default_content(),
             super::TopDecl::Array(inner) => inner.default_content(),

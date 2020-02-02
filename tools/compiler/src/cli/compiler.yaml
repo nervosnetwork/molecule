@@ -1,0 +1,24 @@
+name: Moleculec
+about: Schema compiler for molecule.
+author: Nervos Core Dev <dev@nervos.org>
+args:
+    - schema-file:
+        help: Provide a schema file to compile.
+        long: schema-file
+        takes_value: true
+        required: true
+    - language:
+        help: |
+            Specify a language, then generate source code for the specified language and output the generated code to the stdout.
+            This parameter actually specifies a plugin to use. It should be a simple word, and the compiler will search for a plugin called "moleculec-<language>" in `$PATH`.
+            If "<language>" is "-", the compiler will dump the intermediate data of schema to standard output.
+        long: language
+        takes_value: true
+        required: true
+    - format:
+        help: If "<language>" is "-", this parameter is used to specify a format for the intermediate data.
+        long: format
+        takes_value: true
+        possible_values:
+            - json
+            - yaml

@@ -1,5 +1,4 @@
 pub trait HasName {
-    const TYPE_NAME: &'static str;
     fn name(&self) -> &str;
     fn type_name(&self) -> &str;
 }
@@ -7,18 +6,17 @@ pub trait HasName {
 macro_rules! impl_has_name_for_decl {
     ($decl:ident, $type_name:ident) => {
         impl HasName for super::$decl {
-            const TYPE_NAME: &'static str = stringify!($type_name);
             fn name(&self) -> &str {
                 &self.name
             }
             fn type_name(&self) -> &str {
-                Self::TYPE_NAME
+                stringify!($type_name)
             }
         }
     };
 }
 
-impl_has_name_for_decl!(Atom, Atom);
+impl_has_name_for_decl!(Primitive, Primitive);
 impl_has_name_for_decl!(Option_, Option);
 impl_has_name_for_decl!(Union, Union);
 impl_has_name_for_decl!(Array, Array);
@@ -28,11 +26,9 @@ impl_has_name_for_decl!(DynVec, DynVec);
 impl_has_name_for_decl!(Table, Table);
 
 impl HasName for super::TopDecl {
-    const TYPE_NAME: &'static str = "TopDecl";
-
     fn name(&self) -> &str {
         match self {
-            super::TopDecl::Atom(inner) => inner.name(),
+            super::TopDecl::Primitive(inner) => inner.name(),
             super::TopDecl::Option_(inner) => inner.name(),
             super::TopDecl::Union(inner) => inner.name(),
             super::TopDecl::Array(inner) => inner.name(),
@@ -45,7 +41,7 @@ impl HasName for super::TopDecl {
 
     fn type_name(&self) -> &str {
         match self {
-            super::TopDecl::Atom(inner) => inner.type_name(),
+            super::TopDecl::Primitive(inner) => inner.type_name(),
             super::TopDecl::Option_(inner) => inner.type_name(),
             super::TopDecl::Union(inner) => inner.type_name(),
             super::TopDecl::Array(inner) => inner.type_name(),

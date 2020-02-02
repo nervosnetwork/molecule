@@ -2,7 +2,7 @@ use std::io;
 
 use quote::quote;
 
-use crate::{ast::verified as ast, VERSION};
+use crate::{ast, VERSION};
 
 pub(self) mod utilities;
 
@@ -44,10 +44,10 @@ impl super::LanguageGenerator for Generator {
             use molecule::prelude::*;
         );
         write!(writer, "{}", code)?;
-        let major_imports = ast.major_imports();
-        if !major_imports.is_empty() {
+        let imports = ast.imports();
+        if !imports.is_empty() {
             writeln!(writer)?;
-            for import in major_imports {
+            for import in imports {
                 let code = import.import_crate();
                 write!(writer, "{}", code)?;
             }
@@ -62,7 +62,7 @@ impl super::LanguageGenerator for Generator {
                 ast::TopDecl::FixVec(ref i) => i.generate(writer)?,
                 ast::TopDecl::DynVec(ref i) => i.generate(writer)?,
                 ast::TopDecl::Table(ref i) => i.generate(writer)?,
-                ast::TopDecl::Atom(_) => unreachable!(),
+                ast::TopDecl::Primitive(_) => unreachable!(),
             };
         }
         Ok(())

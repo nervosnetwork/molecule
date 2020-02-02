@@ -1,6 +1,6 @@
-use std::{convert::TryFrom, io};
+use std::{convert::TryFrom, fmt, io};
 
-use crate::ast::verified as ast;
+use crate::ast;
 
 mod c;
 mod rust;
@@ -15,29 +15,38 @@ pub(super) trait LanguageGenerator {
     fn generate<W: io::Write>(writer: &mut W, ast: &ast::Ast) -> io::Result<()>;
 }
 
+impl fmt::Display for Language {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::C => write!(f, "C"),
+            Self::Rust => write!(f, "Rust"),
+        }
+    }
+}
+
 impl TryFrom<&str> for Language {
     type Error = String;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "c" => Ok(Language::C),
-            "rust" => Ok(Language::Rust),
+        match value.to_lowercase().as_str() {
+            "c" => Ok(Self::C),
+            "rust" => Ok(Self::Rust),
             lang => Err(format!("unsupport language: [{}]", lang)),
         }
     }
 }
 
 impl Language {
-    pub(crate) fn extension(&self) -> &str {
-        match *self {
-            Language::C => "h",
-            Language::Rust => "rs",
+    pub(crate) fn extension(self) -> &'static str {
+        match self {
+            Self::C => "h",
+            Self::Rust => "rs",
         }
     }
 
     pub(crate) fn generate<W: io::Write>(self, writer: &mut W, ast: &ast::Ast) -> io::Result<()> {
         match self {
-            Language::C => c::Generator::generate(writer, ast),
-            Language::Rust => rust::Generator::generate(writer, ast),
+            Self::C => c::Generator::generate(writer, ast),
+            Self::Rust => rust::Generator::generate(writer, ast),
         }
     }
 }

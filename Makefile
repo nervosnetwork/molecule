@@ -34,5 +34,6 @@ ci-c:
 
 ci-example:
 	@set -eu; \
+	export RUSTFLAGS='-F warnings'; \
 	cd examples/ci-tests; \
 	make clean test

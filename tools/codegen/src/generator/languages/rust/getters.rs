@@ -4,7 +4,7 @@ use quote::quote;
 use super::utilities::{
     entity_name, entity_union_name, func_name, reader_name, reader_union_name, usize_lit,
 };
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(super) trait ImplGetters: HasName {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream;
@@ -28,12 +28,12 @@ pub(super) trait ImplGetters: HasName {
 impl ImplGetters for ast::Option_ {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let (inner, getter_ret, getter_stmt) = if is_entity {
-            let inner = entity_name(self.typ.name());
+            let inner = entity_name(self.item().typ().name());
             let getter_ret = quote!(#inner);
             let getter_stmt = quote!(self.0.clone());
             (inner, getter_ret, getter_stmt)
         } else {
-            let inner = reader_name(self.typ.name());
+            let inner = reader_name(self.item().typ().name());
             let getter_ret = quote!(#inner<'r>);
             let getter_stmt = quote!(self.as_slice());
             (inner, getter_ret, getter_stmt)
@@ -63,12 +63,12 @@ impl ImplGetters for ast::Union {
             let getter_stmt = quote!(&self.as_slice()[molecule::NUMBER_SIZE..]);
             (getter_ret, getter_stmt)
         };
-        let match_stmts = self.inner.iter().enumerate().map(|(index, inner)| {
+        let match_stmts = self.items().iter().enumerate().map(|(index, inner)| {
             let item_id = usize_lit(index);
             let inner = if is_entity {
-                entity_name(inner.typ.name())
+                entity_name(inner.typ().name())
             } else {
-                reader_name(inner.typ.name())
+                reader_name(inner.typ().name())
             };
             quote!(#item_id => #inner::new_unchecked(inner).into(),)
         });
@@ -86,24 +86,24 @@ impl ImplGetters for ast::Union {
 
 impl ImplGetters for ast::Array {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
-        let (inner, getter_ret, getter_ret_atom, getter_stmt_atom) = if is_entity {
-            let inner = entity_name(self.typ.name());
+        let (inner, getter_ret, getter_ret_byte, getter_stmt_byte) = if is_entity {
+            let inner = entity_name(self.item().typ().name());
             let getter_ret = quote!(#inner);
-            let getter_ret_atom = quote!(molecule::bytes::Bytes);
-            let getter_stmt_atom = quote!(self.as_bytes());
-            (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
+            let getter_ret_byte = quote!(molecule::bytes::Bytes);
+            let getter_stmt_byte = quote!(self.as_bytes());
+            (inner, getter_ret, getter_ret_byte, getter_stmt_byte)
         } else {
-            let inner = reader_name(self.typ.name());
+            let inner = reader_name(self.item().typ().name());
             let getter_ret = quote!(#inner<'r>);
-            let getter_ret_atom = quote!(&'r [u8]);
-            let getter_stmt_atom = quote!(self.as_slice());
-            (inner, getter_ret, getter_ret_atom, getter_stmt_atom)
+            let getter_ret_byte = quote!(&'r [u8]);
+            let getter_stmt_byte = quote!(self.as_slice());
+            (inner, getter_ret, getter_ret_byte, getter_stmt_byte)
         };
-        let each_getter = (0..self.item_count)
+        let each_getter = (0..self.item_count())
             .map(|i| {
                 let func = func_name(&format!("nth{}", i));
-                let start = usize_lit(self.item_size * i);
-                let end = usize_lit(self.item_size * (i + 1));
+                let start = usize_lit(self.item_size() * i);
+                let end = usize_lit(self.item_size() * (i + 1));
                 let getter_stmt = if is_entity {
                     quote!(self.0.slice(#start..#end))
                 } else {
@@ -116,11 +116,11 @@ impl ImplGetters for ast::Array {
                 )
             })
             .collect::<Vec<_>>();
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             quote!(
                 #( #each_getter )*
-                pub fn raw_data(&self) -> #getter_ret_atom {
-                    #getter_stmt_atom
+                pub fn raw_data(&self) -> #getter_ret_byte {
+                    #getter_stmt_byte
                 }
             )
         } else {
@@ -133,16 +133,16 @@ impl ImplGetters for ast::Array {
 
 impl ImplGetters for ast::Struct {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
-        let (_, each_getter) = self.inner.iter().zip(self.field_size.iter()).fold(
-            (0, Vec::with_capacity(self.inner.len())),
+        let (_, each_getter) = self.fields().iter().zip(self.field_sizes().iter()).fold(
+            (0, Vec::with_capacity(self.fields().len())),
             |(mut offset, mut getters), (f, s)| {
-                let func = func_name(&f.name);
+                let func = func_name(f.name());
                 let (inner, getter_ret) = if is_entity {
-                    let inner = entity_name(f.typ.name());
+                    let inner = entity_name(f.typ().name());
                     let getter_ret = quote!(#inner);
                     (inner, getter_ret)
                 } else {
-                    let inner = reader_name(f.typ.name());
+                    let inner = reader_name(f.typ().name());
                     let getter_ret = quote!(#inner<'r>);
                     (inner, getter_ret)
                 };
@@ -171,31 +171,31 @@ impl ImplGetters for ast::Struct {
 
 impl ImplGetters for ast::FixVec {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
-        let (inner, getter_ret, getter_stmt, getter_ret_atom, getter_stmt_atom) = if is_entity {
-            let inner = entity_name(self.typ.name());
+        let (inner, getter_ret, getter_stmt, getter_ret_byte, getter_stmt_byte) = if is_entity {
+            let inner = entity_name(self.item().typ().name());
             let getter_ret = quote!(#inner);
             let getter_stmt = quote!(self.0.slice(start..end));
-            let getter_ret_atom = quote!(molecule::bytes::Bytes);
-            let getter_stmt_atom = quote!(self.0.slice(molecule::NUMBER_SIZE..));
+            let getter_ret_byte = quote!(molecule::bytes::Bytes);
+            let getter_stmt_byte = quote!(self.0.slice(molecule::NUMBER_SIZE..));
             (
                 inner,
                 getter_ret,
                 getter_stmt,
-                getter_ret_atom,
-                getter_stmt_atom,
+                getter_ret_byte,
+                getter_stmt_byte,
             )
         } else {
-            let inner = reader_name(self.typ.name());
+            let inner = reader_name(self.item().typ().name());
             let getter_ret = quote!(#inner<'r>);
             let getter_stmt = quote!(&self.as_slice()[start..end]);
-            let getter_ret_atom = quote!(&'r [u8]);
-            let getter_stmt_atom = quote!(&self.as_slice()[molecule::NUMBER_SIZE..]);
+            let getter_ret_byte = quote!(&'r [u8]);
+            let getter_stmt_byte = quote!(&self.as_slice()[molecule::NUMBER_SIZE..]);
             (
                 inner,
                 getter_ret,
                 getter_stmt,
-                getter_ret_atom,
-                getter_stmt_atom,
+                getter_ret_byte,
+                getter_stmt_byte,
             )
         };
         let common_part = quote!(
@@ -212,11 +212,11 @@ impl ImplGetters for ast::FixVec {
                 #inner::new_unchecked(#getter_stmt)
             }
         );
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             quote!(
                 #common_part
-                pub fn raw_data(&self) -> #getter_ret_atom {
-                    #getter_stmt_atom
+                pub fn raw_data(&self) -> #getter_ret_byte {
+                    #getter_stmt_byte
                 }
             )
         } else {
@@ -228,13 +228,13 @@ impl ImplGetters for ast::FixVec {
 impl ImplGetters for ast::DynVec {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let (inner, getter_ret, getter_stmt_last, getter_stmt) = if is_entity {
-            let inner = entity_name(self.typ.name());
+            let inner = entity_name(self.item().typ().name());
             let getter_ret = quote!(#inner);
             let getter_stmt_last = quote!(self.0.slice(start..));
             let getter_stmt = quote!(self.0.slice(start..end));
             (inner, getter_ret, getter_stmt_last, getter_stmt)
         } else {
-            let inner = reader_name(self.typ.name());
+            let inner = reader_name(self.item().typ().name());
             let getter_ret = quote!(#inner<'r>);
             let getter_stmt_last = quote!(&self.as_slice()[start..]);
             let getter_stmt = quote!(&self.as_slice()[start..end]);
@@ -274,23 +274,23 @@ impl ImplGetters for ast::Table {
             (getter_stmt_last, getter_stmt)
         };
         let each_getter = self
-            .inner
+            .fields()
             .iter()
             .enumerate()
             .map(|(i, f)| {
-                let func = func_name(&f.name);
+                let func = func_name(f.name());
                 let (inner, getter_ret) = if is_entity {
-                    let inner = entity_name(f.typ.name());
+                    let inner = entity_name(f.typ().name());
                     let getter_ret = quote!(#inner);
                     (inner, getter_ret)
                 } else {
-                    let inner = reader_name(f.typ.name());
+                    let inner = reader_name(f.typ().name());
                     let getter_ret = quote!(#inner<'r>);
                     (inner, getter_ret)
                 };
                 let start = usize_lit(i);
                 let end = usize_lit(i + 1);
-                if i == self.inner.len() - 1 {
+                if i == self.fields().len() - 1 {
                     quote!(
                         pub fn #func(&self) -> #getter_ret {
                             let offsets = self.field_offsets();

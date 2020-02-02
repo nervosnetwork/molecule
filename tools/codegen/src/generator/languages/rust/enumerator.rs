@@ -4,7 +4,7 @@ use quote::quote;
 use super::utilities::{
     entity_name, entity_union_name, reader_name, reader_union_name, union_item_name, usize_lit,
 };
-use crate::ast::verified::{self as ast, HasName};
+use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait GenEnumerator {
     fn gen_enumerator(&self) -> m4::TokenStream;
@@ -17,7 +17,7 @@ impl GenEnumerator for ast::Union {
         let reader_union = reader_union_name(self.name());
         let entity_union_string = entity_union.to_string();
         let reader_union_string = reader_union.to_string();
-        let inner_len = self.inner.len();
+        let inner_len = self.items().len();
         let (
             ref entity_inners,
             ref reader_inners,
@@ -26,7 +26,7 @@ impl GenEnumerator for ast::Union {
             ref entity_union_item_paths,
             ref reader_union_item_paths,
         ) = {
-            self.inner.iter().enumerate().fold(
+            self.items().iter().enumerate().fold(
                 (
                     Vec::with_capacity(inner_len),
                     Vec::with_capacity(inner_len),
@@ -44,7 +44,7 @@ impl GenEnumerator for ast::Union {
                     mut reader_union_item_paths,
                 ),
                  (index, inner)| {
-                    let inner_name = inner.typ.name();
+                    let inner_name = inner.typ().name();
                     let entity_name = entity_name(inner_name);
                     let reader_name = reader_name(inner_name);
                     let item_name = union_item_name(inner_name);
@@ -73,8 +73,8 @@ impl GenEnumerator for ast::Union {
             .map(|x| x.to_string())
             .collect::<Vec<_>>();
         let entity_default = {
-            let inner = &self.inner[0];
-            let item_name = union_item_name(inner.typ.name());
+            let inner = &self.items()[0];
+            let item_name = union_item_name(inner.typ().name());
             quote!(#item_name(::core::default::Default::default()))
         };
         let code_union_definitions_and_impl_traits = quote!(

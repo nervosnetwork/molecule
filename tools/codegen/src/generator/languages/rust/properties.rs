@@ -1,7 +1,7 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use crate::ast::verified as ast;
+use crate::ast;
 
 pub(super) trait DefProperties {
     fn def_properties(&self) -> m4::TokenStream;

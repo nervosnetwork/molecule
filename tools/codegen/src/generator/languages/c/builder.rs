@@ -1,7 +1,7 @@
 use std::io;
 
 use super::utilities::IdentPrefix;
-use crate::ast::verified::{self as ast, DefaultContent, HasName};
+use crate::ast::{self as ast, DefaultContent, HasName};
 
 pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
     fn gen_builder_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
@@ -104,13 +104,13 @@ impl GenBuilder for ast::Union {
     fn gen_builder_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         {
             let id = 0;
-            let default = &self.inner[id].typ;
-            let (len, name) = if default.is_atom() {
-                (1, "NULL".to_owned())
+            let default = &self.items()[id].typ();
+            let len = default.default_content().len();
+            let name = if default.is_byte() {
+                "NULL".to_owned()
             } else {
-                let len = default.default_content().len();
                 let name = default.default_constant();
-                (len, format!("&{}", name))
+                format!("&{}", name)
             };
             let data_capacity = calculate_capacity(molecule::NUMBER_SIZE + len);
             let macro_content = format!(
@@ -119,15 +119,15 @@ impl GenBuilder for ast::Union {
             );
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
-        for (item_id, item) in self.inner.iter().enumerate() {
-            let (macro_sig_tail, macro_content) = if item.typ.is_atom() {
+        for (item_id, item) in self.items().iter().enumerate() {
+            let (macro_sig_tail, macro_content) = if item.typ().is_byte() {
                 (
-                    format!("_set_{}(b, p)", item.typ.name()),
+                    format!("_set_{}(b, p)", item.typ().name()),
                     format!("mol_union_builder_set_byte(b, {}, p)", item_id),
                 )
             } else {
                 (
-                    format!("_set_{}(b, p, l)", item.typ.name()),
+                    format!("_set_{}(b, p, l)", item.typ().name()),
                     format!("mol_union_builder_set(b, {}, p, l)", item_id),
                 )
             };
@@ -147,15 +147,16 @@ impl GenBuilder for ast::Array {
             );
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
-        for i in 0..self.item_count {
+        for i in 0..self.item_count() {
             let macro_sig_tail = format!("_set_nth{}(b, p)", i);
-            let item_offset = self.item_size * i;
-            let macro_content = if self.typ.is_atom() {
+            let item_offset = self.item_size() * i;
+            let macro_content = if self.item().typ().is_byte() {
                 format!("mol_builder_set_byte_by_offset(b, {}, p)", item_offset)
             } else {
                 format!(
                     "mol_builder_set_by_offset(b, {}, p, {})",
-                    item_offset, self.item_size
+                    item_offset,
+                    self.item_size()
                 )
             };
             self.define_builder_macro(writer, &macro_sig_tail, &macro_content)?;
@@ -175,9 +176,9 @@ impl GenBuilder for ast::Struct {
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
         let mut field_offset = 0;
-        for (f, field_size) in self.inner.iter().zip(self.field_size.iter()) {
-            let macro_sig_tail = format!("_set_{}(b, p)", f.name);
-            let macro_content = if f.typ.is_atom() {
+        for (f, field_size) in self.fields().iter().zip(self.field_sizes().iter()) {
+            let macro_sig_tail = format!("_set_{}(b, p)", f.name());
+            let macro_content = if f.typ().is_byte() {
                 format!("mol_builder_set_byte_by_offset(b, {}, p)", field_offset)
             } else {
                 format!(
@@ -196,15 +197,15 @@ impl GenBuilder for ast::Struct {
 impl GenBuilder for ast::FixVec {
     fn gen_builder_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         {
-            let data_capacity = calculate_capacity(self.item_size * 16);
+            let data_capacity = calculate_capacity(self.item_size() * 16);
             let macro_content = format!("mol_fixvec_builder_initialize(b, {})", data_capacity);
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
         {
-            let macro_content = if self.typ.is_atom() {
+            let macro_content = if self.item().typ().is_byte() {
                 "mol_fixvec_builder_push_byte(b, p)".to_owned()
             } else {
-                format!("mol_fixvec_builder_push(b, p, {})", self.item_size)
+                format!("mol_fixvec_builder_push(b, p, {})", self.item_size())
             };
             self.define_builder_macro(writer, "_push(b, p)", &macro_content)?;
         }
@@ -216,7 +217,7 @@ impl GenBuilder for ast::FixVec {
 impl GenBuilder for ast::DynVec {
     fn gen_builder_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         {
-            let data_capacity = calculate_capacity(self.typ.default_content().len() * 16);
+            let data_capacity = calculate_capacity(self.item().typ().default_content().len() * 16);
             let number_capacity = calculate_capacity(molecule::NUMBER_SIZE * 16);
             let macro_content = format!(
                 "mol_builder_initialize_with_capacity(b, {}, {})",
@@ -243,19 +244,19 @@ impl GenBuilder for ast::Table {
             let macro_content = format!(
                 "mol_table_builder_initialize(b, {}, {})",
                 data_capacity,
-                self.inner.len()
+                self.fields().len()
             );
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
-        for (i, f) in self.inner.iter().enumerate() {
-            let (macro_sig_tail, macro_content) = if f.typ.is_atom() {
+        for (i, f) in self.fields().iter().enumerate() {
+            let (macro_sig_tail, macro_content) = if f.typ().is_byte() {
                 (
-                    format!("_set_{}(b, p)", f.name),
+                    format!("_set_{}(b, p)", f.name()),
                     format!("mol_table_builder_add_byte(b, {}, p)", i),
                 )
             } else {
                 (
-                    format!("_set_{}(b, p, l)", f.name),
+                    format!("_set_{}(b, p, l)", f.name()),
                     format!("mol_table_builder_add(b, {}, p, l)", i),
                 )
             };
@@ -268,7 +269,7 @@ impl GenBuilder for ast::Table {
     fn gen_builder_function_build<W: io::Write>(&self, o: &mut W) -> io::Result<()> {
         let func_name = format!("{}_build", self.builder_prefix());
         let api_decorator = self.api_decorator();
-        let offset = molecule::NUMBER_SIZE * (self.inner.len() + 1);
+        let offset = molecule::NUMBER_SIZE * (self.fields().len() + 1);
         w!(
             o,
             "{} mol_seg_res_t {} (mol_builder_t builder) {{",
@@ -278,13 +279,13 @@ impl GenBuilder for ast::Table {
         w!(o, "    mol_seg_res_t res;                                 ");
         w!(o, "    res.errno = MOL_OK;                                ");
         w!(o, "    mol_num_t offset = {};                     ", offset);
-        if !self.inner.is_empty() {
+        if !self.fields().is_empty() {
             w!(o, "    mol_num_t len;                                     ");
         }
         w!(o, "    res.seg.size = offset;                             ");
-        for (i, f) in self.inner.iter().enumerate() {
+        for (i, f) in self.fields().iter().enumerate() {
             let li = i * 2 + 1;
-            let len = f.typ.default_content().len();
+            let len = f.typ().default_content().len();
             w!(o, "    len = builder.number_ptr[{}];              ", li);
             w!(o, "    res.seg.size += len == 0 ? {} : len;      ", len);
         }
@@ -292,28 +293,28 @@ impl GenBuilder for ast::Table {
         w!(o, "    uint8_t *dst = res.seg.ptr;                        ");
         w!(o, "    mol_pack_number(dst, &res.seg.size);               ");
         w!(o, "    dst += MOL_NUM_T_SIZE;                             ");
-        for (i, f) in self.inner.iter().enumerate() {
+        for (i, f) in self.fields().iter().enumerate() {
             let li = i * 2 + 1;
-            let len = f.typ.default_content().len();
+            let len = f.typ().default_content().len();
             w!(o, "    mol_pack_number(dst, &offset);                 ");
             w!(o, "    dst += MOL_NUM_T_SIZE;                         ");
             w!(o, "    len = builder.number_ptr[{}];              ", li);
             w!(o, "    offset += len == 0 ? {} : len;            ", len);
         }
-        if !self.inner.is_empty() {
+        if !self.fields().is_empty() {
             w!(o, "    uint8_t *src = builder.data_ptr;                   ");
         }
-        for (i, f) in self.inner.iter().enumerate() {
+        for (i, f) in self.fields().iter().enumerate() {
             let li = i * 2 + 1;
             let oi = i * 2;
-            let len = f.typ.default_content().len();
+            let len = f.typ().default_content().len();
             w!(o, "    len = builder.number_ptr[{}];              ", li);
             w!(o, "    if (len == 0) {{                               ");
             w!(o, "        len = {};                             ", len);
-            if f.typ.is_atom() {
+            if f.typ().is_byte() {
                 w!(o, "        *dst = 0;                              ");
             } else {
-                let name = f.typ.default_constant();
+                let name = f.typ().default_constant();
                 w!(o, "        memcpy(dst, &{}, len);           ", name);
             }
             w!(o, "    }} else {{                                     ");
@@ -339,7 +340,7 @@ impl GenBuilder for ast::TopDecl {
             ast::TopDecl::FixVec(ref i) => i.gen_builder_interfaces_internal(writer),
             ast::TopDecl::DynVec(ref i) => i.gen_builder_interfaces_internal(writer),
             ast::TopDecl::Table(ref i) => i.gen_builder_interfaces_internal(writer),
-            ast::TopDecl::Atom(_) => unreachable!(),
+            ast::TopDecl::Primitive(_) => unreachable!(),
         }
     }
 
@@ -352,7 +353,7 @@ impl GenBuilder for ast::TopDecl {
             ast::TopDecl::FixVec(ref i) => i.gen_builder_function_build(writer),
             ast::TopDecl::DynVec(ref i) => i.gen_builder_function_build(writer),
             ast::TopDecl::Table(ref i) => i.gen_builder_function_build(writer),
-            ast::TopDecl::Atom(_) => unreachable!(),
+            ast::TopDecl::Primitive(_) => unreachable!(),
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::io;
 
 use super::utilities::IdentPrefix;
-use crate::ast::verified::{self as ast};
+use crate::ast;
 
 pub(super) trait GenReader: IdentPrefix {
     fn gen_reader_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
@@ -46,11 +46,11 @@ impl GenReader for ast::Option_ {
             api_decorator,
             func_name
         );
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             w!(o, "    if (input->size > 1) {{                            ");
             w!(o, "        return MOL_ERR;                                ");
         } else {
-            let f = format!("{}_verify", self.typ.reader_prefix());
+            let f = format!("{}_verify", self.item().typ().reader_prefix());
             w!(o, "    if (input->size != 0) {{                           ");
             w!(o, "        return {}(input, compatible);               ", f);
         }
@@ -95,12 +95,12 @@ impl GenReader for ast::Union {
         w!(o, "    inner.ptr = input->ptr + MOL_NUM_T_SIZE;           ");
         w!(o, "    inner.size = input->size - MOL_NUM_T_SIZE;         ");
         w!(o, "    switch(item_id) {{                                 ");
-        for (item_id, item) in self.inner.iter().enumerate() {
+        for (item_id, item) in self.items().iter().enumerate() {
             w!(o, "        case {}:                              ", item_id);
-            if item.typ.is_atom() {
+            if item.typ().is_byte() {
                 w!(o, "            return inner.size == 1 ? MOL_OK : MOL_ERR; ");
             } else {
-                let f = format!("{}_verify", item.typ.reader_prefix());
+                let f = format!("{}_verify", item.typ().reader_prefix());
                 w!(o, "            return {}(&inner, compatible);          ", f);
             }
         }
@@ -118,12 +118,13 @@ impl GenReader for ast::Array {
             let macro_content = format!("mol_verify_fixed_size(s, {})", self.total_size());
             self.define_reader_macro(writer, "_verify(s, c)", &macro_content)?;
         }
-        for i in 0..self.item_count {
+        for i in 0..self.item_count() {
             let macro_sig_tail = format!("_get_nth{}(s)", i);
-            let item_offset = self.item_size * i;
+            let item_offset = self.item_size() * i;
             let macro_content = format!(
                 "mol_slice_by_offset(s, {}, {})",
-                item_offset, self.item_size
+                item_offset,
+                self.item_size()
             );
             self.define_reader_macro(writer, &macro_sig_tail, &macro_content)?;
         }
@@ -138,8 +139,8 @@ impl GenReader for ast::Struct {
             self.define_reader_macro(writer, "_verify(s, c)", &macro_content)?;
         }
         let mut field_offset = 0;
-        for (f, field_size) in self.inner.iter().zip(self.field_size.iter()) {
-            let macro_sig_tail = format!("_get_{}(s)", f.name);
+        for (f, field_size) in self.fields().iter().zip(self.field_sizes().iter()) {
+            let macro_sig_tail = format!("_get_{}(s)", f.name());
             let macro_content = format!("mol_slice_by_offset(s, {}, {})", field_offset, field_size);
             self.define_reader_macro(writer, &macro_sig_tail, &macro_content)?;
             field_offset += field_size;
@@ -151,17 +152,17 @@ impl GenReader for ast::Struct {
 impl GenReader for ast::FixVec {
     fn gen_reader_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         {
-            let macro_content = format!("mol_fixvec_verify(s, {})", self.item_size);
+            let macro_content = format!("mol_fixvec_verify(s, {})", self.item_size());
             self.define_reader_macro(writer, "_verify(s, c)", &macro_content)?;
         }
         {
             self.define_reader_macro(writer, "_length(s)", "mol_fixvec_length(s)")?;
         }
         {
-            let macro_content = format!("mol_fixvec_slice_by_index(s, {}, i)", self.item_size);
+            let macro_content = format!("mol_fixvec_slice_by_index(s, {}, i)", self.item_size());
             self.define_reader_macro(writer, "_get(s, i)", &macro_content)?;
         }
-        if self.typ.is_atom() {
+        if self.item().typ().is_byte() {
             self.define_reader_macro(writer, "_raw_bytes(s)", "mol_fixvec_slice_raw_bytes(s)")?;
         }
         Ok(())
@@ -190,7 +191,7 @@ impl GenReader for ast::DynVec {
     fn gen_reader_function_verify<W: io::Write>(&self, o: &mut W) -> io::Result<()> {
         let func_name = format!("{}_verify", self.reader_prefix());
         let api_decorator = self.api_decorator();
-        let f = format!("{}_verify", self.typ.reader_prefix());
+        let f = format!("{}_verify", self.item().typ().reader_prefix());
         w!(
             o,
             "{} mol_errno {} (const mol_seg_t *input, bool compatible) {{",
@@ -266,11 +267,11 @@ impl GenReader for ast::Table {
             )?;
         }
         {
-            let macro_content = format!("mol_table_has_extra_fields(s, {})", self.inner.len());
+            let macro_content = format!("mol_table_has_extra_fields(s, {})", self.fields().len());
             self.define_reader_macro(writer, "_has_extra_fields(s)", &macro_content)?;
         }
-        for (i, f) in self.inner.iter().enumerate() {
-            let macro_sig_tail = format!("_get_{}(s)", f.name);
+        for (i, f) in self.fields().iter().enumerate() {
+            let macro_sig_tail = format!("_get_{}(s)", f.name());
             let macro_content = format!("mol_table_slice_by_index(s, {})", i);
             self.define_reader_macro(writer, &macro_sig_tail, &macro_content)?;
         }
@@ -280,7 +281,7 @@ impl GenReader for ast::Table {
     fn gen_reader_function_verify<W: io::Write>(&self, o: &mut W) -> io::Result<()> {
         let func_name = format!("{}_verify", self.reader_prefix());
         let api_decorator = self.api_decorator();
-        let fc = self.inner.len();
+        let fc = self.fields().len();
         w!(
             o,
             "{} mol_errno {} (const mol_seg_t *input, bool compatible) {{",
@@ -295,7 +296,7 @@ impl GenReader for ast::Table {
         w!(o, "    if (input->size != total_size) {{                  ");
         w!(o, "        return MOL_ERR_TOTAL_SIZE;                     ");
         w!(o, "    }}                                                 ");
-        if self.inner.is_empty() {
+        if self.fields().is_empty() {
             w!(o, "    if (input->size == MOL_NUM_T_SIZE) {{              ");
             w!(o, "        return MOL_OK;                                 ");
             w!(o, "    }}                                                 ");
@@ -329,20 +330,20 @@ impl GenReader for ast::Table {
         w!(o, "    if (offsets[field_count-1] > total_size) {{        ");
         w!(o, "        return MOL_ERR_OFFSET;                         ");
         w!(o, "    }}                                                 ");
-        if !self.inner.is_empty() {
+        if !self.fields().is_empty() {
             w!(o, "    offsets[field_count] = total_size;                 ");
-            if self.inner.iter().any(|field| !field.typ.is_atom()) {
+            if self.fields().iter().any(|field| !field.typ().is_byte()) {
                 w!(o, "        mol_seg_t inner;                               ");
                 w!(o, "        mol_errno errno;                               ");
             }
-            for (i, field) in self.inner.iter().enumerate() {
+            for (i, field) in self.fields().iter().enumerate() {
                 let j = i + 1;
-                if field.typ.is_atom() {
+                if field.typ().is_byte() {
                     w!(o, "        if (offsets[{}] - offsets[{}] != 1) {{   ", j, i);
                     w!(o, "            return MOL_ERR_DATA;                       ");
                     w!(o, "        }}                                             ");
                 } else {
-                    let f = format!("{}_verify", field.typ.reader_prefix());
+                    let f = format!("{}_verify", field.typ().reader_prefix());
                     w!(o, "        inner.ptr = input->ptr + offsets[{}];       ", i);
                     w!(o, "        inner.size = offsets[{}] - offsets[{}];  ", j, i);
                     w!(o, "        errno = {}(&inner, compatible);             ", f);
@@ -368,7 +369,7 @@ impl GenReader for ast::TopDecl {
             ast::TopDecl::FixVec(ref i) => i.gen_reader_interfaces_internal(writer),
             ast::TopDecl::DynVec(ref i) => i.gen_reader_interfaces_internal(writer),
             ast::TopDecl::Table(ref i) => i.gen_reader_interfaces_internal(writer),
-            ast::TopDecl::Atom(_) => unreachable!(),
+            ast::TopDecl::Primitive(_) => unreachable!(),
         }
     }
 
@@ -381,7 +382,7 @@ impl GenReader for ast::TopDecl {
             ast::TopDecl::FixVec(ref i) => i.gen_reader_function_verify(writer),
             ast::TopDecl::DynVec(ref i) => i.gen_reader_function_verify(writer),
             ast::TopDecl::Table(ref i) => i.gen_reader_function_verify(writer),
-            ast::TopDecl::Atom(_) => unreachable!(),
+            ast::TopDecl::Primitive(_) => unreachable!(),
         }
     }
 }

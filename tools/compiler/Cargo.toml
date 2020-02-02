@@ -15,13 +15,22 @@ categories = [
 ]
 license = "MIT"
 
+[[bin]]
+name = "moleculec"
+path = "src/compiler.rs"
+
+[[bin]]
+name = "moleculec-c"
+path = "src/compiler-c.rs"
+
+[[bin]]
+name = "moleculec-rust"
+path = "src/compiler-rust.rs"
+
 [dependencies]
 clap = { version = "~2.33", features = ["yaml"] }
-
-[dependencies.codegen]
-package ="molecule-codegen"
-version = "=0.4.2"
-path = "../codegen"
+which = "~3.1"
+molecule-codegen = { version = "=0.4.2", path = "../codegen", features = ["compiler-plugin"] }
 
 [badges]
 maintenance = { status = "experimental" }
