@@ -18,6 +18,6 @@ fn compile_schema(schema: &str) {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed={}", "../../test/vectors");
+    println!("cargo:rerun-if-changed=../../test/vectors");
     compile_schema("../../test/schemas/types.mol");
 }

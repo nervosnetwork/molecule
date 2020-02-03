@@ -12,7 +12,7 @@ impl fmt::Debug for Bytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let data = &self.0;
         write!(f, "&[")?;
-        if data.len() != 0 {
+        if !data.is_empty() {
             write!(f, "{:#04x}u8", data[0])?;
             for unit in data.iter().skip(1) {
                 write!(f, ", {:#04x}", unit)?;
