@@ -12,6 +12,18 @@ Another serialization system: minimalist and canonicalization.
 
 - [EBNF Version](grammar/grammar.ebnf)
 
+## Other Languages
+
+Molecule's reference implementation is in Rust and C.
+Implementations in other languages are maintained by respective authors.
+
+- [Go](https://github.com/driftluo/moleculec-go)
+- [JavaScript](https://github.com/Keith-CY/molecule-javascript)
+
+## Benchmark
+
+- [Benchmark in Rust with serde](https://github.com/nervosnetwork/serde_bench)
+
 ## License
 
 Licensed under [MIT License].
