@@ -15,7 +15,7 @@ molecule = { path = "../../bindings/rust", default-features = false }
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
 
 [dev-dependencies]
-molecule-tests-utils = { path = "../tests-utils" }
+molecule-tests-utils-rust = { path = "../tests-utils-rust" }
 slices = "~0.1"
 
 [features]

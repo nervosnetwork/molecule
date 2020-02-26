@@ -24,7 +24,7 @@ mod utils {
     }
 }
 
-pub(crate) trait GenTest {
+pub trait GenTest {
     fn gen_test(&self, ast: &Ast, id: usize) -> Vec<m4::TokenStream>;
     fn assert_stmt(&self) -> m4::TokenStream {
         quote!(
