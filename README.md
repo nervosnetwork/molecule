@@ -18,7 +18,6 @@ Molecule's reference implementation is in Rust and C.
 Implementations in other languages are maintained by respective authors.
 
 - [Go](https://github.com/driftluo/moleculec-go)
-- [JavaScript](https://github.com/Keith-CY/molecule-javascript)
 
 ## Benchmark
 
