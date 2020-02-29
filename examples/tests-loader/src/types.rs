@@ -7,7 +7,7 @@ use crate::bytes::Bytes;
 
 pub type All = Vec<Any>;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, untagged)]
 pub enum Any {
     Option_(Option_),
@@ -17,7 +17,7 @@ pub enum Any {
     Vector(Vector),
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct Option_ {
     name: String,
@@ -25,7 +25,7 @@ pub struct Option_ {
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct Union {
     name: String,
@@ -33,7 +33,7 @@ pub struct Union {
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct Array {
     name: String,
@@ -42,7 +42,7 @@ pub struct Array {
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct StructOrTable {
     name: String,
@@ -51,7 +51,7 @@ pub struct StructOrTable {
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct Vector {
     name: String,
@@ -60,7 +60,7 @@ pub struct Vector {
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
 pub struct Item {
     #[serde(rename = "type")]

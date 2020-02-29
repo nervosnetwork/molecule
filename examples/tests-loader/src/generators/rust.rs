@@ -44,8 +44,8 @@ pub trait GenTest {
 impl GenTest for types::Any {
     fn gen_test(&self, ast: &Ast, id: usize) -> Vec<m4::TokenStream> {
         match self {
-            Self::Union(inner) => inner.gen_test(ast, id),
             Self::Option_(inner) => inner.gen_test(ast, id),
+            Self::Union(inner) => inner.gen_test(ast, id),
             Self::Array(inner) => inner.gen_test(ast, id),
             Self::StructOrTable(inner) => inner.gen_test(ast, id),
             Self::Vector(inner) => inner.gen_test(ast, id),

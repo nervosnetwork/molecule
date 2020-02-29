@@ -11,14 +11,17 @@ impl fmt::Debug for Bytes {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let data = &self.0;
-        write!(f, "&[")?;
         if !data.is_empty() {
-            write!(f, "{:#04x}u8", data[0])?;
+            if f.alternate() {
+                write!(f, "{:#04x}u8", data[0])?;
+            } else {
+                write!(f, "{:#04x}", data[0])?;
+            }
             for unit in data.iter().skip(1) {
                 write!(f, ", {:#04x}", unit)?;
             }
         }
-        write!(f, "]")
+        Ok(())
     }
 }
 
@@ -70,9 +73,25 @@ impl<'de> serde::Deserialize<'de> for Bytes {
 }
 
 impl Bytes {
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub(crate) fn ts(&self) -> m4::TokenStream {
-        format!("{:?}", self).parse().unwrap_or_else(|_| {
+        format!("&[{:#?}]", self).parse().unwrap_or_else(|_| {
             panic!("Failed to parse the string <{:?}> to TokenStream.", self);
         })
+    }
+
+    pub(crate) fn c_array(&self, name: &str) -> String {
+        format!("const uint8_t {}[] = {{{:?}}};", name, self)
+    }
+
+    pub(crate) fn c_byte(&self, name: &str) -> String {
+        format!("const uint8_t {} = {:?};", name, self)
     }
 }

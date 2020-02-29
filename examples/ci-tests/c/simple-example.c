@@ -188,7 +188,7 @@ void test_build_simple() {
         }
         printf("\n");
     } else {
-        printf("%d/%d checks are failed.\n", failed_cnt, total_cnt);
+        printf("[Error] %d/%d checks are failed.\n", failed_cnt, total_cnt);
         exit(1);
     }
 }
