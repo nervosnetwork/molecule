@@ -1,4 +1,4 @@
-ci: ci-example ci-rust ci-c
+ci: ci-example ci-crates
 
 RUST_PROJS = examples/ci-tests bindings/rust tools/codegen tools/compiler
 C_PROJS = examples/ci-tests
@@ -16,7 +16,7 @@ clean:
 		cd - > /dev/null; \
 	done
 
-ci-rust:
+ci-crates:
 	@set -eu; \
 	export RUSTFLAGS='-F warnings'; \
 	for dir in ${RUST_PROJS}; do \
@@ -27,10 +27,6 @@ ci-rust:
 		cargo test --all --verbose; \
 		cd - > /dev/null; \
 	done
-
-ci-c:
-	@set -eu; \
-	echo "TODO: not finished yet."
 
 ci-example:
 	@set -eu; \
