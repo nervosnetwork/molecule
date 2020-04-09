@@ -40,7 +40,7 @@ void test_build_default() {
     if (failed_cnt == 0) {
         printf("ALL checks are passed (%d).\n", total_cnt);
     } else {
-        printf("%d/%d checks are failed.\n", failed_cnt, total_cnt);
+        printf("[Error] %d/%d checks are failed.\n", failed_cnt, total_cnt);
         exit(1);
     }
 }

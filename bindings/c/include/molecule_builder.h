@@ -262,15 +262,13 @@ MOLECULE_API_DECORATOR mol_seg_res_t mol_dynvec_builder_finalize(mol_builder_t b
     res.seg.size = MOL_NUM_T_SIZE + builder.number_used + builder.data_used;
     res.seg.ptr = (uint8_t*)malloc(res.seg.size);
     mol_pack_number(res.seg.ptr, &res.seg.size);
-    if (builder.data_used > 0) {
-        mol_num_t number_count = builder.number_used / MOL_NUM_T_SIZE;
-        mol_num_t header_size = MOL_NUM_T_SIZE + builder.number_used;
-        for (mol_num_t number_index=0; number_index<number_count; number_index++) {
-            builder.number_ptr[number_index] += header_size;
-        }
-        memcpy((res.seg.ptr+MOL_NUM_T_SIZE), builder.number_ptr, builder.number_used);
-        memcpy((res.seg.ptr+MOL_NUM_T_SIZE+builder.number_used), builder.data_ptr, builder.data_used);
+    mol_num_t number_count = builder.number_used / MOL_NUM_T_SIZE;
+    mol_num_t header_size = MOL_NUM_T_SIZE + builder.number_used;
+    for (mol_num_t number_index=0; number_index<number_count; number_index++) {
+        builder.number_ptr[number_index] += header_size;
     }
+    memcpy((res.seg.ptr+MOL_NUM_T_SIZE), builder.number_ptr, builder.number_used);
+    memcpy((res.seg.ptr+MOL_NUM_T_SIZE+builder.number_used), builder.data_ptr, builder.data_used);
     mol_builder_discard(builder);
     return res;
 }

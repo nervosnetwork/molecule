@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod capi;
+
 pub mod types {
     #![allow(clippy::all)]
     pub use molecule::prelude::{Byte, ByteReader};
@@ -11,7 +13,7 @@ mod test_vectors {
     mod default {
         use crate::types::*;
         use molecule::prelude::*;
-        molecule_tests_utils::load_tests!(
+        molecule_tests_utils_rust::load_tests!(
             "../../test/schemas/types.mol",
             "../../test/vectors/default.yaml",
         );
@@ -19,7 +21,7 @@ mod test_vectors {
     mod simple {
         use crate::types::*;
         use molecule::prelude::*;
-        molecule_tests_utils::load_tests!(
+        molecule_tests_utils_rust::load_tests!(
             "../../test/schemas/types.mol",
             "../../test/vectors/simple.yaml"
         );

@@ -1,14 +1,10 @@
 extern crate proc_macro;
 
-pub(crate) mod bytes;
-pub(crate) mod generator;
-pub(crate) mod types;
-
 use std::{collections::HashMap, fs, io::Read, rc::Rc};
 
 use quote::quote;
 
-use crate::generator::GenTest;
+use tests_loader::GenRustTest as _;
 
 struct InputFiles {
     schema: String,
@@ -55,7 +51,7 @@ pub fn load_tests(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 .unwrap_or_else(|err| panic!("failed to load tests from {}: {}", filepath, err));
             contents
         };
-        let all: types::All = serde_yaml::from_str(&test_data)
+        let all: tests_loader::TestSet = serde_yaml::from_str(&test_data)
             .unwrap_or_else(|err| panic!("failed to parse tests: {}", err));
         let test = all
             .iter()

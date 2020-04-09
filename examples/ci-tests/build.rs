@@ -19,5 +19,13 @@ fn compile_schema(schema: &str) {
 
 fn main() {
     println!("cargo:rerun-if-changed=../../test/vectors");
+    println!("cargo:rerun-if-changed=src/capi.c");
     compile_schema("../../test/schemas/types.mol");
+    let out_dir = ::std::env::var("OUT_DIR").unwrap();
+    cc::Build::new()
+        .file("src/capi.c")
+        .include(&out_dir)
+        .include("../../bindings/c/include")
+        .warnings(false)
+        .compile("c-api.o");
 }

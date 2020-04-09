@@ -5,11 +5,11 @@ use serde::Deserialize;
 
 use crate::bytes::Bytes;
 
-pub(crate) type All = Vec<Any>;
+pub type All = Vec<Any>;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, untagged)]
-pub(crate) enum Any {
+pub enum Any {
     Option_(Option_),
     Union(Union),
     Array(Array),
@@ -17,52 +17,52 @@ pub(crate) enum Any {
     Vector(Vector),
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Option_ {
+pub struct Option_ {
     name: String,
     item: Option<Bytes>,
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Union {
+pub struct Union {
     name: String,
     item: Option<Item>,
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Array {
+pub struct Array {
     name: String,
     #[serde(default)]
     data: BTreeMap<usize, Bytes>,
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct StructOrTable {
+pub struct StructOrTable {
     name: String,
     #[serde(default)]
     data: BTreeMap<String, Bytes>,
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Vector {
+pub struct Vector {
     name: String,
     #[serde(default)]
     data: Vec<Bytes>,
     expected: Bytes,
 }
 
-#[derive(Deserialize, Property)]
+#[derive(Debug, Deserialize, Property)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Item {
+pub struct Item {
     #[serde(rename = "type")]
     typ: String,
     data: Bytes,
