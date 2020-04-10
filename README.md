@@ -20,6 +20,12 @@ Implementations in other languages are maintained by respective authors.
 - [Go](https://github.com/driftluo/moleculec-go)
 - [Modern JavaScript](https://github.com/xxuejie/moleculec-es)
 
+## Plugins for Editors
+
+- [Emacs](https://github.com/yangby-cryptape/emacs-molecule)
+- [Vim](https://github.com/yangby-cryptape/vim-molecule)
+- [Sublime Text](https://github.com/yangby-cryptape/sublimetext-molecule)
+
 ## Benchmark
 
 - [Benchmark in Rust with serde](https://github.com/nervosnetwork/serde_bench)
