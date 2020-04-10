@@ -1,0 +1,22 @@
+import attributes;
+import skills;
+import common/basic_types;
+
+// We have only 3 classes: Fighter, Ranger and Mage. A `byte` is enough.
+array Class [byte; 1];
+
+table Hero {
+    class: Class,
+    level: Uint8,
+    experiences: Uint32,
+    hp: Uint16,
+    mp: Uint16,
+    base_damage: Uint16,
+    attrs: Attributes,
+    skills: Skills,
+}
+
+table Monster {
+    hp: Uint16,
+    damage: Uint16,
+}

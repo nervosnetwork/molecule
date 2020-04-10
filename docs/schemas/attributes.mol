@@ -1,0 +1,13 @@
+import common/basic_types;
+
+// Each role has 8 attributes. The size is fixed.
+struct Attributes {
+    strength:       AttrValue,
+    dexterity:      AttrValue,
+    endurance:      AttrValue,
+    speed:          AttrValue,
+    intelligence:   AttrValue,
+    wisdom:         AttrValue,
+    perception:     AttrValue,
+    concentration:  AttrValue,
+}
