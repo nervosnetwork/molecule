@@ -158,10 +158,10 @@ impl ImplReader for ast::DynVec {
                 if slice_len < header_size {
                     return ve!(Self, HeaderIsBroken, header_size, slice_len);
                 }
-                let ptr = molecule::unpack_number_vec(&slice[molecule::NUMBER_SIZE..]);
-                let mut offsets: Vec<usize> = ptr[..item_count]
-                    .iter()
-                    .map(|x| molecule::unpack_number(&x[..]) as usize)
+                let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
+                    .chunks(molecule::NUMBER_SIZE)
+                    .take(item_count)
+                    .map(|x| molecule::unpack_number(x) as usize)
                     .collect();
                 offsets.push(total_size);
                 if offsets.windows(2).any(|i| i[0] > i[1]) {
@@ -241,10 +241,10 @@ impl ImplReader for ast::Table {
                     if slice_len < header_size {
                         return ve!(Self, HeaderIsBroken, header_size, slice_len);
                     }
-                    let ptr = molecule::unpack_number_vec(&slice[molecule::NUMBER_SIZE..]);
-                    let mut offsets: Vec<usize> = ptr[..field_count]
-                        .iter()
-                        .map(|x| molecule::unpack_number(&x[..]) as usize)
+                    let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
+                        .chunks(molecule::NUMBER_SIZE)
+                        .take(field_count)
+                        .map(|x| molecule::unpack_number(x) as usize)
                         .collect();
                     offsets.push(total_size);
                     if offsets.windows(2).any(|i| i[0] > i[1]) {

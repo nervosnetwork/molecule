@@ -76,9 +76,6 @@ impl DefProperties for ast::DynVec {
                     (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize / 4) - 1
                 }
             }
-            pub fn item_offsets(&self) ->  &[[u8; 4]] {
-                molecule::unpack_number_vec(&self.as_slice()[molecule::NUMBER_SIZE..])
-            }
 
             pub fn len(&self) -> usize {
                 self.item_count()
@@ -102,9 +99,6 @@ impl DefProperties for ast::Table {
                 } else {
                     (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize / 4) - 1
                 }
-            }
-            pub fn field_offsets(&self) ->  &[[u8; 4]] {
-                molecule::unpack_number_vec(&self.as_slice()[molecule::NUMBER_SIZE..])
             }
 
             pub fn count_extra_fields(&self) -> usize {

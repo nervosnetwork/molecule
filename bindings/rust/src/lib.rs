@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use core::mem::size_of;
+use core::mem::{size_of, MaybeUninit};
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
@@ -30,22 +30,16 @@ pub const NUMBER_SIZE: usize = size_of::<Number>();
 
 #[inline]
 pub fn unpack_number(slice: &[u8]) -> Number {
-    #[allow(clippy::cast_ptr_alignment)]
-    let le = slice.as_ptr() as *const Number;
-    Number::from_le(unsafe { *le })
+    // the size of slice should be checked before call this function
+    #[allow(clippy::uninit_assumed_init)]
+    let mut b: [u8; 4] = unsafe { MaybeUninit::uninit().assume_init() };
+    b.copy_from_slice(&slice[..4]);
+    Number::from_le_bytes(b)
 }
 
 #[inline]
 pub fn pack_number(num: Number) -> [u8; 4] {
     num.to_le_bytes()
-}
-
-#[inline]
-pub fn unpack_number_vec(slice: &[u8]) -> &[[u8; 4]] {
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        &*(slice as *const [u8] as *const [[u8; 4]])
-    }
 }
 
 pub fn hex_string(input: &[u8]) -> String {
