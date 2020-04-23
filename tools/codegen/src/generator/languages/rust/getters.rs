@@ -249,12 +249,14 @@ impl ImplGetters for ast::DynVec {
                 }
             }
             pub fn get_unchecked(&self, idx: usize) -> #getter_ret {
-                let offsets = self.item_offsets();
-                let start = molecule::unpack_number(&offsets[idx][..]) as usize;
+                let slice = self.as_slice();
+                let start_idx = molecule::NUMBER_SIZE * (1 + idx);
+                let start = molecule::unpack_number(&slice[start_idx..]) as usize;
                 if idx == self.len() - 1 {
                     #inner::new_unchecked(#getter_stmt_last)
                 } else {
-                    let end = molecule::unpack_number(&offsets[idx+1][..]) as usize;
+                    let end_idx = start_idx + molecule::NUMBER_SIZE ;
+                    let end = molecule::unpack_number(&slice[end_idx..]) as usize;
                     #inner::new_unchecked(#getter_stmt)
                 }
             }
@@ -288,15 +290,15 @@ impl ImplGetters for ast::Table {
                     let getter_ret = quote!(#inner<'r>);
                     (inner, getter_ret)
                 };
-                let start = usize_lit(i);
-                let end = usize_lit(i + 1);
+                let start = usize_lit((i + 1) * molecule::NUMBER_SIZE);
+                let end = usize_lit((i + 2) * molecule::NUMBER_SIZE);
                 if i == self.fields().len() - 1 {
                     quote!(
                         pub fn #func(&self) -> #getter_ret {
-                            let offsets = self.field_offsets();
-                            let start = molecule::unpack_number(&offsets[#start][..]) as usize;
+                            let slice = self.as_slice();
+                            let start = molecule::unpack_number(&slice[#start..]) as usize;
                             if self.has_extra_fields() {
-                                let end = molecule::unpack_number(&offsets[#end][..]) as usize;
+                                let end = molecule::unpack_number(&slice[#end..]) as usize;
                                 #inner::new_unchecked(#getter_stmt)
                             } else {
                                 #inner::new_unchecked(#getter_stmt_last)
@@ -306,9 +308,9 @@ impl ImplGetters for ast::Table {
                 } else {
                     quote!(
                         pub fn #func(&self) -> #getter_ret {
-                            let offsets = self.field_offsets();
-                            let start = molecule::unpack_number(&offsets[#start][..]) as usize;
-                            let end = molecule::unpack_number(&offsets[#end][..]) as usize;
+                            let slice = self.as_slice();
+                            let start = molecule::unpack_number(&slice[#start..]) as usize;
+                            let end = molecule::unpack_number(&slice[#end..]) as usize;
                             #inner::new_unchecked(#getter_stmt)
                         }
                     )
