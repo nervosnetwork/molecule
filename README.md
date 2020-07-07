@@ -8,19 +8,51 @@ Another serialization system: minimalist and canonicalization.
 [License]: https://img.shields.io/badge/License-MIT-blue.svg
 [Travis CI]: https://img.shields.io/travis/com/nervosnetwork/molecule.svg
 
-## Grammar of the Schema Language
+## Documents
 
-- [EBNF Version](grammar/grammar.ebnf)
+- [Encoding Spec](docs/encoding_spec.md)
+- [Schema Language](docs/schema_language.md)
+- [Real-World Examples](docs/real_world_examples.md)
 
-## Other Languages
+## Tools
+
+### Schema Compiler and Code Generator
+
+#### Install
+
+The official schema compiler and code generator are written in [Rust], so
+you can install it via [Cargo]:
+
+```sh
+cargo install moleculec --locked
+```
+
+**Note: the official code generator is only support two languages: [Rust] and [C].**
+
+#### Usage
+
+- You can use the follow command to generate the code:
+
+  ```sh
+  moleculec --language <language> --schema-file <schema-file>
+  ```
+
+- More details can be found by the follow command:
+
+  ```sh
+  moleculec --help
+  ```
+
+### Other Languages
 
 Molecule's reference implementation is in Rust and C.
+
 Implementations in other languages are maintained by respective authors.
 
 - [Go](https://github.com/driftluo/moleculec-go)
 - [Modern JavaScript](https://github.com/xxuejie/moleculec-es)
 
-## Plugins for Editors
+### Plugins for Editors
 
 - [Emacs](https://github.com/yangby-cryptape/emacs-molecule)
 - [Vim](https://github.com/yangby-cryptape/vim-molecule)
@@ -35,3 +67,7 @@ Implementations in other languages are maintained by respective authors.
 Licensed under [MIT License].
 
 [MIT License]: LICENSE
+
+[Rust]: https://www.rust-lang.org/
+[Cargo]: https://doc.rust-lang.org/cargo/
+[C]: https://en.wikipedia.org/wiki/C_%28programming_language%29
