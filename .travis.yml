@@ -4,7 +4,7 @@ matrix:
       name: Format
       language: rust
       rust:
-        - 1.42.0
+        - 1.44.1
       script:
         - rustup component add rustfmt
         - make fmt
@@ -13,7 +13,7 @@ matrix:
       name: Clippy
       language: rust
       rust:
-        - 1.42.0
+        - 1.44.1
       script:
         - rustup component add clippy
         - make clippy

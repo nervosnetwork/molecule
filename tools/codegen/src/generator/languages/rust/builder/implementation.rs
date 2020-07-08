@@ -32,10 +32,19 @@ impl ImplBuilder for ast::Option_ {
     fn impl_builder_internal(&self) -> m4::TokenStream {
         quote!(
             fn expected_length(&self) -> usize {
-                self.0.as_ref().map(|ref inner| inner.as_slice().len()).unwrap_or(0)
+                self.0
+                    .as_ref()
+                    .map(|ref inner| inner.as_slice().len())
+                    .unwrap_or(0)
             }
-            fn write<W: ::molecule::io::Write>(&self, writer: &mut W) -> ::molecule::io::Result<()> {
-                self.0.as_ref().map(|ref inner| writer.write_all(inner.as_slice())).unwrap_or(Ok(()))
+            fn write<W: ::molecule::io::Write>(
+                &self,
+                writer: &mut W,
+            ) -> ::molecule::io::Result<()> {
+                self.0
+                    .as_ref()
+                    .map(|ref inner| writer.write_all(inner.as_slice()))
+                    .unwrap_or(Ok(()))
             }
         )
     }
@@ -47,7 +56,10 @@ impl ImplBuilder for ast::Union {
             fn expected_length(&self) -> usize {
                 molecule::NUMBER_SIZE + self.0.as_slice().len()
             }
-            fn write<W: ::molecule::io::Write>(&self, writer: &mut W) -> ::molecule::io::Result<()> {
+            fn write<W: ::molecule::io::Write>(
+                &self,
+                writer: &mut W,
+            ) -> ::molecule::io::Result<()> {
                 writer.write_all(&molecule::pack_number(self.0.item_id()))?;
                 writer.write_all(self.0.as_slice())
             }
@@ -120,12 +132,21 @@ impl ImplBuilder for ast::DynVec {
         quote!(
             fn expected_length(&self) -> usize {
                 molecule::NUMBER_SIZE * (self.0.len() + 1)
-                    + self.0.iter().map(|inner| inner.as_slice().len()).sum::<usize>()
+                    + self
+                        .0
+                        .iter()
+                        .map(|inner| inner.as_slice().len())
+                        .sum::<usize>()
             }
-            fn write<W: ::molecule::io::Write>(&self, writer: &mut W) -> ::molecule::io::Result<()> {
+            fn write<W: ::molecule::io::Write>(
+                &self,
+                writer: &mut W,
+            ) -> ::molecule::io::Result<()> {
                 let item_count = self.0.len();
                 if item_count == 0 {
-                    writer.write_all(&molecule::pack_number(molecule::NUMBER_SIZE as molecule::Number))?;
+                    writer.write_all(&molecule::pack_number(
+                        molecule::NUMBER_SIZE as molecule::Number,
+                    ))?;
                 } else {
                     let (total_size, offsets) = self.0.iter().fold(
                         (
@@ -158,8 +179,13 @@ impl ImplBuilder for ast::Table {
                 fn expected_length(&self) -> usize {
                     molecule::NUMBER_SIZE
                 }
-                fn write<W: ::molecule::io::Write>(&self, writer: &mut W) -> ::molecule::io::Result<()> {
-                    writer.write_all(&molecule::pack_number(molecule::NUMBER_SIZE as molecule::Number))?;
+                fn write<W: ::molecule::io::Write>(
+                    &self,
+                    writer: &mut W,
+                ) -> ::molecule::io::Result<()> {
+                    writer.write_all(&molecule::pack_number(
+                        molecule::NUMBER_SIZE as molecule::Number,
+                    ))?;
                     Ok(())
                 }
             )

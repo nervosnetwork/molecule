@@ -73,7 +73,9 @@ impl DefProperties for ast::DynVec {
                 if self.total_size() == molecule::NUMBER_SIZE {
                     0
                 } else {
-                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize / 4) - 1
+                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize
+                        / 4)
+                        - 1
                 }
             }
 
@@ -97,7 +99,9 @@ impl DefProperties for ast::Table {
                 if self.total_size() == molecule::NUMBER_SIZE {
                     0
                 } else {
-                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize / 4) - 1
+                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize
+                        / 4)
+                        - 1
                 }
             }
 
