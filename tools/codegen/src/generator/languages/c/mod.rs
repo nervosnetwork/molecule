@@ -31,9 +31,7 @@ impl Generator {
         w!(o, "#define {}_H                                        ", n);
         w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
-        w!(o, "#define _CPP_BEGIN extern \"C\" {{                     ");
-        w!(o, "#define _CPP_END }}                                    ");
-        w!(o, "_CPP_BEGIN                                             ");
+        w!(o, "extern \"C\" {{                                        ");
         w!(o, "#endif /* __cplusplus */                               ");
         w!(o, "                                                       ");
         w!(o, "#ifndef {}                              ", api_decorator);
@@ -53,9 +51,7 @@ impl Generator {
         w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR_{} */     ", n);
         w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
-        w!(o, "_CPP_END                                               ");
-        w!(o, "#undef _CPP_BEGIN                                      ");
-        w!(o, "#undef _CPP_END                                        ");
+        w!(o, "}}                                                     ");
         w!(o, "#endif /* __cplusplus */                               ");
         w!(o, "                                                       ");
         w!(o, "#endif /* {}_H */                                   ", n);
