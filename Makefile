@@ -16,14 +16,29 @@ clean:
 		cd - > /dev/null; \
 	done
 
+fmt:
+	@set -eu; \
+	for dir in ${RUST_PROJS}; do \
+		cd "$${dir}"; \
+		cargo fmt --all -- --check; \
+		cd - > /dev/null; \
+	done
+
+clippy:
+	@set -eu; \
+	for dir in ${RUST_PROJS}; do \
+		cd "$${dir}"; \
+		cargo clean; \
+		cargo clippy --all --all-targets --all-features; \
+		cd - > /dev/null; \
+	done
+
 ci-crates:
 	@set -eu; \
 	export RUSTFLAGS='-F warnings'; \
 	for dir in ${RUST_PROJS}; do \
 		cd "$${dir}"; \
 		cargo clean; \
-		cargo fmt --all -- --check; \
-		cargo clippy --all --all-targets --all-features; \
 		cargo test --all --verbose; \
 		cd - > /dev/null; \
 	done
