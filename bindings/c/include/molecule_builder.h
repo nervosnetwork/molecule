@@ -2,9 +2,7 @@
 #define MOLECULE_BUILDER_H
 
 #ifdef __cplusplus
-#define _CPP_BEGIN extern "C" {
-#define _CPP_END }
-_CPP_BEGIN
+extern "C" {
 #endif /* __cplusplus */
 
 #include <stddef.h>
@@ -23,7 +21,7 @@ _CPP_BEGIN
  */
 
 // Test if the host is big endian machine.
-#define is_le()                 (*(unsigned char *)&(uint16_t){1})
+#define is_le()                 ((union { uint16_t i; unsigned char c; }){ .i = 1 }.c)
 
 /*
  * Definitions of types and simple utilities.
@@ -285,9 +283,7 @@ MOLECULE_API_DECORATOR mol_seg_res_t mol_dynvec_builder_finalize(mol_builder_t b
 #endif /* __DEFINE_MOLECULE_API_DECORATOR */
 
 #ifdef __cplusplus
-_CPP_END
-#undef _CPP_BEGIN
-#undef _CPP_END
+}
 #endif /* __cplusplus */
 
 #endif /* MOLECULE_BUILDER_H */

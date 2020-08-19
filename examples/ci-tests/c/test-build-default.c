@@ -4,7 +4,7 @@
     {                                                                   \
         total_cnt += 1;                                                 \
         uint32_t size = sizeof(MolDefault_ ## Name);                    \
-        char *name = #Name;                                             \
+        char const *name = #Name;                                       \
         const uint8_t *expected = MolDefault_ ## Name;                  \
         mol_builder_t b;                                                \
         MolBuilder_ ## Name ## _init(&b);                               \
@@ -30,7 +30,7 @@
     }
 
 void test_build_default() {
-    test_start("Build Default");
+    test_start((char*)"Build Default");
 
     uint32_t failed_cnt = 0;
     uint32_t total_cnt = 0;

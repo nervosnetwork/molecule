@@ -22,6 +22,7 @@ C_DEPS = ${MOL_DEPS} \
 		 ${MOLINC}/molecule_reader.h ${MOLINC}/molecule_builder.h
 
 CC = gcc
+CXX = g++
 CFLAGS = -Wall -Werror
 
 clean:
@@ -37,7 +38,7 @@ refresh-comipler:
 debug:
 	@cargo build
 
-test: test-rust test-rust-no-std test-c test-mixed test-import
+test: test-rust test-rust-no-std test-c test-cpp test-mixed test-import
 
 test-rust:
 	@cargo test --all
@@ -48,6 +49,9 @@ test-rust-no-std:
 test-c: tmpdir ${TMPDIR}/test-build-default ${BIN_GEN_C_TESTS} ${BINS_C_TESTS}
 	@${TMPDIR}/test-build-default
 	@for bin in ${BINS_C_TESTS} ; do "$${bin}"; done
+
+test-cpp: tmpdir ${TMPDIR}/test-build-default-cpp
+	@${TMPDIR}/test-build-default-cpp
 
 test-mixed: tmpdir ${TMPDIR}/simple-example
 	@tmpdir="${TMPDIR}" scripts/test-mixed simple-example
@@ -82,6 +86,9 @@ ${HEADER_GEN}: ${SCHEMA_FILE}
 
 ${TMPDIR}/test-build-default: c/test-build-default.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
+
+${TMPDIR}/test-build-default-cpp: c/test-build-default.c ${C_DEPS}
+	@${CXX} ${CFLAGS} -I${MOLINC} -o $@ $<
 
 ${TMPDIR}/simple-example: c/simple-example.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
