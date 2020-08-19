@@ -4,7 +4,7 @@ use core::{
     ops::{Bound, Deref, RangeBounds},
 };
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Bytes(Vec<u8>);
 
 impl From<Vec<u8>> for Bytes {
