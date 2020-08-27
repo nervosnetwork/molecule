@@ -153,11 +153,10 @@ impl ImplReader for ast::DynVec {
                 if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
                     return ve!(Self, OffsetsNotMatch);
                 }
-                let item_count = offset_first / 4 - 1;
-                let header_size = molecule::NUMBER_SIZE * (item_count + 1);
-                if slice_len < header_size {
-                    return ve!(Self, HeaderIsBroken, header_size, slice_len);
+                if slice_len < offset_first {
+                    return ve!(Self, HeaderIsBroken, offset_first, slice_len);
                 }
+                let item_count = offset_first / 4 - 1;
                 let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
                     .chunks(molecule::NUMBER_SIZE)
                     .take(item_count)
@@ -231,16 +230,15 @@ impl ImplReader for ast::Table {
                     if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
                         return ve!(Self, OffsetsNotMatch);
                     }
+                    if slice_len < offset_first {
+                        return ve!(Self, HeaderIsBroken, offset_first, slice_len);
+                    }
                     let field_count = offset_first / 4 - 1;
                     if field_count < Self::FIELD_COUNT {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     } else if !compatible && field_count > Self::FIELD_COUNT {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     };
-                    let header_size = molecule::NUMBER_SIZE * (field_count + 1);
-                    if slice_len < header_size {
-                        return ve!(Self, HeaderIsBroken, header_size, slice_len);
-                    }
                     let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
                         .chunks(molecule::NUMBER_SIZE)
                         .take(field_count)
