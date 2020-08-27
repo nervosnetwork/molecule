@@ -157,7 +157,7 @@ impl ImplReader for ast::DynVec {
                     return ve!(Self, HeaderIsBroken, offset_first, slice_len);
                 }
                 let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
-                    .chunks(molecule::NUMBER_SIZE)
+                    .chunks_exact(molecule::NUMBER_SIZE)
                     .map(|x| molecule::unpack_number(x) as usize)
                     .collect();
                 offsets.push(total_size);
@@ -239,7 +239,7 @@ impl ImplReader for ast::Table {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     };
                     let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
-                        .chunks(molecule::NUMBER_SIZE)
+                        .chunks_exact(molecule::NUMBER_SIZE)
                         .map(|x| molecule::unpack_number(x) as usize)
                         .collect();
                     offsets.push(total_size);
