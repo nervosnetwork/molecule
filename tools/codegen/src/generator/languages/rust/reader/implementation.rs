@@ -150,7 +150,7 @@ impl ImplReader for ast::DynVec {
                     return ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE * 2, slice_len);
                 }
                 let offset_first = molecule::unpack_number(&slice[molecule::NUMBER_SIZE..]) as usize;
-                if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
+                if offset_first % molecule::NUMBER_SIZE != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
                     return ve!(Self, OffsetsNotMatch);
                 }
                 if slice_len < offset_first {
@@ -226,13 +226,13 @@ impl ImplReader for ast::Table {
                         return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE * 2, slice_len);
                     }
                     let offset_first = molecule::unpack_number(&slice[molecule::NUMBER_SIZE..]) as usize;
-                    if offset_first % 4 != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
+                    if offset_first % molecule::NUMBER_SIZE != 0 || offset_first < molecule::NUMBER_SIZE * 2 {
                         return ve!(Self, OffsetsNotMatch);
                     }
                     if slice_len < offset_first {
                         return ve!(Self, HeaderIsBroken, offset_first, slice_len);
                     }
-                    let field_count = offset_first / 4 - 1;
+                    let field_count = offset_first / molecule::NUMBER_SIZE - 1;
                     if field_count < Self::FIELD_COUNT {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     } else if !compatible && field_count > Self::FIELD_COUNT {
