@@ -156,20 +156,19 @@ impl ImplReader for ast::DynVec {
                 if slice_len < offset_first {
                     return ve!(Self, HeaderIsBroken, offset_first, slice_len);
                 }
-                let item_count = offset_first / 4 - 1;
-                let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
+                let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
                     .chunks(molecule::NUMBER_SIZE)
-                    .take(item_count)
                     .map(|x| molecule::unpack_number(x) as usize)
                     .collect();
                 offsets.push(total_size);
-                if offsets.windows(2).any(|i| i[0] > i[1]) {
-                    return ve!(Self, OffsetsNotMatch);
-                }
                 for pair in offsets.windows(2) {
                     let start = pair[0];
                     let end =  pair[1];
-                    #inner::verify(&slice[start..end], compatible)?;
+                    if start > end {
+                        return ve!(Self, OffsetsNotMatch);
+                    } else {
+                        #inner::verify(&slice[start..end], compatible)?;
+                    }
                 }
                 Ok(())
             }
@@ -239,9 +238,8 @@ impl ImplReader for ast::Table {
                     } else if !compatible && field_count > Self::FIELD_COUNT {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     };
-                    let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..]
+                    let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
                         .chunks(molecule::NUMBER_SIZE)
-                        .take(field_count)
                         .map(|x| molecule::unpack_number(x) as usize)
                         .collect();
                     offsets.push(total_size);
