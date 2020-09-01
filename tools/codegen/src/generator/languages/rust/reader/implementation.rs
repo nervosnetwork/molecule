@@ -161,14 +161,13 @@ impl ImplReader for ast::DynVec {
                     .map(|x| molecule::unpack_number(x) as usize)
                     .collect();
                 offsets.push(total_size);
+                if offsets.windows(2).any(|i| i[0] > i[1]) {
+                    return ve!(Self, OffsetsNotMatch);
+                }
                 for pair in offsets.windows(2) {
                     let start = pair[0];
                     let end =  pair[1];
-                    if start > end {
-                        return ve!(Self, OffsetsNotMatch);
-                    } else {
-                        #inner::verify(&slice[start..end], compatible)?;
-                    }
+                    #inner::verify(&slice[start..end], compatible)?;
                 }
                 Ok(())
             }
