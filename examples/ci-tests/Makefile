@@ -10,10 +10,9 @@ SCHEMA_FILE = ../../test/schemas/${SCHEMA}.mol
 HEADER_API = c/tests-api.h
 HEADER_GEN = c/tests-gen.h
 
-TMPDIR = target/tmp
-BINS_C_TESTS = ${TMPDIR}/test-vector-default ${TMPDIR}/test-vector-simple
-BINS = ${TMPDIR}/test-build-default ${TMPDIR}/simple-example ${BINS_C_TESTS}
-TMP = ${TMPDIR} ${MOLC} \
+TARGET_TMP_DIR = target/tmp
+BINS_C_TESTS = ${TARGET_TMP_DIR}/test-vector-default ${TARGET_TMP_DIR}/test-vector-simple
+TMP = ${TARGET_TMP_DIR} ${MOLC} \
 	  ${HEADER_API} ${HEADER_GEN}
 
 MOL_DEPS = refresh-comipler ${MOLC}
@@ -30,7 +29,7 @@ clean:
 	@rm -rf ${TMP}
 
 tmpdir:
-	@if [ ! -d "${TMPDIR}" ]; then mkdir -p "${TMPDIR}"; fi
+	@if [ ! -d "${TARGET_TMP_DIR}" ]; then mkdir -p "${TARGET_TMP_DIR}"; fi
 
 refresh-comipler:
 	@rm -f ${MOLC}
@@ -46,28 +45,28 @@ test-rust:
 test-rust-no-std:
 	@cargo test --all --no-default-features
 
-test-c: tmpdir ${TMPDIR}/test-build-default ${BIN_GEN_C_TESTS} ${BINS_C_TESTS}
-	@${TMPDIR}/test-build-default
+test-c: tmpdir ${TARGET_TMP_DIR}/test-build-default ${BIN_GEN_C_TESTS} ${BINS_C_TESTS}
+	@${TARGET_TMP_DIR}/test-build-default
 	@for bin in ${BINS_C_TESTS} ; do "$${bin}"; done
 
-test-cpp: tmpdir ${TMPDIR}/test-build-default-cpp
-	@${TMPDIR}/test-build-default-cpp
+test-cpp: tmpdir ${TARGET_TMP_DIR}/test-build-default-cpp
+	@${TARGET_TMP_DIR}/test-build-default-cpp
 
-test-mixed: tmpdir ${TMPDIR}/simple-example
-	@tmpdir="${TMPDIR}" scripts/test-mixed simple-example
+test-mixed: tmpdir ${TARGET_TMP_DIR}/simple-example
+	@tmpdir="${TARGET_TMP_DIR}" scripts/test-mixed simple-example
 
 test-import: test-rust-import test-c-import
 
 test-rust-import: tmpdir ${MOL_DEPS}
 	@export PATH="$$(cd ${MOLC_DIR}; pwd):$${PATH}" \
-		; tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code rust
-	@cd "${TMPDIR}/import/rust"; cargo build
+		; tmpdir="${TARGET_TMP_DIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code rust
+	@cd "${TARGET_TMP_DIR}/import/rust"; cargo build
 	@echo "Passed: Test Rust Import."
 
 test-c-import: tmpdir ${MOL_DEPS}
 	@export PATH="$$(cd ${MOLC_DIR}; pwd):$${PATH}" \
-		; tmpdir="${TMPDIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code c
-	@${CC} ${CFLAGS} -I${MOLINC} -c "${TMPDIR}/import/c/b/test.c" -o "${TMPDIR}/import/c/b/test.o"
+		; tmpdir="${TARGET_TMP_DIR}" molc="${MOLC}" schemas_dir="schemas/import" scripts/test-import-gen-code c
+	@${CC} ${CFLAGS} -I${MOLINC} -c "${TARGET_TMP_DIR}/import/c/b/test.c" -o "${TARGET_TMP_DIR}/import/c/b/test.o"
 	@echo "Passed: Test C Import."
 
 ${MOLC}:
@@ -84,13 +83,13 @@ ${HEADER_API}: ${SCHEMA_FILE} ${MOL_DEPS}
 ${HEADER_GEN}: ${SCHEMA_FILE}
 	@${SCRIPT_GEN_C} "${SCHEMA_FILE}" "${HEADER_GEN}"
 
-${TMPDIR}/test-build-default: c/test-build-default.c ${C_DEPS}
+${TARGET_TMP_DIR}/test-build-default: c/test-build-default.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
 
-${TMPDIR}/test-build-default-cpp: c/test-build-default.c ${C_DEPS}
+${TARGET_TMP_DIR}/test-build-default-cpp: c/test-build-default.c ${C_DEPS}
 	@${CXX} ${CFLAGS} -I${MOLINC} -o $@ $<
 
-${TMPDIR}/simple-example: c/simple-example.c ${C_DEPS}
+${TARGET_TMP_DIR}/simple-example: c/simple-example.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
 
 c/test-vector-default.c: ${BIN_GEN_C_TESTS}
@@ -99,8 +98,8 @@ c/test-vector-default.c: ${BIN_GEN_C_TESTS}
 c/test-vector-simple.c: ${BIN_GEN_C_TESTS}
 	@${BIN_GEN_C_TESTS} ../../test/schemas/types.mol ../../test/vectors/simple.yaml > $@
 
-${TMPDIR}/test-vector-default: c/test-vector-default.c ${C_DEPS}
+${TARGET_TMP_DIR}/test-vector-default: c/test-vector-default.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
 
-${TMPDIR}/test-vector-simple: c/test-vector-simple.c ${C_DEPS}
+${TARGET_TMP_DIR}/test-vector-simple: c/test-vector-simple.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
