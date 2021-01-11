@@ -17,17 +17,17 @@ license = "MIT"
 
 [dependencies]
 molecule = { version = "=0.6.1", path = "../../bindings/rust", default-features = false }
-property = "~0.3"
-pest = "~2.1"
-pest_derive = "~2.1"
-quote = "~1.0"
-proc-macro2 = "~1.0"
-case = "~1.0"
-same-file = "~1.0"
-semver = "~0.9"
-serde = { version = "~1.0", features = ["derive", "rc"], optional = true }
-serde_json = { version = "~1.0", optional = true }
-serde_yaml = { version = "~0.8", optional = true }
+property = "0.3.3"
+pest = "2.1.3"
+pest_derive = "2.1.0"
+quote = "1.0.8"
+proc-macro2 = "1.0.24"
+case = "1.0.0"
+same-file = "1.0.6"
+semver = "0.11.0"
+serde = { version = "1.0.118", features = ["derive", "rc"], optional = true }
+serde_json = { version = "1.0.61", optional = true }
+serde_yaml = { version = "0.8.15", optional = true }
 
 [features]
 default = []

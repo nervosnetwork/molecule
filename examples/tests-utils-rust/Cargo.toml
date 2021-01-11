@@ -10,7 +10,7 @@ proc-macro = true
 [dependencies]
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
 tests-loader = { package ="molecule-tests-loader", path = "../tests-loader" }
-syn = "~1.0"
-quote = "~1.0"
-proc-macro2 = "~1.0"
-serde_yaml = "~0.8"
+syn = "1.0.58"
+quote = "1.0.8"
+proc-macro2 = "1.0.24"
+serde_yaml = "0.8.15"

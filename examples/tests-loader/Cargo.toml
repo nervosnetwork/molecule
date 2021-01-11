@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
-syn = "~1.0"
-quote = "~1.0"
-proc-macro2 = "~1.0"
-serde = { version = "~1.0", features = ["derive"] }
-faster-hex = "~0.4"
-property = "~0.3"
+syn = "1.0.58"
+quote = "1.0.8"
+proc-macro2 = "1.0.24"
+serde = { version = "1.0.118", features = ["derive"] }
+faster-hex = "0.4.1"
+property = "0.3.3"

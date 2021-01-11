@@ -13,12 +13,12 @@ molecule = { path = "../../bindings/rust", default-features = false }
 
 [build-dependencies]
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
-cc = "~1.0"
+cc = "1.0.66"
 
 [dev-dependencies]
 molecule-tests-utils-rust = { path = "../tests-utils-rust" }
-slices = "~0.1"
-proptest = "~0.9"
+slices = "0.1.1"
+proptest = "0.10.1"
 
 [features]
 default = ["std"]
