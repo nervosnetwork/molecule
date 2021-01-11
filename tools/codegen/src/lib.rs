@@ -17,4 +17,4 @@ pub use parser::Parser;
 pub use ir::Format as IntermediateFormat;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const C_API_VERSION_MIN: &str = "0.5.0";
+pub const C_API_VERSION_MIN: &str = "0.7.0";
