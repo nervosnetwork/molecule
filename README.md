@@ -62,6 +62,12 @@ Implementations in other languages are maintained by respective authors.
 
 - [Benchmark in Rust with serde](https://github.com/nervosnetwork/serde_bench)
 
+## Supported Rust Versions
+
+The minimum supported version is 1.41.0.
+The current Molecule version is not guaranteed to build on Rust versions earlier than the
+minimum supported version.
+
 ## License
 
 Licensed under [MIT License].
