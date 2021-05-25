@@ -35,7 +35,7 @@ clippy:
 
 ci-crates:
 	@set -eu; \
-	export RUSTFLAGS='-F warnings'; \
+	export RUSTFLAGS='-D warnings'; \
 	for dir in ${RUST_PROJS}; do \
 		cd "$${dir}"; \
 		cargo clean; \
@@ -45,6 +45,6 @@ ci-crates:
 
 ci-example:
 	@set -eu; \
-	export RUSTFLAGS='-F warnings'; \
+	export RUSTFLAGS='-D warnings'; \
 	cd examples/ci-tests; \
 	make clean test
