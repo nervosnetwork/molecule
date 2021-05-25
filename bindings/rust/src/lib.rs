@@ -45,7 +45,7 @@ pub fn pack_number(num: Number) -> [u8; 4] {
 pub fn hex_string(input: &[u8]) -> String {
     cfg_if::cfg_if! {
         if #[cfg(feature = "std")] {
-            faster_hex::hex_string(input).unwrap()
+            faster_hex::hex_string(input)
         } else {
             use core::fmt::Write;
             let mut buf = String::new();
