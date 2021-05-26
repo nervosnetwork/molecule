@@ -1,4 +1,5 @@
 ci: ci-example ci-crates
+	git diff --exit-code tools/compiler/Cargo.lock
 
 RUST_PROJS = examples/ci-tests bindings/rust tools/codegen tools/compiler
 C_PROJS = examples/ci-tests
