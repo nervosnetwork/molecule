@@ -1,0 +1,7 @@
+status = [ "Success" ]
+block_labels = [ "do-not-merge" ]
+timeout_sec = 1800
+delete_merged_branches = true
+[committer]
+name = "Nervos Core Dev"
+email = "dev@nervos.org"
