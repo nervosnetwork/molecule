@@ -21,7 +21,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: 1.52.1
           override: true
           components: rustfmt
       - name: Run
@@ -35,7 +35,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: 1.52.1
           override: true
           components: clippy
       - name: Run
@@ -47,7 +47,7 @@ jobs:
       matrix:
         os: [ ubuntu-latest ]
         rust:
-          - stable
+          - 1.52.1
           - 1.41.0  # MSRV
       fail-fast: true
       max-parallel: 2
@@ -69,7 +69,7 @@ jobs:
       matrix:
         os: [ ubuntu-latest ]
         rust:
-          - stable
+          - 1.52.1
           - 1.41.0  # MSRV
       fail-fast: true
       max-parallel: 2
