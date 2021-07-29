@@ -220,6 +220,15 @@ impl GenTest for types::Vector {
                     .build();
                 let expected = #name::from_slice(#expected).unwrap();
                 #assert_stmt
+                assert_eq!(
+                    result.total_size(),
+                    result.as_slice().len(),
+                    "\nstruct: {}:\n  data: {:#x}\n  partial read total_size: {}, actual: {}\n",
+                    #name::NAME,
+                    result,
+                    result.total_size(),
+                    result.as_slice().len()
+                );
             }
         );
         vec![test]

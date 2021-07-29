@@ -142,14 +142,14 @@ checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "molecule"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
 name = "molecule-codegen"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "case",
  "molecule",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "moleculec"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "clap",
  "molecule-codegen",

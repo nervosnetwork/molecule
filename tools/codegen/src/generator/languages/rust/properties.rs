@@ -47,7 +47,7 @@ impl DefProperties for ast::FixVec {
     fn def_properties(&self) -> m4::TokenStream {
         quote!(
             pub fn total_size(&self) -> usize {
-                molecule::NUMBER_SIZE * (self.item_count() + 1)
+                molecule::NUMBER_SIZE + Self::ITEM_SIZE * self.item_count()
             }
             pub fn item_count(&self) -> usize {
                 molecule::unpack_number(self.as_slice()) as usize
