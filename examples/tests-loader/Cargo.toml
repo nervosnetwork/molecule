@@ -1,6 +1,6 @@
 [package]
 name = "molecule-tests-loader"
-version = "0.7.1"
+version = "0.8.0-alpha"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 
