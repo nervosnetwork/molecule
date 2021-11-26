@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use core::mem::{size_of, MaybeUninit};
+use core::mem::size_of;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
@@ -31,8 +31,7 @@ pub const NUMBER_SIZE: usize = size_of::<Number>();
 #[inline]
 pub fn unpack_number(slice: &[u8]) -> Number {
     // the size of slice should be checked before call this function
-    #[allow(clippy::uninit_assumed_init)]
-    let mut b: [u8; 4] = unsafe { MaybeUninit::uninit().assume_init() };
+    let mut b = [0u8; 4];
     b.copy_from_slice(&slice[..4]);
     Number::from_le_bytes(b)
 }
