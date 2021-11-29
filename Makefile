@@ -5,7 +5,9 @@ ci:
 	make ci-examples ci-crates; \
 	echo "Success!"
 
-RUST_PROJS = examples/ci-tests bindings/rust tools/codegen tools/compiler
+RUST_DEV_PROJS = examples/ci-tests
+RUST_PROD_PROJS = bindings/rust tools/codegen tools/compiler
+RUST_PROJS = ${RUST_DEV_PROJS} ${RUST_PROD_PROJS}
 C_PROJS = examples/ci-tests
 
 clean:
@@ -37,6 +39,16 @@ clippy:
 		cargo clippy --all --all-targets --all-features; \
 		cd - > /dev/null; \
 	done
+
+ci-msrv:
+	@set -eu; \
+	for dir in ${RUST_PROD_PROJS}; do \
+		cd "$${dir}"; \
+		cargo clean; \
+		cargo build --all --verbose; \
+		cd - > /dev/null; \
+	done; \
+	git diff --exit-code tools/compiler/Cargo.lock
 
 ci-crates:
 	@set -eu; \
