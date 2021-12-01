@@ -40,47 +40,45 @@ jobs:
           components: clippy
       - name: Run
         run: make clippy
-  test-crates:
-    name: Tests / Build & Test
+  test-msrv:
+    name: Tests / Build (MSRV)
     needs: [ rustfmt, clippy ]
-    strategy:
-      matrix:
-        os: [ ubuntu-latest ]
-        rust:
-          - 1.52.1
-          - 1.41.0  # MSRV
-      fail-fast: true
-      max-parallel: 2
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Setup
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
+          toolchain: 1.41.0 # MSRV
+          override: true
+      - name: Run
+        run: make ci-msrv
+  test-crates:
+    name: Tests / Build & Test
+    needs: [ rustfmt, clippy ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.52.1
           override: true
       - name: Run
         run: make ci-crates
   test-examples:
     name: Tests / Run Examples
     needs: [ rustfmt, clippy ]
-    strategy:
-      matrix:
-        os: [ ubuntu-latest ]
-        rust:
-          - 1.52.1
-          - 1.41.0  # MSRV
-      fail-fast: true
-      max-parallel: 2
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - name: Setup
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.rust }}
+          toolchain: 1.52.1
           override: true
       - name: Run
         run: make ci-examples
