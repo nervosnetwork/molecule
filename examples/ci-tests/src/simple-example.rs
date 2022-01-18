@@ -18,11 +18,16 @@ fn display_test_data() {
         .f2(0x34u8.into())
         .f4(f2.clone())
         .build();
-    let f41 = types::Bytes::new_builder()
-        .push(0x12.into())
-        .push(0x34.into())
-        .push(0x56.into())
-        .build();
+    let f41 = {
+        let mut f41_builder = types::Bytes::new_builder()
+            .push(0x12.into())
+            .push(0x12.into())
+            .push(0x13.into());
+        assert_eq!(f41_builder.replace(1, 0x34.into()), Some(0x12.into()));
+        assert_eq!(f41_builder.replace(2, 0x56.into()), Some(0x13.into()));
+        assert_eq!(f41_builder.replace(3, 0x56.into()), None);
+        f41_builder.build()
+    };
     let f43 = types::Byte3Vec::new_builder()
         .push(f2.clone())
         .push(f2.clone())
