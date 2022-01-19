@@ -124,5 +124,8 @@ fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
             }
             self
         }
+        pub fn replace(&mut self, index: usize, v: #inner) -> Option<#inner> {
+            self.0.get_mut(index).map(|item| ::core::mem::replace(item, v))
+        }
     )
 }
