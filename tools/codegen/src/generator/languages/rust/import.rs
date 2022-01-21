@@ -18,7 +18,7 @@ impl GenImport for ast::ImportStmt {
             let part = ident_new(part);
             stmt = quote!(#stmt #part::);
         }
-        let name = ident_new(&self.name());
+        let name = ident_new(self.name());
         quote!(#stmt #name::*;)
     }
 }

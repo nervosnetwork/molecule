@@ -80,7 +80,7 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer, r#"#include "molecule_reader.h""#)?;
         writeln!(writer, r#"#include "molecule_builder.h""#)?;
         writeln!(writer)?;
-        Self::ifndef(writer, &ast.namespace())?;
+        Self::ifndef(writer, ast.namespace())?;
         let imports = ast.imports();
         if !imports.is_empty() {
             writeln!(writer)?;
@@ -117,7 +117,7 @@ impl super::LanguageGenerator for Generator {
         for decl in ast.major_decls() {
             decl.gen_builder_functions(writer)?;
         }
-        Self::endif(writer, &ast.namespace())?;
+        Self::endif(writer, ast.namespace())?;
         Ok(())
     }
 }

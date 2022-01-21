@@ -97,7 +97,7 @@ fn def_builder_for_struct_or_table(self_name: &str, inner: &[ast::FieldDecl]) ->
 
 fn def_builder_for_vector(self_name: &str, inner_name: &str) -> m4::TokenStream {
     let builder = builder_name(self_name);
-    let inner = entity_name(&inner_name);
+    let inner = entity_name(inner_name);
     quote!(
         #[derive(Debug, Default)]
         pub struct #builder (pub(crate) Vec<#inner>);
