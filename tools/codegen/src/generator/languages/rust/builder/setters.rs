@@ -108,7 +108,7 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
 }
 
 fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
-    let inner = entity_name(&inner_name);
+    let inner = entity_name(inner_name);
     quote!(
         pub fn set(mut self, v: Vec<#inner>) -> Self {
             self.0 = v;
