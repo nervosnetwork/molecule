@@ -23,6 +23,7 @@ where
     fn gen_entity(&self) -> m4::TokenStream {
         let entity = entity_name(self.name());
         let reader = reader_name(self.name());
+        let default_size = usize_lit(self.default_content().len());
         let default_content = self
             .default_content()
             .into_iter()
@@ -60,12 +61,13 @@ where
 
             impl ::core::default::Default for #entity {
                 fn default() -> Self {
-                    let v: Vec<u8> = vec![#( #default_content, )*];
-                    #entity::new_unchecked(v.into())
+                    let v = molecule::bytes::Bytes::from_static(&Self::DEFAULT_VALUE);
+                    #entity::new_unchecked(v)
                 }
             }
 
             impl #entity {
+                const DEFAULT_VALUE: [u8; #default_size] = [#( #default_content, )*];
                 #constants
                 #properties
                 #getters
