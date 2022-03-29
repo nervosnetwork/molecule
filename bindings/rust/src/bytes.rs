@@ -34,6 +34,10 @@ impl Deref for Bytes {
 }
 
 impl Bytes {
+    pub fn from_static(bytes: &[u8]) -> Self {
+        Self::from(bytes)
+    }
+
     pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
         let len = self.len();
         let begin = match range.start_bound() {
