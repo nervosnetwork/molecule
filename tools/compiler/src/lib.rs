@@ -16,7 +16,7 @@ pub struct AppConfig {
     format: IntermediateFormat,
 }
 
-type RawAppConfig<'a> = (Language, IntermediateFormat, &'a clap::ArgMatches<'a>);
+type RawAppConfig<'a> = (Language, IntermediateFormat, &'a clap::ArgMatches);
 
 pub fn build_commandline(lang: Language, format: IntermediateFormat) -> AppConfig {
     let yaml = clap::load_yaml!("cli/compiler-plugin.yaml");
