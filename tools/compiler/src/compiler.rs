@@ -28,7 +28,7 @@ pub(crate) mod config {
         AppConfig::from(&matches)
     }
 
-    impl<'a> From<&'a clap::ArgMatches<'a>> for AppConfig {
+    impl<'a> From<&'a clap::ArgMatches> for AppConfig {
         fn from(matches: &'a clap::ArgMatches) -> Self {
             let schema_file = value_t_or_exit!(matches, "schema-file", PathBuf);
             let language = value_t_or_exit!(matches, "language", String);
