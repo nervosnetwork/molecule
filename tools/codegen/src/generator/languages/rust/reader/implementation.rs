@@ -218,9 +218,6 @@ impl ImplReader for ast::Table {
                     if slice_len != total_size {
                         return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                     }
-                    if slice_len == molecule::NUMBER_SIZE && Self::FIELD_COUNT == 0 {
-                        return Ok(());
-                    }
                     if slice_len < molecule::NUMBER_SIZE * 2 {
                         return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE * 2, slice_len);
                     }
