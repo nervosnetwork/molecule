@@ -2,7 +2,7 @@ ci:
 	@set -eu; \
 	export RUSTFLAGS='-D warnings'; \
 	make fmt clippy; \
-	make ci-examples ci-crates; \
+	make cargo-test ci-examples ci-crates; \
 	echo "Success!"
 
 RUST_DEV_PROJS = examples/ci-tests tests
@@ -39,6 +39,15 @@ clippy:
 		cargo clippy --all --all-targets --all-features; \
 		cd - > /dev/null; \
 	done
+
+cargo-test:
+	@set -eu; \
+	for dir in ${RUST_PROJS}; do \
+		cd "$${dir}"; \
+		cargo test; \
+		cd - > /dev/null; \
+	done
+
 
 ci-msrv:
 	@set -eu; \
