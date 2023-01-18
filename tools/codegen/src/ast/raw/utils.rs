@@ -336,3 +336,72 @@ impl parser::Parser {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parser, utils, SyntaxVersion};
+    use std::io::Write;
+
+    #[test]
+    fn test_default_syntax_version_should_be_1_0() {
+        use utils::ParserUtils;
+        // get path of  file
+        let mut schema_file = tempfile::NamedTempFile::new().unwrap();
+        let _ = schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        schema_file.flush().unwrap();
+
+        let file = schema_file.into_temp_path();
+
+        let ast = parser::Parser::preprocess(&file).unwrap();
+        assert_eq!(ast.syntax_version, Some(SyntaxVersion { version: 1 }));
+    }
+
+    #[test]
+    fn test_parse_syntax_version() {
+        use utils::ParserUtils;
+        // get path of  file
+        let mut schema_file = tempfile::NamedTempFile::new().unwrap();
+        let test_version = SyntaxVersion { version: 7 };
+        schema_file
+            .write_fmt(format_args!("syntax = {};", test_version.version))
+            .unwrap();
+        let _ = schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        schema_file.flush().unwrap();
+
+        let file = schema_file.into_temp_path();
+
+        let ast = parser::Parser::preprocess(&file).unwrap();
+        assert_eq!(ast.syntax_version, Some(test_version));
+    }
+
+    #[test]
+    #[should_panic]
+    // if A `syntax = 1` schema file imports a `syntax = 2` schema file, it should panic
+    fn test_different_syntax_version_should_panic() {
+        use utils::ParserUtils;
+
+        let mut child_schema_file = tempfile::NamedTempFile::new().unwrap();
+        child_schema_file
+            .write_fmt(format_args!("syntax = 2;"))
+            .unwrap();
+        let _ = child_schema_file.write(b"array uint64 [byte; 8];").unwrap();
+        child_schema_file.flush().unwrap();
+
+        let child_file = child_schema_file.into_temp_path();
+        let child_file_path = child_file.to_str().unwrap();
+
+        let mut root_schema_file = tempfile::NamedTempFile::new().unwrap();
+        root_schema_file
+            .write_fmt(format_args!("syntax = 1;",))
+            .unwrap();
+        root_schema_file
+            .write_fmt(format_args!("import {:?}", child_file_path))
+            .unwrap();
+        let _ = root_schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        root_schema_file.flush().unwrap();
+
+        let file = root_schema_file.into_temp_path();
+
+        parser::Parser::preprocess(&file).unwrap();
+    }
+}
