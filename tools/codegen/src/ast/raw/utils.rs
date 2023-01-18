@@ -4,9 +4,10 @@ use std::{ffi, fs, io::Read as _, path::Path, str::FromStr};
 use pest::{error::Error as PestError, iterators::Pairs, Parser as _};
 use same_file::is_same_file;
 
-use crate::ast::raw::CustomUnionItemDecl;
 use crate::{
     ast::raw as ast,
+    ast::raw::CustomUnionItemDecl,
+    ast::raw::SyntaxVersion,
     parser,
     utils::{self, PairsUtils as _},
 };
@@ -231,6 +232,22 @@ impl parser::Parser {
                 panic!("grammar should have only one EOI");
             }
             match pair.as_rule() {
+                parser::Rule::syntax_version_stmt => {
+                    let mut pair = pair.into_inner();
+                    let syntax_version = SyntaxVersion {
+                        version: pair.next_usize(),
+                    };
+                    pair.next_should_be_none();
+                    if ast.syntax_version.is_some() {
+                        // compare ast.syntax_version and syntax_version
+                        // panic if there is a conflict syntax_version
+                        if ast.syntax_version != Some(syntax_version) {
+                            panic!("all schema files' syntax version should be same");
+                        }
+                    } else {
+                        ast.syntax_version = Some(syntax_version);
+                    }
+                }
                 parser::Rule::import_stmt => {
                     let mut pair = pair.into_inner();
                     let node = pair.next_import(path, imported_depth);
@@ -311,6 +328,10 @@ impl parser::Parser {
         }
         if !eoi {
             panic!("grammar should have only one EOI");
+        }
+
+        if ast.syntax_version.is_none() {
+            ast.syntax_version = Some(SyntaxVersion::default());
         }
         Ok(())
     }

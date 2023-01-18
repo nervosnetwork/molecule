@@ -8,10 +8,13 @@ use property::Property;
 pub use format::Format;
 pub(crate) use from_ast::ToIntermediate;
 
+use crate::ast::SyntaxVersion;
+
 /// Intermediate file.
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ir {
+    syntax_version: SyntaxVersion,
     namespace: String,
     imports: Vec<ImportStmt>,
     #[serde(rename = "declarations")]

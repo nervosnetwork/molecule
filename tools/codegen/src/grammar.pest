@@ -87,8 +87,12 @@ path_super      =   @{ "../" }
 path            =   { path_super* ~ (identifier ~ "/")* ~ identifier }
 import_stmt     =   { "import" ~ (brk)+ ~ path ~ (brk)* ~ stmt_end }
 
+syntax_version = @{ digit+ }
+syntax_version_stmt = { "syntax" ~ (brk)* ~ "=" ~ (brk)* ~ syntax_version ~ (brk)* ~ stmt_end}
+
 grammar         =   {
                         SOI ~ (brk)* ~
+                            (syntax_version_stmt)? ~ (brk)* ~
                             (import_stmt ~ (brk)*)* ~
                                 decl_stmt ~
                             ((brk)* ~ decl_stmt)* ~ (brk)* ~

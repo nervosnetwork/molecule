@@ -12,11 +12,14 @@ mod recover;
 pub use default_content::DefaultContent;
 pub use has_name::HasName;
 
+use crate::ast::SyntaxVersion;
+
 type Deps<'a> = HashMap<&'a str, Rc<super::TopDecl>>;
 
 #[derive(Debug, Property)]
 #[property(get(public))]
 pub struct Ast {
+    syntax_version: SyntaxVersion,
     namespace: String,
     imports: Vec<ImportStmt>,
     decls: Vec<Rc<TopDecl>>,
