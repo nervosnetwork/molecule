@@ -1,14 +1,35 @@
 use std::path::PathBuf;
 
+#[cfg(feature = "compiler-plugin")]
+use serde::{Deserialize, Serialize};
+
 use property::Property;
 
 mod utils;
 
 #[derive(Debug, Default, Property)]
 pub(crate) struct Ast {
+    syntax_version: Option<SyntaxVersion>,
     namespace: String,
     imports: Vec<ImportStmt>,
     decls: Vec<TopDecl>,
+}
+
+impl Default for SyntaxVersion {
+    fn default() -> Self {
+        Self { version: 1 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Property)]
+#[property(get(public))]
+#[cfg_attr(
+    feature = "compiler-plugin",
+    derive(Deserialize, Serialize),
+    serde(deny_unknown_fields)
+)]
+pub struct SyntaxVersion {
+    version: usize,
 }
 
 #[derive(Debug, Clone, Property)]
