@@ -1,0 +1,7 @@
+array a2 [byte;3];
+array a3 [byte;4];
+
+union Foo_Only_Reserve_a2_and_a3{
+  a2 : 2,
+  a3 : 3,
+}

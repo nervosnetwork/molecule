@@ -1,0 +1,11 @@
+array a0 [byte;1];
+array a1 [byte;2];
+array a2 [byte;3];
+array a3 [byte;4];
+
+union Foo {
+  a0,
+  a1,
+  a2,
+  a3,
+}

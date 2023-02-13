@@ -5,7 +5,7 @@ ci:
 	make ci-examples ci-crates; \
 	echo "Success!"
 
-RUST_DEV_PROJS = examples/ci-tests
+RUST_DEV_PROJS = examples/ci-tests tests
 RUST_PROD_PROJS = bindings/rust tools/codegen tools/compiler
 RUST_PROJS = ${RUST_DEV_PROJS} ${RUST_PROD_PROJS}
 C_PROJS = examples/ci-tests

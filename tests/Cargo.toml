@@ -1,0 +1,18 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[dev-dependencies]
+codegen-0_7_3 = {package = "molecule-codegen", version = "0.7.3", features = ["compiler-plugin"]}
+codegen-dev = {package = "molecule-codegen", path = "../tools/codegen", features = ["compiler-plugin"]}
+molecule = "0.7.3"
+
+[build-dependencies]
+codegen-0_7_3 = {package = "molecule-codegen", version = "0.7.3", features = ["compiler-plugin"]}
+codegen-dev = {package = "molecule-codegen", path = "../tools/codegen", features = ["compiler-plugin"]}
+molecule = "0.7.3"
