@@ -31,7 +31,10 @@ impl CompleteRawDecl for raw::UnionDecl {
         }
         self.items()
             .iter()
-            .map(|raw_item| deps.get(raw_item.typ()).map(super::ItemDecl::new))
+            .map(|raw_item| {
+                deps.get(raw_item.typ())
+                    .map(|typ| super::UnionItemDecl::new(typ, raw_item.id()))
+            })
             .collect::<Option<Vec<_>>>()
             .map(|items| {
                 let name = self.name().to_owned();

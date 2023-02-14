@@ -40,7 +40,7 @@ pub(crate) struct OptionDecl {
 #[derive(Debug, Property)]
 pub(crate) struct UnionDecl {
     name: String,
-    items: Vec<ItemDecl>,
+    items: Vec<CustomUnionItemDecl>,
     imported_depth: usize,
 }
 
@@ -76,6 +76,12 @@ pub(crate) struct TableDecl {
 #[derive(Debug, Property)]
 pub(crate) struct ItemDecl {
     typ: String,
+}
+
+#[derive(Debug, Property)]
+pub(crate) struct CustomUnionItemDecl {
+    typ: String,
+    id: usize,
 }
 
 #[derive(Debug, Property)]

@@ -8,7 +8,9 @@ ifs             =   _{ " " | "\t" }
 newline         =   _{ "\n" | "\r\n" }
 
 identifier      =   @{ letter ~ (letter | digit | "_")* }
-number          =   @{ nonzero ~ digit* }
+
+number_greater_than_zero          =   @{ nonzero ~ digit* }
+number_greater_or_equal_than_zero =   @{ zero | number_greater_than_zero}
 
 block_comment   =   _{ "/*" ~ (block_comment | !"*/" ~ ANY)* ~ "*/" }
 line_comment    =   _{ ("//" | "#") ~(!newline ~ ANY)* }
@@ -25,6 +27,13 @@ item_decl       =   {
                         identifier ~ (brk)* ~
                         item_end
                     }
+
+custom_union_item_decl       =  {
+                                    identifier ~ (brk)* ~ ":" ~ (brk)* ~
+                                    number_greater_or_equal_than_zero ~ (brk)* ~
+                                    field_end
+                                }
+
 field_decl      =   {
                         identifier ~ (brk)* ~ ":" ~ (brk)* ~
                         identifier ~ (brk)* ~
@@ -40,13 +49,13 @@ option_decl     =   {
 union_decl      =   {
                         "union" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "{" ~ (brk)* ~
-                            (item_decl ~ (brk)*)+ ~
+                            ((item_decl | custom_union_item_decl) ~ (brk)*)+ ~
                         "}"
                     }
 array_decl      =   {
                         "array" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "[" ~ (brk)* ~
-                            identifier ~ (brk)* ~ ";" ~ (brk)* ~ number ~ (brk)* ~
+                            identifier ~ (brk)* ~ ";" ~ (brk)* ~ number_greater_than_zero ~ (brk)* ~
                         "]" ~ (brk)* ~
                         stmt_end
                     }
