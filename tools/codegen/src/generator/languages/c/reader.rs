@@ -95,8 +95,12 @@ impl GenReader for ast::Union {
         w!(o, "    inner.ptr = input->ptr + MOL_NUM_T_SIZE;           ");
         w!(o, "    inner.size = input->size - MOL_NUM_T_SIZE;         ");
         w!(o, "    switch(item_id) {{                                 ");
-        for (item_id, item) in self.items().iter().enumerate() {
-            w!(o, "        case {}:                              ", item_id);
+        for item in self.items().iter() {
+            w!(
+                o,
+                "        case {}:                              ",
+                item.id()
+            );
             if item.typ().is_byte() {
                 w!(o, "            return inner.size == 1 ? MOL_OK : MOL_ERR; ");
             } else {
