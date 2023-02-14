@@ -63,12 +63,12 @@ impl ImplGetters for ast::Union {
             let getter_stmt = quote!(&self.as_slice()[molecule::NUMBER_SIZE..]);
             (getter_ret, getter_stmt)
         };
-        let match_stmts = self.items().iter().enumerate().map(|(index, inner)| {
-            let item_id = usize_lit(index);
+        let match_stmts = self.items().iter().map(|item| {
+            let item_id = usize_lit(item.id());
             let inner = if is_entity {
-                entity_name(inner.typ().name())
+                entity_name(item.typ().name())
             } else {
-                reader_name(inner.typ().name())
+                reader_name(item.typ().name())
             };
             quote!(#item_id => #inner::new_unchecked(inner).into(),)
         });

@@ -26,7 +26,7 @@ impl GenEnumerator for ast::Union {
             ref entity_union_item_paths,
             ref reader_union_item_paths,
         ) = {
-            self.items().iter().enumerate().fold(
+            self.items().iter().fold(
                 (
                     Vec::with_capacity(inner_len),
                     Vec::with_capacity(inner_len),
@@ -43,12 +43,12 @@ impl GenEnumerator for ast::Union {
                     mut entity_union_item_paths,
                     mut reader_union_item_paths,
                 ),
-                 (index, inner)| {
-                    let inner_name = inner.typ().name();
+                 item| {
+                    let inner_name = item.typ().name();
                     let entity_name = entity_name(inner_name);
                     let reader_name = reader_name(inner_name);
                     let item_name = union_item_name(inner_name);
-                    let item_id = usize_lit(index);
+                    let item_id = usize_lit(item.id());
                     let entity_union_item_path = quote!(#entity_union::#item_name);
                     let reader_union_item_path = quote!(#reader_union::#item_name);
                     entity_inners.push(entity_name);
