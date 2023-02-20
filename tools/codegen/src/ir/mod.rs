@@ -1,7 +1,7 @@
 mod format;
 mod from_ast;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use property::Property;
 
@@ -52,7 +52,9 @@ pub(crate) struct Option_ {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Union {
     name: String,
-    items: Vec<ItemDecl>,
+
+    #[serde(deserialize_with = "deserialize_union_items")]
+    items: Vec<UnionItemDecl>,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
     imported_depth: usize,
 }
@@ -107,6 +109,38 @@ pub(crate) struct Table {
 #[serde(deny_unknown_fields, transparent)]
 pub(crate) struct ItemDecl {
     typ: String,
+}
+
+#[derive(Debug, Property, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct UnionItemDecl {
+    typ: String,
+    id: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+enum UnionItemsForCompatibility {
+    ItemsForCompatibility(Vec<ItemDecl>),
+    Items(Vec<UnionItemDecl>),
+}
+
+fn deserialize_union_items<'de, D>(d: D) -> Result<Vec<UnionItemDecl>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let union_com = UnionItemsForCompatibility::deserialize(d)?;
+    Ok(match union_com {
+        UnionItemsForCompatibility::ItemsForCompatibility(items) => items
+            .iter()
+            .enumerate()
+            .map(|(id, item)| UnionItemDecl {
+                typ: item.typ.clone(),
+                id,
+            })
+            .collect(),
+        UnionItemsForCompatibility::Items(items) => items,
+    })
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]

@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::{ffi, fs, io::Read as _, path::Path, str::FromStr};
 
 use pest::{error::Error as PestError, iterators::Pairs, Parser as _};
 use same_file::is_same_file;
 
+use crate::ast::raw::CustomUnionItemDecl;
 use crate::{
     ast::raw as ast,
     parser,
@@ -37,6 +39,51 @@ impl<'i> utils::PairsUtils for Pairs<'i, parser::Rule> {
             pair.next_should_be_none();
             ret.push(node);
         }
+        ret
+    }
+
+    fn next_custom_union_items(&mut self) -> Vec<CustomUnionItemDecl> {
+        let mut previous_id: Option<usize> = None;
+        let mut ret = Vec::new();
+
+        let mut custom_ids = HashSet::new();
+        for item in self {
+            match item.as_rule() {
+                parser::Rule::item_decl => {
+                    let mut pair = item.into_inner();
+                    let node = ast::CustomUnionItemDecl {
+                        typ: pair.next_string(),
+                        id: if let Some(pre_id) = previous_id {
+                            pre_id + 1
+                        } else {
+                            0
+                        },
+                    };
+                    pair.next_should_be_none();
+                    ret.push(node);
+                }
+                parser::Rule::custom_union_item_decl => {
+                    let mut pair = item.into_inner();
+                    let node = ast::CustomUnionItemDecl {
+                        typ: pair.next_string(),
+                        id: pair.next_usize(),
+                    };
+                    pair.next_should_be_none();
+                    ret.push(node);
+                }
+                _ => unreachable!(),
+            }
+
+            if !custom_ids.insert(ret.last().unwrap().id) {
+                panic!(
+                    "Custom Union Item ID {} is duplicated",
+                    ret.last().unwrap().id
+                );
+            }
+            previous_id = Some(ret.last().unwrap().id);
+        }
+        // union items should be sorted by custom ID
+        ret.sort_by_key(|item| item.id);
         ret
     }
 
@@ -204,7 +251,7 @@ impl parser::Parser {
                     let mut pair = pair.into_inner();
                     let node = ast::UnionDecl {
                         name: pair.next_string(),
-                        items: pair.next_items(),
+                        items: pair.next_custom_union_items(),
                         imported_depth,
                     };
                     pair.next_should_be_none();

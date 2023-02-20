@@ -47,9 +47,9 @@ impl ImplReader for ast::Option_ {
 
 impl ImplReader for ast::Union {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let verify_inners = self.items().iter().enumerate().map(|(index, inner)| {
-            let item_id = usize_lit(index);
-            let inner = reader_name(inner.typ().name());
+        let verify_inners = self.items().iter().map(|item| {
+            let item_id = usize_lit(item.id());
+            let inner = reader_name(item.typ().name());
             quote!(
                 #item_id => #inner::verify(inner_slice, compatible),
             )

@@ -129,6 +129,15 @@ impl ToIntermediate for ast::ItemDecl {
         }
     }
 }
+impl ToIntermediate for ast::UnionItemDecl {
+    type Ir = super::UnionItemDecl;
+    fn to_ir(&self) -> Self::Ir {
+        Self::Ir {
+            typ: self.typ().name().to_owned(),
+            id: self.id().to_owned(),
+        }
+    }
+}
 
 impl ToIntermediate for ast::FieldDecl {
     type Ir = super::FieldDecl;
