@@ -126,6 +126,7 @@ macro_rules! testset {
     (union, $callback:ident) => {
         use $crate::types::*;
         $callback!(UnionA);
+        $callback!(UnionB);
     };
     (all, $callback:ident) => {
         use $crate::types::*;
