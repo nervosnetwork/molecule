@@ -18,11 +18,11 @@ impl DefaultContent for super::Option_ {
 
 impl DefaultContent for super::Union {
     fn default_content(&self) -> Vec<u8> {
-        let item_id = 0;
-        let inner_content = self.items()[item_id].typ.default_content();
+        let first_union_item = self.items().first().unwrap();
+        let inner_content = first_union_item.typ.default_content();
         let total_size = NUMBER_SIZE + inner_content.len();
         let mut content = Vec::with_capacity(total_size);
-        content.extend_from_slice(&pack_number(item_id as Number));
+        content.extend_from_slice(&pack_number(first_union_item.id() as Number));
         content.extend_from_slice(&inner_content);
         content
     }
