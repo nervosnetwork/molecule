@@ -264,3 +264,6 @@
 -
   name: UnionA
   expected: "0x00000000//00"
+-
+  name: UnionB
+  expected: "0x02000000//00"
