@@ -134,9 +134,8 @@ impl GenTest for types::Union {
                 union
                     .items()
                     .iter()
-                    .enumerate()
-                    .find(|(_, inner_item)| inner_item.typ().name() == item.typ())
-                    .map(|(index, _)| index)
+                    .find(|inner_item| inner_item.typ().name() == item.typ())
+                    .map(|item| item.id())
                     .unwrap()
             } else {
                 panic!("Error: type for {} is incorrect", self.name());

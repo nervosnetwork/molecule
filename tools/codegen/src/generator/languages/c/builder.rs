@@ -103,8 +103,9 @@ impl GenBuilder for ast::Option_ {
 impl GenBuilder for ast::Union {
     fn gen_builder_interfaces_internal<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         {
-            let id = 0;
-            let default = &self.items()[id].typ();
+            let first_union_item = &self.items().first().unwrap();
+            let default = first_union_item.typ();
+            let default_id = first_union_item.id();
             let len = default.default_content().len();
             let name = if default.is_byte() {
                 "NULL".to_owned()
@@ -115,20 +116,20 @@ impl GenBuilder for ast::Union {
             let data_capacity = calculate_capacity(molecule::NUMBER_SIZE + len);
             let macro_content = format!(
                 "mol_union_builder_initialize(b, {}, {}, {}, {})",
-                data_capacity, id, name, len
+                data_capacity, default_id, name, len
             );
             self.define_builder_macro(writer, "_init(b)", &macro_content)?;
         }
-        for (item_id, item) in self.items().iter().enumerate() {
+        for item in self.items() {
             let (macro_sig_tail, macro_content) = if item.typ().is_byte() {
                 (
                     format!("_set_{}(b, p)", item.typ().name()),
-                    format!("mol_union_builder_set_byte(b, {}, p)", item_id),
+                    format!("mol_union_builder_set_byte(b, {}, p)", item.id()),
                 )
             } else {
                 (
                     format!("_set_{}(b, p, l)", item.typ().name()),
-                    format!("mol_union_builder_set(b, {}, p, l)", item_id),
+                    format!("mol_union_builder_set(b, {}, p, l)", item.id()),
                 )
             };
             self.define_builder_macro(writer, &macro_sig_tail, &macro_content)?;

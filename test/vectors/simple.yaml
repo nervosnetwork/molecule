@@ -527,3 +527,15 @@
                00000000_0000\
                00000000\
                04000000"
+-
+  name: UnionB
+  item:
+    type: byte
+    data: "0x02"
+  expected: "0x02000000//02"
+-
+  name: UnionB
+  item:
+    type: Word
+    data: "0x0001"
+  expected: "0x04000000//0001"
