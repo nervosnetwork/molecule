@@ -110,8 +110,7 @@ impl GenBuilder for ast::Union {
             let name = if default.is_byte() {
                 "NULL".to_owned()
             } else {
-                let name = default.default_constant();
-                format!("&{}", name)
+                default.default_constant()
             };
             let data_capacity = calculate_capacity(molecule::NUMBER_SIZE + len);
             let macro_content = format!(
