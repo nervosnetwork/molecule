@@ -539,3 +539,27 @@
     type: Word
     data: "0x0001"
   expected: "0x04000000//0001"
+-
+  name: UnionC
+  item:
+    type: Word
+    data: "0x0001"
+  expected: "0x00000000//0001"
+-
+  name: UnionC
+  item:
+    type: byte
+    data: "0x02"
+  expected: "0x01000000//02"
+-
+  name: UnionD
+  item:
+    type: Word
+    data: "0x0002"
+  expected: "0x02000000//0002"
+-
+  name: UnionD
+  item:
+    type: byte
+    data: "0x04"
+  expected: "0x04000000//04"

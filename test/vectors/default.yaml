@@ -267,3 +267,9 @@
 -
   name: UnionB
   expected: "0x02000000//00"
+-
+  name: UnionC
+  expected: "0x00000000//0000"
+-
+  name: UnionD
+  expected: "0x02000000//0000"
