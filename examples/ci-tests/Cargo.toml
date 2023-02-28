@@ -1,6 +1,6 @@
 [package]
 name = "molecule-ci-tests"
-version = "0.7.4"
+version = "0.7.5"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 
