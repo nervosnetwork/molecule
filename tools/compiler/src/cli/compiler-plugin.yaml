@@ -1,7 +1,0 @@
-name: Moleculec Plugin
-author: Nervos Core Dev <dev@nervos.org>
-args:
-    - format:
-        help: Output the supported format for the intermediate data.
-        long: format
-        takes_value: false
