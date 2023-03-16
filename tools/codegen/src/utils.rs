@@ -20,5 +20,5 @@ pub(crate) trait PairsUtils {
 }
 
 pub(crate) trait ParserUtils {
-    fn preprocess<P: AsRef<Path>>(path: &P) -> Result<ast::Ast, PestError<parser::Rule>>;
+    fn preprocess<P: AsRef<Path>>(path: &P) -> Result<ast::Ast, Box<PestError<parser::Rule>>>;
 }
