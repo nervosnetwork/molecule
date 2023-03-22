@@ -14,6 +14,7 @@ use crate::ast::SyntaxVersion;
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Ir {
+    #[serde(default)]
     syntax_version: SyntaxVersion,
     namespace: String,
     imports: Vec<ImportStmt>,
