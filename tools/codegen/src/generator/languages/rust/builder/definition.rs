@@ -15,7 +15,7 @@ impl DefBuilder for ast::Option_ {
         let builder = builder_name(self.name());
         let inner = entity_name(self.item().typ().name());
         quote!(
-            #[derive(Debug, Default)]
+            #[derive(Clone, Debug, Default)]
             pub struct #builder (pub(crate) Option<#inner>);
         )
     }
@@ -26,7 +26,7 @@ impl DefBuilder for ast::Union {
         let builder = builder_name(self.name());
         let entity_union = entity_union_name(self.name());
         quote!(
-            #[derive(Debug, Default)]
+            #[derive(Clone, Debug, Default)]
             pub struct #builder (pub(crate) #entity_union);
         )
     }
@@ -41,6 +41,7 @@ impl DefBuilder for ast::Array {
             .map(|_| inner.clone())
             .collect::<Vec<_>>();
         quote!(
+            #[derive(Clone)]
             pub struct #builder (pub(crate) [#inner; #item_count]);
 
             impl ::core::fmt::Debug for #builder {
@@ -90,7 +91,7 @@ fn def_builder_for_struct_or_table(self_name: &str, inner: &[ast::FieldDecl]) ->
         quote!(#field_name: #field_type,)
     });
     quote!(
-        #[derive(Debug, Default)]
+        #[derive(Clone, Debug, Default)]
         pub struct #builder { #( pub(crate) #fields )* }
     )
 }
@@ -99,7 +100,7 @@ fn def_builder_for_vector(self_name: &str, inner_name: &str) -> m4::TokenStream 
     let builder = builder_name(self_name);
     let inner = entity_name(inner_name);
     quote!(
-        #[derive(Debug, Default)]
+        #[derive(Clone, Debug, Default)]
         pub struct #builder (pub(crate) Vec<#inner>);
     )
 }
