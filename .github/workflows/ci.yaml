@@ -21,7 +21,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.64.0
+          toolchain: 1.67.1
           override: true
           components: rustfmt
       - name: Run
@@ -35,7 +35,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.58.1
+          toolchain: 1.67.1
           override: true
           components: clippy
       - name: Run
@@ -50,7 +50,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.56.1 # MSRV
+          toolchain: 1.67.1 # MSRV
           override: true
       - name: Run
         run: make ci-msrv
@@ -64,7 +64,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.58.1
+          toolchain: 1.67.1
           override: true
       - name: Run
         run: make ci-crates
@@ -78,7 +78,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.58.1
+          toolchain: 1.67.1
           override: true
       - name: Run
         run: make ci-examples
