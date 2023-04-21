@@ -147,7 +147,7 @@ impl<'i> utils::PairsUtils for Pairs<'i, parser::Rule> {
 }
 
 impl utils::ParserUtils for parser::Parser {
-    fn preprocess<P: AsRef<Path>>(path: &P) -> Result<ast::Ast, PestError<parser::Rule>> {
+    fn preprocess<P: AsRef<Path>>(path: &P) -> Result<ast::Ast, Box<PestError<parser::Rule>>> {
         let namespace = path
             .as_ref()
             .file_stem()
@@ -183,13 +183,13 @@ impl utils::ParserUtils for parser::Parser {
                 path_buf.push(stmt.name());
                 path_buf.set_extension("mol");
                 let path_new = path_buf.as_path();
-                if is_same_file(path, &path_new).unwrap() {
+                if is_same_file(path, path_new).unwrap() {
                     panic!("found cyclic dependencie");
                 }
 
                 if path_bufs
                     .iter()
-                    .any(|ref path_old| is_same_file(&path_old, &path_new).unwrap())
+                    .any(|ref path_old| is_same_file(path_old, path_new).unwrap())
                 {
                     continue;
                 } else {
@@ -211,10 +211,10 @@ impl parser::Parser {
         ast: &mut ast::Ast,
         path: &P,
         imported_depth: usize,
-    ) -> Result<(), PestError<parser::Rule>> {
+    ) -> Result<(), Box<PestError<parser::Rule>>> {
         let buffer = {
             let mut buffer = String::new();
-            let mut file_in = fs::OpenOptions::new().read(true).open(&path).unwrap();
+            let mut file_in = fs::OpenOptions::new().read(true).open(path).unwrap();
             file_in.read_to_string(&mut buffer).unwrap();
             buffer
         };
