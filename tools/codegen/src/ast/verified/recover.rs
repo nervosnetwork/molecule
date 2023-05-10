@@ -1,9 +1,12 @@
+use crate::ast::verified;
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
 
 use crate::ir;
+
+use super::must_get_primitive_types;
 
 trait RecoverFromIr {
     fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl>;
@@ -174,22 +177,37 @@ impl RecoverFromIr for ir::Table {
 
 impl super::Ast {
     pub(crate) fn recover(ir: ir::Ir) -> Self {
+        let expand_primitive = !ir.syntax_version().support_primitive_types();
         let mut decls_idx = HashMap::new();
         let mut decls_keys = HashSet::new();
         for decl in ir.decls() {
             let name = decl.name();
-            if super::TopDecl::new_primitive(name.to_lowercase().as_str()).is_some() {
+            if super::TopDecl::new_primitive(name.to_lowercase().as_str(), !expand_primitive)
+                .is_some()
+            {
                 panic!("the name `{}` is reserved", name);
             }
             if decls_idx.insert(name, decl).is_some() || !decls_keys.insert(name) {
                 panic!("the name `{}` is used more than once", name);
             };
         }
+        let mut primitives = vec![verified::Primitive {
+            name: "byte".to_string(),
+            size: 1,
+        }];
+
+        if !expand_primitive {
+            primitives.extend(must_get_primitive_types());
+        }
+
         let mut decls_result = HashMap::new();
-        decls_result.insert(
-            "byte",
-            Rc::new(super::TopDecl::new_primitive("byte").unwrap()),
-        );
+        primitives.iter().for_each(|primitive_type| {
+            decls_result.insert(
+                primitive_type.name(),
+                Rc::new(super::TopDecl::new_primitive(primitive_type.name(), true).unwrap()),
+            );
+        });
+
         loop {
             if decls_keys.is_empty() {
                 break;

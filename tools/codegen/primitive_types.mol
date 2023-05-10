@@ -1,0 +1,14 @@
+// Unsigned integers
+array uint64 [byte; 8];
+array uint32 [byte; 4];
+array uint16 [byte; 2];
+array uint8  [byte; 1];
+
+// Signed integers
+array int64 [byte; 8];
+array int32 [byte; 4];
+array int16 [byte; 2];
+array int8  [byte; 1];
+
+// Bool
+array bool  [byte; 1];

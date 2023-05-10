@@ -1,9 +1,12 @@
+use crate::ast::SyntaxVersion;
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
 };
 
-use super::super::raw;
+use super::must_get_primitive_types;
+
+use super::{super::raw, Primitive};
 
 trait CompleteRawDecl {
     fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl>;
@@ -168,20 +171,40 @@ impl super::Ast {
     pub(crate) fn complete(raw: raw::Ast) -> Self {
         let mut decls_idx = HashMap::new();
         let mut decls_keys = HashSet::new();
+        let expand_primitive = !raw
+            .syntax_version()
+            .unwrap_or(&SyntaxVersion::default())
+            .support_primitive_types();
         for decl in raw.decls() {
             let name = decl.name();
-            if super::TopDecl::new_primitive(name.to_lowercase().as_str()).is_some() {
+            if super::TopDecl::new_primitive(name.to_lowercase().as_str(), !expand_primitive)
+                .is_some()
+            {
                 panic!("the name `{}` is reserved", name);
             }
             if decls_idx.insert(name, decl).is_some() || !decls_keys.insert(name) {
                 panic!("the name `{}` is used more than once", name);
             };
         }
+
+        let mut primitives = vec![Primitive {
+            name: "byte".to_string(),
+            size: 1,
+        }];
+
+        if !expand_primitive {
+            primitives.extend(must_get_primitive_types());
+        }
+        dbg!(expand_primitive);
+
         let mut decls_result = HashMap::new();
-        decls_result.insert(
-            "byte",
-            Rc::new(super::TopDecl::new_primitive("byte").unwrap()),
-        );
+        primitives.iter().for_each(|primitive_type| {
+            decls_result.insert(
+                primitive_type.name(),
+                Rc::new(super::TopDecl::new_primitive(primitive_type.name(), true).unwrap()),
+            );
+        });
+
         loop {
             if decls_keys.is_empty() {
                 break;

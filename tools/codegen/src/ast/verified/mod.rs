@@ -16,6 +16,25 @@ use crate::ast::SyntaxVersion;
 
 type Deps<'a> = HashMap<&'a str, Rc<super::TopDecl>>;
 
+pub fn must_get_primitive_types() -> Vec<Primitive> {
+    use crate::utils::ParserUtils;
+    crate::parser::Parser::preprocess(&std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/primitive_types.mol"
+    )))
+    .unwrap()
+    .decls()
+    .iter()
+    .map(|decl| match decl {
+        crate::ast::raw::TopDecl::Array(array) => Primitive {
+            name: array.name().to_string(),
+            size: array.item_count(),
+        },
+        _ => panic!("primitive types is not array"),
+    })
+    .collect::<Vec<Primitive>>()
+}
+
 #[derive(Debug, Property)]
 #[property(get(public))]
 pub struct Ast {
@@ -45,7 +64,7 @@ pub enum TopDecl {
     Table(Table),
 }
 
-#[derive(Debug, Property)]
+#[derive(Debug, Property, Clone)]
 #[property(get(public))]
 pub struct Primitive {
     name: String,
@@ -143,15 +162,21 @@ impl Ast {
 }
 
 impl TopDecl {
-    fn new_primitive(name: &str) -> Option<Self> {
-        match name {
-            "byte" => Some(Primitive {
+    fn new_primitive(name: &str, with_primitive_ext: bool) -> Option<Self> {
+        if name.eq("byte") {
+            return Some(Primitive {
                 name: name.to_owned(),
                 size: 1,
-            }),
-            _ => None,
+            })
+            .map(Self::Primitive);
         }
-        .map(Self::Primitive)
+        if !with_primitive_ext {
+            return None;
+        }
+        must_get_primitive_types()
+            .iter()
+            .find(|primitive_decl| primitive_decl.name().eq(name))
+            .map(|v| Self::Primitive(v.clone()))
     }
 
     pub fn is_byte(&self) -> bool {

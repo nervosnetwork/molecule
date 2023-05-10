@@ -32,6 +32,12 @@ pub struct SyntaxVersion {
     version: usize,
 }
 
+impl SyntaxVersion {
+    pub fn support_primitive_types(&self) -> bool {
+        self.version >= 2
+    }
+}
+
 #[derive(Debug, Clone, Property)]
 pub(crate) struct ImportStmt {
     name: String,
@@ -65,7 +71,7 @@ pub(crate) struct UnionDecl {
     imported_depth: usize,
 }
 
-#[derive(Debug, Property)]
+#[derive(Debug, Property, Clone)]
 pub(crate) struct ArrayDecl {
     name: String,
     item: ItemDecl,
@@ -94,7 +100,7 @@ pub(crate) struct TableDecl {
     imported_depth: usize,
 }
 
-#[derive(Debug, Property)]
+#[derive(Debug, Property, Clone)]
 pub(crate) struct ItemDecl {
     typ: String,
 }

@@ -1,0 +1,30 @@
+[package]
+name = "molecule-std"
+version = "0.0.1"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2018"
+description = "std primitive types for molecule."
+homepage = "https://github.com/nervosnetwork/molecule"
+repository = "https://github.com/nervosnetwork/molecule"
+keywords = ["molecule", "code-generation", "serialization"]
+categories = [
+    "parser-implementations",
+    "development-tools::build-utils",
+    "encoding",
+    "data-structures"
+]
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+molecule = { path = "../../bindings/rust" }
+
+[features]
+default = ["std"]
+with-primitive-types = []
+std = ["molecule/bytes", "molecule/faster-hex"]
+
+[build-dependencies]
+codegen = {package ="molecule-codegen", version = "=0.7.5",  path = "../../tools/codegen" }
+

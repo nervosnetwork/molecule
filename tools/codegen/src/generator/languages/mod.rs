@@ -12,7 +12,11 @@ pub enum Language {
 }
 
 pub(super) trait LanguageGenerator {
-    fn generate<W: io::Write>(writer: &mut W, ast: &ast::Ast) -> io::Result<()>;
+    fn generate<W: io::Write>(
+        writer: &mut W,
+        ast: &ast::Ast,
+        expand_primitive: bool,
+    ) -> io::Result<()>;
 }
 
 impl fmt::Display for Language {
@@ -44,9 +48,10 @@ impl Language {
     }
 
     pub(crate) fn generate<W: io::Write>(self, writer: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let expand_primitive = ast.syntax_version().support_primitive_types();
         match self {
-            Self::C => c::Generator::generate(writer, ast),
-            Self::Rust => rust::Generator::generate(writer, ast),
+            Self::C => c::Generator::generate(writer, ast, expand_primitive),
+            Self::Rust => rust::Generator::generate(writer, ast, expand_primitive),
         }
     }
 }

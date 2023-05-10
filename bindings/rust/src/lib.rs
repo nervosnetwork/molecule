@@ -21,7 +21,7 @@ cfg_if::cfg_if! {
 
 pub mod error;
 pub mod prelude;
-mod primitive;
+pub mod primitive;
 
 // Little Endian
 pub type Number = u32;
