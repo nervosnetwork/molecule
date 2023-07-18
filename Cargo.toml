@@ -1,0 +1,6 @@
+
+[workspace]
+members = ["tools/compiler", "tools/codegen"]
+
+[profile.release]
+overflow-checks = true
