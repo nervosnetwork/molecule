@@ -1,6 +1,6 @@
 
 [workspace]
-members = ["tools/compiler", "tools/codegen"]
+members = ["tools/compiler", "tools/codegen", "examples/ci-tests", "tests", "bindings/rust"]
 
 [profile.release]
 overflow-checks = true
