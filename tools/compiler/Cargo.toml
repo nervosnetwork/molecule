@@ -28,7 +28,7 @@ name = "moleculec-rust"
 path = "src/compiler-rust.rs"
 
 [dependencies]
-clap = { version = "3", features = ["yaml", "cargo"] }
+clap = { version = "4", features = ["cargo", "string"] }
 which = "4.0.2"
 molecule-codegen = { version = "=0.7.5", path = "../codegen", features = ["compiler-plugin"] }
 

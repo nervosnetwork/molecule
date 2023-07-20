@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate clap;
 
 use std::{convert::TryFrom, process, str};
@@ -21,17 +20,55 @@ pub(crate) mod config {
     }
 
     pub(crate) fn build_commandline() -> AppConfig {
-        let yaml = clap::load_yaml!("cli/compiler.yaml");
-        let matches = clap::App::from_yaml(yaml)
+        //let yaml = clap::load_yaml!("cli/compiler.yaml");
+        let matches = clap::Command::new("Moleculec")
             .version(clap::crate_version!())
+            .about("Schema compiler for molecule.")
+            .author("Nervos Core Dev <dev@nervos.org>")
+            .arg(
+                clap::Arg::new("schema-file")
+                    .long("schema-file")
+                    .num_args(1)
+                    .help("Provide a schema file to compile.")
+                    .required(true)
+            )
+            .arg(
+                clap::Arg::new("language")
+                    .long("language")
+                    .help("Specify a language, then generate source code for the specified language and output the generated code to the stdout.
+                    This parameter actually specifies a plugin to use. It should be a simple word, and the compiler will search for a plugin called \"moleculec-<language>\" in `$PATH`.
+                    If \"<language>\" is \"-\", the compiler will dump the intermediate data of schema to standard output.")
+                    .required(true)
+            )
+            .arg(
+                 clap::Arg::new("format")
+                     .long("format")
+                     .help("If \"<language>\" is \"-\", this parameter is used to specify a format for the intermediate data.")
+                     .value_parser(
+                         [
+                             clap::builder::PossibleValue::new("json"),
+                             clap::builder::PossibleValue::new("yaml"),
+                         ]
+                     )
+            )
             .get_matches();
-        AppConfig::from(&matches)
+        AppConfig::from(matches)
     }
 
-    impl<'a> From<&'a clap::ArgMatches> for AppConfig {
-        fn from(matches: &'a clap::ArgMatches) -> Self {
-            let schema_file = value_t_or_exit!(matches, "schema-file", PathBuf);
-            let language = value_t_or_exit!(matches, "language", String);
+    impl From<clap::ArgMatches> for AppConfig {
+        fn from(matches: clap::ArgMatches) -> Self {
+            let schema_file = matches
+                .get_one::<PathBuf>("schema-file")
+                .unwrap_or_else(|| {
+                    eprintln!("Error: failed to get schema-file from command line args");
+                    process::exit(1);
+                });
+
+            let language = matches.get_one::<String>("language").unwrap_or_else(|| {
+                eprintln!("Error: failed to get language from command line args");
+                process::exit(1);
+            });
+
             if !schema_file.as_path().is_file() {
                 eprintln!(
                     "Error: schema-file [{}] should be a file",
@@ -40,7 +77,7 @@ pub(crate) mod config {
                 process::exit(1);
             }
             let output_config = if language == "-" {
-                let format = value_t!(matches, "format", String).unwrap_or_else(|_| {
+                let format = matches.get_one::<String>("format").unwrap_or_else(|| {
                     eprintln!("Error: since language is \"-\", a format is required");
                     process::exit(1);
                 });
@@ -52,7 +89,7 @@ pub(crate) mod config {
                     }
                 }
             } else {
-                if value_t!(matches, "format", String).is_ok() {
+                if matches.get_one::<String>("format").is_none() {
                     eprintln!("Error: since language is not \"-\", don't specify format");
                     process::exit(1);
                 }
@@ -65,7 +102,7 @@ pub(crate) mod config {
                 }
             };
             Self {
-                schema_file,
+                schema_file: schema_file.to_path_buf(),
                 output_config,
             }
         }
