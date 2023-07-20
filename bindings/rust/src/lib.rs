@@ -9,16 +9,15 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
         extern crate std;
 
-        pub use bytes;
         pub mod io {
             pub use std::io::{Error, Result, Write};
         }
     } else {
-        pub mod bytes;
         pub mod io;
     }
 }
 
+pub use bytes;
 pub mod error;
 pub mod prelude;
 mod primitive;
