@@ -1,0 +1,12 @@
+[package]
+name = "molecule-lazy-reader-tests"
+version = "0.7.5"
+authors = ["Nervos Core Dev <dev@nervos.org>"]
+edition = "2018"
+
+[dependencies]
+molecule = { path = "../../bindings/rust", default-features = false }
+
+[features]
+default = ["std"]
+std = ["molecule/std"]

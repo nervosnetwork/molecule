@@ -10,7 +10,7 @@ pub(crate) struct Generator;
 
 impl super::LanguageGenerator for Generator {
     fn generate<W: io::Write>(output: &mut W, ast: &ast::Ast) -> io::Result<()> {
-        write!(
+        writeln!(
             output,
             r#"
         #![allow(dead_code)]
@@ -19,12 +19,11 @@ impl super::LanguageGenerator for Generator {
         use alloc::vec::Vec;
         use molecule::lazy_reader::Cursor;
         use molecule::lazy_reader::Error;
-        use core::convert::TryInto;        
-    "#
+        use core::convert::TryInto;"#
         )?;
 
         for import in ast.imports() {
-            write!(output, "use super::{}::*; ", &import.name())?;
+            writeln!(output, "use super::{}::*; ", &import.name())?;
         }
 
         for decl in ast.major_decls() {
@@ -60,7 +59,7 @@ pub trait LazyReaderGenerator: HasName {
                 }
             }
         };
-        write!(output, "{}", q)?;
+        writeln!(output, "{}", q)?;
         Ok(())
     }
 }

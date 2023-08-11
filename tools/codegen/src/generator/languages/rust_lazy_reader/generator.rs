@@ -45,7 +45,7 @@ impl LazyReaderGenerator for ast::Union {
                 }
             }
         };
-        write!(output, "{}", q)?;
+        writeln!(output, "{}", q)?;
 
         for item in self.items() {
             let item_type_name = item.typ().name();
@@ -62,7 +62,7 @@ impl LazyReaderGenerator for ast::Union {
                     }
                 }
             };
-            write!(output, "{}", q)?;
+            writeln!(output, "{}", q)?;
         }
 
         Ok(())
@@ -150,7 +150,7 @@ fn generate_rust_common_array<W: io::Write>(
         }
     };
 
-    write!(output, "{}", q)?;
+    writeln!(output, "{}", q)?;
 
     // len
     if let Some(arr) = array {
@@ -160,21 +160,21 @@ fn generate_rust_common_array<W: io::Write>(
                 pub fn len(&self) -> usize { #item_count }
              }
         };
-        write!(output, "{}", q)?;
+        writeln!(output, "{}", q)?;
     } else if fixvec.is_some() {
         let q = quote! {
             impl #n {
                 pub fn len(&self) -> Result<usize, Error> {  self.cursor.fixvec_length()  }
             }
         };
-        write!(output, "{}", q)?;
+        writeln!(output, "{}", q)?;
     } else {
         let q = quote! {
             impl #n {
                 pub fn len(&self) -> Result<usize, Error> { self.cursor.dynvec_length() }
             }
         };
-        write!(output, "{}", q)?;
+        writeln!(output, "{}", q)?;
     }
 
     generate_rust_common_array_impl(output, name, type_name, tc, array, fixvec)?;
@@ -197,7 +197,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
         "dynvec_slice_by_index(index)".to_string()
     };
     let convert_code = tc.gen_convert_code();
-    write!(
+    writeln!(
         output,
         r#"
         impl {0} {{
@@ -231,7 +231,7 @@ fn generate_rust_common_table<W: io::Write>(
             }
         }
     };
-    write!(output, "{}", q)?;
+    writeln!(output, "{}", q)?;
     for (index, field) in fields.iter().enumerate() {
         generate_rust_common_table_impl(output, name, field, index, field_sizes)?;
     }
@@ -249,7 +249,7 @@ fn generate_rust_common_table_impl<W: io::Write>(
     let (transformed_name, tc) = get_rust_type_category(field.typ());
     let slice_by = generate_rust_slice_by(index, &field_sizes);
     let convert_code = tc.gen_convert_code();
-    write!(
+    writeln!(
         output,
         r#"
         impl {0} {{
