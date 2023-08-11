@@ -64,7 +64,7 @@ Implementations in other languages are maintained by respective authors.
 
 ## Supported Rust Versions
 
-The minimum supported version is 1.41.0.
+The minimum supported version is 1.56.1.
 The current Molecule version is not guaranteed to build on Rust versions earlier than the
 minimum supported version.
 
