@@ -1,5 +1,4 @@
 target/
-Cargo.lock
 
 c/tests-api.h
 c/tests-gen.h
