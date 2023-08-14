@@ -1,4 +1,3 @@
-
 #![allow(dead_code)]
 #![allow(unused_imports)]
 extern crate alloc;
@@ -19,12 +18,14 @@ impl Byte2 {
         2
     }
 }
+
 impl Byte2 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte3 {
     pub cursor: Cursor,
 }
@@ -38,12 +39,14 @@ impl Byte3 {
         3
     }
 }
+
 impl Byte3 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte4 {
     pub cursor: Cursor,
 }
@@ -57,12 +60,14 @@ impl Byte4 {
         4
     }
 }
+
 impl Byte4 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte5 {
     pub cursor: Cursor,
 }
@@ -76,12 +81,14 @@ impl Byte5 {
         5
     }
 }
+
 impl Byte5 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte6 {
     pub cursor: Cursor,
 }
@@ -95,12 +102,14 @@ impl Byte6 {
         6
     }
 }
+
 impl Byte6 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte7 {
     pub cursor: Cursor,
 }
@@ -114,12 +123,14 @@ impl Byte7 {
         7
     }
 }
+
 impl Byte7 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte8 {
     pub cursor: Cursor,
 }
@@ -133,12 +144,14 @@ impl Byte8 {
         8
     }
 }
+
 impl Byte8 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte9 {
     pub cursor: Cursor,
 }
@@ -152,12 +165,14 @@ impl Byte9 {
         9
     }
 }
+
 impl Byte9 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte10 {
     pub cursor: Cursor,
 }
@@ -171,12 +186,14 @@ impl Byte10 {
         10
     }
 }
+
 impl Byte10 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte11 {
     pub cursor: Cursor,
 }
@@ -190,12 +207,14 @@ impl Byte11 {
         11
     }
 }
+
 impl Byte11 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte12 {
     pub cursor: Cursor,
 }
@@ -209,12 +228,14 @@ impl Byte12 {
         12
     }
 }
+
 impl Byte12 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte13 {
     pub cursor: Cursor,
 }
@@ -228,12 +249,14 @@ impl Byte13 {
         13
     }
 }
+
 impl Byte13 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte14 {
     pub cursor: Cursor,
 }
@@ -247,12 +270,14 @@ impl Byte14 {
         14
     }
 }
+
 impl Byte14 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte15 {
     pub cursor: Cursor,
 }
@@ -266,12 +291,14 @@ impl Byte15 {
         15
     }
 }
+
 impl Byte15 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Byte16 {
     pub cursor: Cursor,
 }
@@ -285,12 +312,14 @@ impl Byte16 {
         16
     }
 }
+
 impl Byte16 {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Word {
     pub cursor: Cursor,
 }
@@ -304,12 +333,14 @@ impl Word {
         2
     }
 }
+
 impl Word {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(1 * index, 1)?;
         cur.try_into()
     }
 }
+
 pub struct Word2 {
     pub cursor: Cursor,
 }
@@ -323,12 +354,14 @@ impl Word2 {
         2
     }
 }
+
 impl Word2 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word3 {
     pub cursor: Cursor,
 }
@@ -342,12 +375,14 @@ impl Word3 {
         3
     }
 }
+
 impl Word3 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word4 {
     pub cursor: Cursor,
 }
@@ -361,12 +396,14 @@ impl Word4 {
         4
     }
 }
+
 impl Word4 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word5 {
     pub cursor: Cursor,
 }
@@ -380,12 +417,14 @@ impl Word5 {
         5
     }
 }
+
 impl Word5 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word6 {
     pub cursor: Cursor,
 }
@@ -399,12 +438,14 @@ impl Word6 {
         6
     }
 }
+
 impl Word6 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word7 {
     pub cursor: Cursor,
 }
@@ -418,12 +459,14 @@ impl Word7 {
         7
     }
 }
+
 impl Word7 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Word8 {
     pub cursor: Cursor,
 }
@@ -437,12 +480,14 @@ impl Word8 {
         8
     }
 }
+
 impl Word8 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(2 * index, 2)?;
         Ok(cur)
     }
 }
+
 pub struct Byte3x3 {
     pub cursor: Cursor,
 }
@@ -456,12 +501,14 @@ impl Byte3x3 {
         3
     }
 }
+
 impl Byte3x3 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(3 * index, 3)?;
         Ok(cur)
     }
 }
+
 pub struct Byte5x3 {
     pub cursor: Cursor,
 }
@@ -475,12 +522,14 @@ impl Byte5x3 {
         3
     }
 }
+
 impl Byte5x3 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(5 * index, 5)?;
         Ok(cur)
     }
 }
+
 pub struct Byte7x3 {
     pub cursor: Cursor,
 }
@@ -494,12 +543,14 @@ impl Byte7x3 {
         3
     }
 }
+
 impl Byte7x3 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(7 * index, 7)?;
         Ok(cur)
     }
 }
+
 pub struct Byte9x3 {
     pub cursor: Cursor,
 }
@@ -513,12 +564,14 @@ impl Byte9x3 {
         3
     }
 }
+
 impl Byte9x3 {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(9 * index, 9)?;
         Ok(cur)
     }
 }
+
 pub struct StructA {
     pub cursor: Cursor,
 }
@@ -527,6 +580,7 @@ impl From<Cursor> for StructA {
         StructA { cursor }
     }
 }
+
 impl StructA {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -554,6 +608,7 @@ impl StructA {
         Ok(cur)
     }
 }
+
 pub struct StructB {
     pub cursor: Cursor,
 }
@@ -562,6 +617,7 @@ impl From<Cursor> for StructB {
         StructB { cursor }
     }
 }
+
 impl StructB {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -589,6 +645,7 @@ impl StructB {
         Ok(cur)
     }
 }
+
 pub struct StructC {
     pub cursor: Cursor,
 }
@@ -597,6 +654,7 @@ impl From<Cursor> for StructC {
         StructC { cursor }
     }
 }
+
 impl StructC {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -624,6 +682,7 @@ impl StructC {
         Ok(cur)
     }
 }
+
 pub struct StructD {
     pub cursor: Cursor,
 }
@@ -632,6 +691,7 @@ impl From<Cursor> for StructD {
         StructD { cursor }
     }
 }
+
 impl StructD {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -659,6 +719,7 @@ impl StructD {
         Ok(cur)
     }
 }
+
 pub struct StructE {
     pub cursor: Cursor,
 }
@@ -667,6 +728,7 @@ impl From<Cursor> for StructE {
         StructE { cursor }
     }
 }
+
 impl StructE {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -694,6 +756,7 @@ impl StructE {
         Ok(cur)
     }
 }
+
 pub struct StructF {
     pub cursor: Cursor,
 }
@@ -702,6 +765,7 @@ impl From<Cursor> for StructF {
         StructF { cursor }
     }
 }
+
 impl StructF {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.slice_by_offset(0, 1)?;
@@ -722,6 +786,7 @@ impl StructF {
         cur.try_into()
     }
 }
+
 pub struct StructG {
     pub cursor: Cursor,
 }
@@ -730,6 +795,7 @@ impl From<Cursor> for StructG {
         StructG { cursor }
     }
 }
+
 impl StructG {
     pub fn f1(&self) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(0, 3)?;
@@ -757,6 +823,7 @@ impl StructG {
         Ok(cur.into())
     }
 }
+
 pub struct StructH {
     pub cursor: Cursor,
 }
@@ -765,6 +832,7 @@ impl From<Cursor> for StructH {
         StructH { cursor }
     }
 }
+
 impl StructH {
     pub fn f1(&self) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(0, 3)?;
@@ -792,6 +860,7 @@ impl StructH {
         Ok(cur)
     }
 }
+
 pub struct StructI {
     pub cursor: Cursor,
 }
@@ -800,6 +869,7 @@ impl From<Cursor> for StructI {
         StructI { cursor }
     }
 }
+
 impl StructI {
     pub fn f1(&self) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(0, 3)?;
@@ -813,6 +883,7 @@ impl StructI {
         cur.try_into()
     }
 }
+
 pub struct StructJ {
     pub cursor: Cursor,
 }
@@ -821,6 +892,7 @@ impl From<Cursor> for StructJ {
         StructJ { cursor }
     }
 }
+
 impl StructJ {
     pub fn f1(&self) -> Result<Cursor, Error> {
         let cur = self.cursor.slice_by_offset(0, 6)?;
@@ -834,6 +906,7 @@ impl StructJ {
         cur.try_into()
     }
 }
+
 pub struct StructIx3 {
     pub cursor: Cursor,
 }
@@ -847,12 +920,14 @@ impl StructIx3 {
         3
     }
 }
+
 impl StructIx3 {
     pub fn get(&self, index: usize) -> Result<StructI, Error> {
         let cur = self.cursor.slice_by_offset(4 * index, 4)?;
         Ok(cur.into())
     }
 }
+
 pub struct StructO {
     pub cursor: Cursor,
 }
@@ -861,6 +936,7 @@ impl From<Cursor> for StructO {
         StructO { cursor }
     }
 }
+
 impl StructO {
     pub fn f1(&self) -> Result<StructIx3, Error> {
         let cur = self.cursor.slice_by_offset(0, 12)?;
@@ -874,6 +950,7 @@ impl StructO {
         cur.try_into()
     }
 }
+
 pub struct StructP {
     pub cursor: Cursor,
 }
@@ -882,6 +959,7 @@ impl From<Cursor> for StructP {
         StructP { cursor }
     }
 }
+
 impl StructP {
     pub fn f1(&self) -> Result<StructJ, Error> {
         let cur = self.cursor.slice_by_offset(0, 7)?;
@@ -895,6 +973,7 @@ impl StructP {
         cur.try_into()
     }
 }
+
 pub struct Bytes {
     pub cursor: Cursor,
 }
@@ -908,12 +987,14 @@ impl Bytes {
         self.cursor.fixvec_length()
     }
 }
+
 impl Bytes {
     pub fn get(&self, index: usize) -> Result<u8, Error> {
         let cur = self.cursor.fixvec_slice_by_index(1, index)?;
         cur.try_into()
     }
 }
+
 pub struct Words {
     pub cursor: Cursor,
 }
@@ -927,12 +1008,14 @@ impl Words {
         self.cursor.fixvec_length()
     }
 }
+
 impl Words {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.fixvec_slice_by_index(2, index)?;
         Ok(cur)
     }
 }
+
 pub struct Byte3Vec {
     pub cursor: Cursor,
 }
@@ -946,12 +1029,14 @@ impl Byte3Vec {
         self.cursor.fixvec_length()
     }
 }
+
 impl Byte3Vec {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.fixvec_slice_by_index(3, index)?;
         Ok(cur)
     }
 }
+
 pub struct Byte7Vec {
     pub cursor: Cursor,
 }
@@ -965,12 +1050,14 @@ impl Byte7Vec {
         self.cursor.fixvec_length()
     }
 }
+
 impl Byte7Vec {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.fixvec_slice_by_index(7, index)?;
         Ok(cur)
     }
 }
+
 pub struct StructIVec {
     pub cursor: Cursor,
 }
@@ -984,12 +1071,14 @@ impl StructIVec {
         self.cursor.fixvec_length()
     }
 }
+
 impl StructIVec {
     pub fn get(&self, index: usize) -> Result<StructI, Error> {
         let cur = self.cursor.fixvec_slice_by_index(4, index)?;
         Ok(cur.into())
     }
 }
+
 pub struct StructJVec {
     pub cursor: Cursor,
 }
@@ -1003,12 +1092,14 @@ impl StructJVec {
         self.cursor.fixvec_length()
     }
 }
+
 impl StructJVec {
     pub fn get(&self, index: usize) -> Result<StructJ, Error> {
         let cur = self.cursor.fixvec_slice_by_index(7, index)?;
         Ok(cur.into())
     }
 }
+
 pub struct StructPVec {
     pub cursor: Cursor,
 }
@@ -1022,12 +1113,14 @@ impl StructPVec {
         self.cursor.fixvec_length()
     }
 }
+
 impl StructPVec {
     pub fn get(&self, index: usize) -> Result<StructP, Error> {
         let cur = self.cursor.fixvec_slice_by_index(8, index)?;
         Ok(cur.into())
     }
 }
+
 pub struct BytesVec {
     pub cursor: Cursor,
 }
@@ -1041,12 +1134,14 @@ impl BytesVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl BytesVec {
     pub fn get(&self, index: usize) -> Result<Cursor, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
         cur.convert_to_rawbytes()
     }
 }
+
 pub struct WordsVec {
     pub cursor: Cursor,
 }
@@ -1060,12 +1155,14 @@ impl WordsVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl WordsVec {
     pub fn get(&self, index: usize) -> Result<Words, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
         Ok(cur.into())
     }
 }
+
 pub struct Table0 {
     pub cursor: Cursor,
 }
@@ -1082,12 +1179,14 @@ impl From<Cursor> for Table1 {
         Table1 { cursor }
     }
 }
+
 impl Table1 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
         cur.try_into()
     }
 }
+
 pub struct Table2 {
     pub cursor: Cursor,
 }
@@ -1096,6 +1195,7 @@ impl From<Cursor> for Table2 {
         Table2 { cursor }
     }
 }
+
 impl Table2 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1109,6 +1209,7 @@ impl Table2 {
         Ok(cur.into())
     }
 }
+
 pub struct Table3 {
     pub cursor: Cursor,
 }
@@ -1117,6 +1218,7 @@ impl From<Cursor> for Table3 {
         Table3 { cursor }
     }
 }
+
 impl Table3 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1137,6 +1239,7 @@ impl Table3 {
         Ok(cur.into())
     }
 }
+
 pub struct Table4 {
     pub cursor: Cursor,
 }
@@ -1145,6 +1248,7 @@ impl From<Cursor> for Table4 {
         Table4 { cursor }
     }
 }
+
 impl Table4 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1172,6 +1276,7 @@ impl Table4 {
         cur.convert_to_rawbytes()
     }
 }
+
 pub struct Table5 {
     pub cursor: Cursor,
 }
@@ -1180,6 +1285,7 @@ impl From<Cursor> for Table5 {
         Table5 { cursor }
     }
 }
+
 impl Table5 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1214,6 +1320,7 @@ impl Table5 {
         Ok(cur.into())
     }
 }
+
 pub struct Table6 {
     pub cursor: Cursor,
 }
@@ -1222,6 +1329,7 @@ impl From<Cursor> for Table6 {
         Table6 { cursor }
     }
 }
+
 impl Table6 {
     pub fn f1(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1263,6 +1371,7 @@ impl Table6 {
         Ok(cur.into())
     }
 }
+
 pub struct ByteOpt {
     pub cursor: Cursor,
 }
@@ -1364,6 +1473,7 @@ impl ByteOptVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl ByteOptVec {
     pub fn get(&self, index: usize) -> Result<Option<u8>, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
@@ -1374,6 +1484,7 @@ impl ByteOptVec {
         }
     }
 }
+
 pub struct WordOptVec {
     pub cursor: Cursor,
 }
@@ -1387,6 +1498,7 @@ impl WordOptVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl WordOptVec {
     pub fn get(&self, index: usize) -> Result<Option<Cursor>, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
@@ -1397,6 +1509,7 @@ impl WordOptVec {
         }
     }
 }
+
 pub struct WordsOptVec {
     pub cursor: Cursor,
 }
@@ -1410,6 +1523,7 @@ impl WordsOptVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl WordsOptVec {
     pub fn get(&self, index: usize) -> Result<Option<Words>, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
@@ -1420,6 +1534,7 @@ impl WordsOptVec {
         }
     }
 }
+
 pub struct BytesOptVec {
     pub cursor: Cursor,
 }
@@ -1433,6 +1548,7 @@ impl BytesOptVec {
         self.cursor.dynvec_length()
     }
 }
+
 impl BytesOptVec {
     pub fn get(&self, index: usize) -> Result<Option<Cursor>, Error> {
         let cur = self.cursor.dynvec_slice_by_index(index)?;
@@ -1444,6 +1560,7 @@ impl BytesOptVec {
         }
     }
 }
+
 pub struct UnionA {
     pub cursor: Cursor,
 }
@@ -1610,6 +1727,7 @@ impl From<Cursor> for TableA {
         TableA { cursor }
     }
 }
+
 impl TableA {
     pub fn f1(&self) -> Result<Word2, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
@@ -1670,6 +1788,7 @@ impl TableA {
         cur.try_into()
     }
 }
+
 pub struct AllInOne {
     pub cursor: Cursor,
 }
@@ -1678,6 +1797,7 @@ impl From<Cursor> for AllInOne {
         AllInOne { cursor }
     }
 }
+
 impl AllInOne {
     pub fn f0(&self) -> Result<u8, Error> {
         let cur = self.cursor.table_slice_by_index(0)?;
