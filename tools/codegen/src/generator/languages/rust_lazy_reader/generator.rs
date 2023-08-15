@@ -51,7 +51,6 @@ impl LazyReaderGenerator for ast::Union {
             let item_type_name = item.typ().name();
             let item_type_name = ident_new(&format!("as_{}", item_type_name.to_lowercase()));
             let (transformed_name, tc) = get_rust_type_category(item.typ());
-            let transformed_name = syn::parse_str::<syn::Type>(&transformed_name).unwrap();
             let convert_code = tc.gen_convert_code();
             let q = quote! {
                 impl #name {
@@ -75,7 +74,7 @@ impl LazyReaderGenerator for ast::Array {
         generate_rust_common_array(
             output,
             self.name(),
-            transformed_name.as_str(),
+            transformed_name,
             tc,
             Some(self),
             None,
@@ -98,7 +97,7 @@ impl LazyReaderGenerator for ast::FixVec {
         generate_rust_common_array(
             output,
             self.name(),
-            transformed_name.as_str(),
+            transformed_name,
             tc,
             None,
             Some(self),
@@ -113,7 +112,7 @@ impl LazyReaderGenerator for ast::DynVec {
         generate_rust_common_array(
             output,
             self.name(),
-            transformed_name.as_str(),
+            transformed_name,
             tc,
             None,
             None,
@@ -131,7 +130,7 @@ impl LazyReaderGenerator for ast::Table {
 fn generate_rust_common_array<W: io::Write>(
     output: &mut W,
     name: &str,
-    type_name: &str,
+    type_name: TokenStream,
     tc: TypeCategory,
     array: Option<&ast::Array>,
     fixvec: Option<&ast::FixVec>,
@@ -184,31 +183,31 @@ fn generate_rust_common_array<W: io::Write>(
 fn generate_rust_common_array_impl<W: io::Write>(
     output: &mut W,
     name: &str,
-    type_name: &str,
+    type_name: TokenStream,
     tc: TypeCategory,
     array: Option<&Array>,
     fixvec: Option<&FixVec>,
 ) -> io::Result<()> {
     let slice_by = if let Some(fv) = fixvec {
-        format!("fixvec_slice_by_index({}, index)", fv.item_size())
+        let size = fv.item_size();
+        quote! { fixvec_slice_by_index(#size, index) }
     } else if let Some(arr) = array {
-        format!("slice_by_offset({0}*index, {0})", arr.item_size())
+        let index = arr.item_size();
+        quote! { slice_by_offset(#index*index, #index) }
     } else {
-        "dynvec_slice_by_index(index)".to_string()
+        quote! { dynvec_slice_by_index(index) }
     };
     let convert_code = tc.gen_convert_code();
-    writeln!(
-        output,
-        r#"
-        impl {0} {{
-            pub fn get(&self, index: usize) -> Result<{1}, Error> {{
-                let cur = self.cursor.{2}?;
-                {3}
-            }}
-        }}
-        "#,
-        name, type_name, slice_by, convert_code
-    )?;
+    let name = ident_new(name);
+    let q = quote! {
+        impl #name {
+            pub fn get(&self, index: usize) -> Result<#type_name, Error> {
+                let cur = self.cursor.#slice_by?;
+                #convert_code
+            }
+        }
+    };
+    writeln!(output, "{}", q)?;
     Ok(())
 }
 
@@ -249,18 +248,17 @@ fn generate_rust_common_table_impl<W: io::Write>(
     let (transformed_name, tc) = get_rust_type_category(field.typ());
     let slice_by = generate_rust_slice_by(index, &field_sizes);
     let convert_code = tc.gen_convert_code();
-    writeln!(
-        output,
-        r#"
-        impl {0} {{
-            pub fn {1}(&self) -> Result<{2}, Error> {{
-                let cur = self.cursor.{3}?;
-                {4}
-             }}
-         }}
-        "#,
-        name, field_name, transformed_name, slice_by, convert_code
-    )?;
+    let name = ident_new(name);
+    let field_name = ident_new(field_name);
+    let q = quote! {
+        impl #name {
+            pub fn #field_name(&self) -> Result<#transformed_name, Error> {
+                let cur = self.cursor.#slice_by?;
+                #convert_code
+             }
+         }
+    };
+    writeln!(output, "{}", q)?;
     Ok(())
 }
 
@@ -361,10 +359,11 @@ impl TypeCategory {
 }
 
 // see TypeCategory
-fn get_rust_type_category(typ: &TopDecl) -> (String, TypeCategory) {
+fn get_rust_type_category(typ: &TopDecl) -> (TokenStream, TypeCategory) {
     let name = typ.name();
     let mut tc = TypeCategory::Primitive;
-    let mut transformed_name = String::from(name);
+    let token_name = ident_new(name);
+    let mut transformed_name = quote! { #token_name };
     match typ {
         // if the field type is array and the field type name is "uint8", "int8" ...
         // then it's primitive
@@ -372,36 +371,36 @@ fn get_rust_type_category(typ: &TopDecl) -> (String, TypeCategory) {
             let field_type_name = name.to_lowercase();
             let new_name = match field_type_name.as_ref() {
                 // see https://github.com/XuJiandong/moleculec-c2#extra-support-for-known-types
-                "uint8" => "u8",
-                "int8" => "i8",
-                "uint16" => "u16",
-                "int16" => "i16",
-                "uint32" => "u32",
-                "int32" => "i32",
-                "uint64" => "u64",
-                "int64" => "i64",
+                "uint8" => quote! { u8 },
+                "int8" => quote! { i8 },
+                "uint16" => quote! { u16 },
+                "int16" => quote! { i16 },
+                "uint32" => quote! { u32 },
+                "int32" => quote! { i32 },
+                "uint64" => quote! { u64 },
+                "int64" => quote! { i64 },
                 _ => {
                     if let TopDecl::Primitive(_) = a.item().typ().as_ref() {
                         // array of byte
                         tc = TypeCategory::Array;
-                        "Cursor"
+                        quote! { Cursor }
                     } else {
                         // array of Types
                         tc = TypeCategory::Type;
-                        transformed_name.as_str()
+                        transformed_name
                     }
                 }
             };
-            transformed_name = String::from(new_name);
+            transformed_name = new_name;
         }
         TopDecl::Primitive(_) => {
-            transformed_name = String::from("u8");
+            transformed_name = quote! { u8 };
         }
         TopDecl::FixVec(v) => {
             // FixVec is different than Array: it has a header.
             if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
                 // array of byte
-                transformed_name = String::from("Cursor");
+                transformed_name = quote! { Cursor };
                 tc = TypeCategory::FixVec;
             } else {
                 tc = TypeCategory::Type;
@@ -413,11 +412,11 @@ fn get_rust_type_category(typ: &TopDecl) -> (String, TypeCategory) {
             match inner_tc {
                 TypeCategory::Option(level, flag, has_from) => {
                     tc = TypeCategory::Option(level + 1, flag, has_from);
-                    transformed_name = format!("Option<{}>", inner_name);
+                    transformed_name = quote! { Option<#inner_name> };
                 }
                 _ => {
-                    transformed_name = format!("Option<{}>", inner_name);
                     tc = TypeCategory::Option(1, inner_tc.is_fixvec(), inner_tc.has_from());
+                    transformed_name = quote! { Option<#inner_name> };
                 }
             }
         }
@@ -428,15 +427,19 @@ fn get_rust_type_category(typ: &TopDecl) -> (String, TypeCategory) {
     (transformed_name, tc)
 }
 
-fn generate_rust_slice_by(index: usize, fields_sizes: &Option<&[usize]>) -> String {
+fn generate_rust_slice_by(index: usize, fields_sizes: &Option<&[usize]>) -> TokenStream {
     if let Some(fs) = fields_sizes {
         let size = fs[index];
         let mut offset = 0;
         for i in (0..index).rev() {
             offset += fs[i];
         }
-        format!("slice_by_offset({}, {})", offset, size)
+        quote! {
+            slice_by_offset(#offset, #size)
+        }
     } else {
-        format!("table_slice_by_index({})", index)
+        quote! {
+            table_slice_by_index(#index)
+        }
     }
 }

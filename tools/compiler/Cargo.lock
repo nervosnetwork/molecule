@@ -190,7 +190,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "syn 2.0.28",
 ]
 
 [[package]]
@@ -244,7 +243,7 @@ dependencies = [
  "pest_meta",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn",
 ]
 
 [[package]]
@@ -275,7 +274,7 @@ checksum = "889bff6ebe76dbef2685598944997eb7f15c9854a2e34db853a51c6ac158b9d5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.96",
+ "syn",
 ]
 
 [[package]]
@@ -337,7 +336,7 @@ checksum = "46fe8f8603d81ba86327b23a2e9cdf49e1255fb94a4c5f297f6ee0547178ea2c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn",
 ]
 
 [[package]]
