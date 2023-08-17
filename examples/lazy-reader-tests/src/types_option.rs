@@ -12,10 +12,14 @@ pub struct TypesOption<T> {
 }
 impl<T: BaseTypes> BaseTypes for TypesOption<T> {
     fn new_rng(rng: &mut ThreadRng, config: &TypesConfig) -> Self {
-        let fill = match config.option_fill {
-            super::OptionFillType::FillRand => rng.gen(),
-            super::OptionFillType::FillSome => true,
-            super::OptionFillType::FillNone => false,
+        let fill = if config.min_size {
+            false
+        } else {
+            match config.option_fill {
+                super::OptionFillType::FillRand => rng.gen(),
+                super::OptionFillType::FillSome => true,
+                super::OptionFillType::FillNone => false,
+            }
         };
         if fill {
             Self {

@@ -13,6 +13,8 @@ impl<T: BaseTypes> BaseTypes for TypesVec<T> {
 
         let size = if config.large_vec {
             rng.gen_range(128..1024)
+        } else if config.min_size {
+            0
         } else {
             rng.gen_range(1..128)
         };

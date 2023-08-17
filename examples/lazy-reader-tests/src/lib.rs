@@ -39,6 +39,7 @@ pub enum OptionFillType {
 pub struct TypesConfig {
     pub option_fill: OptionFillType,
     pub large_vec: bool,
+    pub min_size: bool,
 }
 
 impl Default for TypesConfig {
@@ -46,6 +47,7 @@ impl Default for TypesConfig {
         Self {
             option_fill: OptionFillType::FillRand,
             large_vec: false,
+            min_size: false,
         }
     }
 }
@@ -157,7 +159,11 @@ pub enum TypesUnionA {
 }
 impl BaseTypes for TypesUnionA {
     fn new_rng(rng: &mut ThreadRng, config: &TypesConfig) -> Self {
-        let v = rng.gen_range(0..8);
+        let v = if config.min_size {
+            0 // Self::Byte
+        } else {
+            rng.gen_range(0..8)
+        };
         match v {
             0 => Self::Byte(TypesArray::new_rng(rng, config)),
             1 => Self::Word(TypesArrayWord::new_rng(rng, config)),

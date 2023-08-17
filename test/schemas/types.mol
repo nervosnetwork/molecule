@@ -203,6 +203,26 @@ table TableA {
     f8: byte,
 }
 
+array Uint8 [byte; 1];
+array Int8 [byte; 1];
+array Uint16 [byte; 2];
+array Int16 [byte; 2];
+array Uint32 [byte; 4];
+array Int32 [byte; 4];
+array Uint64 [byte; 8];
+array Int64 [byte; 8];
+
+table TableB {
+    f1: Uint8, 
+    f2: Int8,
+    f3: Uint16,
+    f4: Int16,
+    f5: Uint32,
+    f6: Int32,
+    f7: Uint64,
+    f8: Int64,
+}
+
 table AllInOne {
     f0: byte,
     f1: Byte2,
@@ -278,4 +298,5 @@ table AllInOne {
     f71: BytesOptVec,
     f72: UnionA,
     f73: TableA,
+    f74: TableB,
 }

@@ -97,6 +97,7 @@ pub struct TypesAll {
 
     f72: TypesUnionA,
     f73: TypesTableA,
+    f74: TypesTableB,
 }
 
 impl TypesAll {
@@ -177,6 +178,7 @@ impl TypesAll {
             f71: TypesVec::new_rng(&mut rng, config),
             f72: TypesUnionA::new_rng(&mut rng, config),
             f73: TypesTableA::new_rng(&mut rng, config),
+            f74: TypesTableB::new_rng(&mut rng, config),
         }
     }
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -261,6 +263,7 @@ impl TypesAll {
             .f71(self.f71.to_mol())
             .f72(self.f72.to_mol())
             .f73(self.f73.to_mol())
+            .f74(self.f74.to_mol())
             .build();
 
         builder.as_reader().as_slice().to_vec()
@@ -500,6 +503,11 @@ impl TypesAll {
         self.f73
             .check(&all_in_one.f73()?)
             .map_err(|f| f.to(format!("f73:{}", f.as_str())))?;
+        self.f74
+            .check(&all_in_one.f74()?)
+            .map_err(|f| f.to(format!("f74:{}", f.as_str())))?;
+
+        types_api::AllInOneReader::verify(&data, true).expect("check data");
 
         check_mol(
             &types_api::AllInOne::new_unchecked(molecule::bytes::Bytes::from(data.to_vec())),
@@ -532,11 +540,27 @@ fn test_opt_all_none() {
     test_data.check(&data).expect("test base");
 }
 
-// #[test]
-// fn test_large_buf() {
-//     let mut config = TypesConfig::default();
-//     config.large_vec = true;
-//     let test_data = TypesAll::new_by_config(&config);
-//     let data = test_data.to_bytes();
-//     test_data.check(&data).expect("test base");
-// }
+#[test]
+fn test_min_bytes() {
+    let mut config: TypesConfig = TypesConfig::default();
+    config.min_size = true;
+    let test_data = TypesAll::new_by_config(&config);
+    let data = test_data.to_bytes();
+    test_data.check(&data).expect("test base");
+
+    config.option_fill = OptionFillType::FillSome;
+    let test_data = TypesAll::new_by_config(&config);
+    let data = test_data.to_bytes();
+    test_data.check(&data).expect("test base");
+
+    // Min size is 1106
+}
+
+#[test]
+fn test_large_buf() {
+    let mut config = TypesConfig::default();
+    config.large_vec = true;
+    let test_data = TypesAll::new_by_config(&config);
+    let data = test_data.to_bytes();
+    test_data.check(&data).expect("test base");
+}

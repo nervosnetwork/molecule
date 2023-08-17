@@ -1,6 +1,7 @@
 use super::TypesCheckErr;
 use crate::types_api;
 use crate::types_api2::*;
+use molecule::lazy_reader::Cursor;
 
 pub trait Mol2Vec {
     type RetType;
@@ -332,12 +333,12 @@ impl Mol2Vec for Byte7Vec {
     }
 }
 impl Mol2Vec for BytesVec {
-    type RetType = Vec<u8>;
+    type RetType = Cursor;
     fn mol_len(&self) -> Result<usize, TypesCheckErr> {
         Ok(self.len()?)
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(self.get(index)?.try_into()?)
+        Ok(self.get(index)?)
     }
 }
 impl Mol2Vec for WordsVec {
