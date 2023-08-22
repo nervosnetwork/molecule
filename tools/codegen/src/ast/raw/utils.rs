@@ -4,9 +4,10 @@ use std::{ffi, fs, io::Read as _, path::Path, str::FromStr};
 use pest::{error::Error as PestError, iterators::Pairs, Parser as _};
 use same_file::is_same_file;
 
-use crate::ast::raw::CustomUnionItemDecl;
 use crate::{
     ast::raw as ast,
+    ast::raw::CustomUnionItemDecl,
+    ast::raw::SyntaxVersion,
     parser,
     utils::{self, PairsUtils as _},
 };
@@ -231,6 +232,22 @@ impl parser::Parser {
                 panic!("grammar should have only one EOI");
             }
             match pair.as_rule() {
+                parser::Rule::syntax_version_stmt => {
+                    let mut pair = pair.into_inner();
+                    let syntax_version = SyntaxVersion {
+                        version: pair.next_usize(),
+                    };
+                    pair.next_should_be_none();
+                    if ast.syntax_version.is_some() {
+                        // compare ast.syntax_version and syntax_version
+                        // panic if there is a conflict syntax_version
+                        if ast.syntax_version != Some(syntax_version) {
+                            panic!("all schema files' syntax version should be same");
+                        }
+                    } else {
+                        ast.syntax_version = Some(syntax_version);
+                    }
+                }
                 parser::Rule::import_stmt => {
                     let mut pair = pair.into_inner();
                     let node = pair.next_import(path, imported_depth);
@@ -312,6 +329,79 @@ impl parser::Parser {
         if !eoi {
             panic!("grammar should have only one EOI");
         }
+
+        if ast.syntax_version.is_none() {
+            ast.syntax_version = Some(SyntaxVersion::default());
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parser, utils, SyntaxVersion};
+    use std::io::Write;
+
+    #[test]
+    fn test_default_syntax_version_should_be_1_0() {
+        use utils::ParserUtils;
+        // get path of  file
+        let mut schema_file = tempfile::NamedTempFile::new().unwrap();
+        let _ = schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        schema_file.flush().unwrap();
+
+        let file = schema_file.into_temp_path();
+
+        let ast = parser::Parser::preprocess(&file).unwrap();
+        assert_eq!(ast.syntax_version, Some(SyntaxVersion { version: 1 }));
+    }
+
+    #[test]
+    fn test_parse_syntax_version() {
+        use utils::ParserUtils;
+        // get path of  file
+        let mut schema_file = tempfile::NamedTempFile::new().unwrap();
+        let test_version = SyntaxVersion { version: 7 };
+        schema_file
+            .write_fmt(format_args!("syntax = {};", test_version.version))
+            .unwrap();
+        let _ = schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        schema_file.flush().unwrap();
+
+        let file = schema_file.into_temp_path();
+
+        let ast = parser::Parser::preprocess(&file).unwrap();
+        assert_eq!(ast.syntax_version, Some(test_version));
+    }
+
+    #[test]
+    #[should_panic]
+    // if A `syntax = 1` schema file imports a `syntax = 2` schema file, it should panic
+    fn test_different_syntax_version_should_panic() {
+        use utils::ParserUtils;
+
+        let mut child_schema_file = tempfile::NamedTempFile::new().unwrap();
+        child_schema_file
+            .write_fmt(format_args!("syntax = 2;"))
+            .unwrap();
+        let _ = child_schema_file.write(b"array uint64 [byte; 8];").unwrap();
+        child_schema_file.flush().unwrap();
+
+        let child_file = child_schema_file.into_temp_path();
+        let child_file_path = child_file.to_str().unwrap();
+
+        let mut root_schema_file = tempfile::NamedTempFile::new().unwrap();
+        root_schema_file
+            .write_fmt(format_args!("syntax = 1;",))
+            .unwrap();
+        root_schema_file
+            .write_fmt(format_args!("import {:?}", child_file_path))
+            .unwrap();
+        let _ = root_schema_file.write(b"array uint32 [byte; 4];").unwrap();
+        root_schema_file.flush().unwrap();
+
+        let file = root_schema_file.into_temp_path();
+
+        parser::Parser::preprocess(&file).unwrap();
     }
 }

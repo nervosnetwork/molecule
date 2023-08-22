@@ -216,7 +216,11 @@ impl super::Ast {
             let result = decls_result.get(decl.name()).unwrap();
             decls.push(Rc::clone(result));
         }
+
+        let syntax_version = raw.syntax_version().unwrap().to_owned();
+
         Self {
+            syntax_version,
             namespace,
             imports,
             decls,
