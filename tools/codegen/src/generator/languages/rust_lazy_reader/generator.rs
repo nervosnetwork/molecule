@@ -19,6 +19,7 @@ use super::{ident_new, LazyReaderGenerator};
 /// - common array, the set of Array, FixVec and DynVec, they share method like "len", "get"
 /// - common table, the set of Table, Struct, they share same method like ".t->XXX"
 use crate::ast::{self, HasName, *};
+use case::CaseExt;
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 use std::io;
@@ -49,7 +50,7 @@ impl LazyReaderGenerator for ast::Union {
 
         for item in self.items() {
             let item_type_name = item.typ().name();
-            let item_type_name = ident_new(&format!("as_{}", item_type_name.to_lowercase()));
+            let item_type_name = ident_new(&format!("as_{}", item_type_name.to_snake()));
             let (transformed_name, tc) = get_rust_type_category(item.typ());
             let convert_code = tc.gen_convert_code();
             let q = quote! {
@@ -175,7 +176,6 @@ fn generate_rust_common_array<W: io::Write>(
         };
         writeln!(output, "{}", q)?;
     }
-
     generate_rust_common_array_impl(output, name, type_name, tc, array, fixvec)?;
     Ok(())
 }
@@ -183,7 +183,7 @@ fn generate_rust_common_array<W: io::Write>(
 fn generate_rust_common_array_impl<W: io::Write>(
     output: &mut W,
     name: &str,
-    type_name: TokenStream,
+    item_name: TokenStream,
     tc: TypeCategory,
     array: Option<&Array>,
     fixvec: Option<&FixVec>,
@@ -199,11 +199,76 @@ fn generate_rust_common_array_impl<W: io::Write>(
     };
     let convert_code = tc.gen_convert_code();
     let name = ident_new(name);
+    let iterator_name = ident_new(&format!("{}Iterator", name));
+    let iterator_ref_name = ident_new(&format!("{}IteratorRef", name));
     let q = quote! {
         impl #name {
-            pub fn get(&self, index: usize) -> Result<#type_name, Error> {
+            pub fn get(&self, index: usize) -> Result<#item_name, Error> {
                 let cur = self.cursor.#slice_by?;
                 #convert_code
+            }
+        }
+    };
+    writeln!(output, "{}", q)?;
+
+    if array.is_some() {
+        return Ok(());
+    }
+    let q = quote! {
+        pub struct #iterator_name {
+            cur: #name,
+            index: usize,
+            len: usize,
+        }
+        impl core::iter::Iterator for #iterator_name {
+            type Item = #item_name;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.index >= self.len {
+                    None
+                } else {
+                    let res = self.cur.get(self.index).unwrap();
+                    self.index += 1;
+                    Some(res)
+                }
+            }
+        }
+        impl core::iter::IntoIterator for #name {
+            type Item = #item_name;
+            type IntoIter = #iterator_name;
+            fn into_iter(self) -> Self::IntoIter {
+                let len = self.len().unwrap();
+                Self::IntoIter {
+                    cur: self,
+                    index: 0,
+                    len
+                }
+            }
+        }
+        pub struct #iterator_ref_name<'a> {
+            cur: &'a #name,
+            index: usize,
+            len: usize
+        }
+        impl<'a> core::iter::Iterator for #iterator_ref_name<'a> {
+            type Item = #item_name;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.index >= self.len {
+                    None
+                } else {
+                    let res = self.cur.get(self.index).unwrap();
+                    self.index += 1;
+                    Some(res)
+                }
+            }
+        }
+        impl #name {
+            fn iter(&self) -> #iterator_ref_name {
+                let len = self.len().unwrap();
+                #iterator_ref_name {
+                    cur: &self,
+                    index: 0,
+                    len
+                }
             }
         }
     };

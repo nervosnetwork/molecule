@@ -58,49 +58,6 @@ pub struct Union {
     pub cursor: Cursor,
 }
 
-pub fn read_at(cur: &Cursor, buf: &mut [u8]) -> Result<usize, Error> {
-    let read_len = min(cur.size, buf.len());
-    let ds = &mut *cur.data_source.borrow_mut();
-    if read_len > ds.cache.len() {
-        return ds.reader.read(buf, cur.offset);
-    }
-    if cur.offset < ds.cache_start_point
-        || (cur.offset + read_len) > (ds.cache_start_point + ds.cache_size)
-    {
-        let reader = &ds.reader;
-        let size = reader.read(&mut ds.cache[..], cur.offset).unwrap();
-        if size < read_len {
-            return Err(Error::Read(format!(
-                "read_at `if size({}) < read_len({})`",
-                size, read_len
-            )));
-        }
-        ds.cache_size = size;
-        ds.cache_start_point = cur.offset;
-
-        if ds.cache_size > ds.cache.len() {
-            return Err(Error::Read(format!(
-                "read_at `if ds.cache_size({}) > ds.cache.len()({})`",
-                ds.cache_size,
-                ds.cache.len()
-            )));
-        }
-    }
-    if cur.offset < ds.cache_start_point || (cur.offset - ds.cache_start_point) > ds.cache.len() {
-        return Err(Error::Read(
-            "read_at `if cur.offset < ds.start_point || ...`".into(),
-        ));
-    }
-    let read_point = cur.offset - ds.cache_start_point;
-    if read_point + read_len > ds.cache_size {
-        return Err(Error::Read(
-            "read_at `if read_point + read_len > ds.cache_size`".into(),
-        ));
-    }
-    buf.copy_from_slice(&ds.cache[read_point..(read_point + read_len)]);
-    Ok(read_len)
-}
-
 impl Cursor {
     /**
     cache_size: normally it can be set to MAX_CACHE_SIZE(2K)
@@ -122,13 +79,63 @@ impl Cursor {
             data_source: Rc::new(RefCell::new(data_source)),
         }
     }
+    pub fn read_at(&self, buf: &mut [u8]) -> Result<usize, Error> {
+        let read_len = min(self.size, buf.len());
+        let ds = &mut *self.data_source.borrow_mut();
+        if read_len > ds.cache.len() {
+            return ds.reader.read(buf, self.offset);
+        }
+        if self.offset < ds.cache_start_point
+            || (self.offset + read_len) > (ds.cache_start_point + ds.cache_size)
+        {
+            let reader = &ds.reader;
+            let size = reader.read(&mut ds.cache[..], self.offset).unwrap();
+            if size < read_len {
+                return Err(Error::Read(format!(
+                    "read_at `if size({}) < read_len({})`",
+                    size, read_len
+                )));
+            }
+            ds.cache_size = size;
+            ds.cache_start_point = self.offset;
+
+            if ds.cache_size > ds.cache.len() {
+                return Err(Error::Read(format!(
+                    "read_at `if ds.cache_size({}) > ds.cache.len()({})`",
+                    ds.cache_size,
+                    ds.cache.len()
+                )));
+            }
+        }
+        if self.offset < ds.cache_start_point
+            || (self.offset - ds.cache_start_point) > ds.cache.len()
+        {
+            return Err(Error::Read(
+                "read_at `if cur.offset < ds.start_point || ...`".into(),
+            ));
+        }
+        let read_point = self.offset - ds.cache_start_point;
+        if read_point + read_len > ds.cache_size {
+            return Err(Error::Read(
+                "read_at `if read_point + read_len > ds.cache_size`".into(),
+            ));
+        }
+        buf.copy_from_slice(&ds.cache[read_point..(read_point + read_len)]);
+        Ok(read_len)
+    }
 
     pub fn add_offset(&mut self, offset: usize) {
         self.offset = self.offset.checked_add(offset).unwrap();
     }
 
-    pub fn sub_size(&mut self, shrink_size: usize) {
-        self.size = self.size.checked_sub(shrink_size).unwrap();
+    pub fn sub_size(&mut self, shrink_size: usize) -> Result<(), Error> {
+        self.size = self.size.checked_sub(shrink_size).ok_or_else(|| {
+            Error::Overflow(format!(
+                "sub_size: self.size({}) - shrink_size({}) failed",
+                self.size, shrink_size
+            ))
+        })?;
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), Error> {
@@ -147,7 +154,7 @@ impl Cursor {
 
     pub fn unpack_number(&self) -> Result<usize, Error> {
         let mut src = [0u8; 4];
-        let size = read_at(self, &mut src[..]).unwrap();
+        let size = self.read_at(&mut src[..])?;
         if size != 4 {
             Err(Error::FieldCount("unpack_number".into()))
         } else {
@@ -210,14 +217,21 @@ impl Cursor {
         } else {
             let mut cur2 = self.clone();
             cur2.add_offset(NUM_T_SIZE);
-            cur2.sub_size(NUM_T_SIZE);
+            cur2.sub_size(NUM_T_SIZE)?;
             cur2.validate()?;
             cur2.get_item_count()
         }
     }
 
     pub fn get_item_count(&self) -> Result<usize, Error> {
-        let count = self.unpack_number()? / 4;
+        let len = self.unpack_number()?;
+        if len % 4 != 0 {
+            return Err(Error::UnknownItem(format!(
+                "get_item_count not aligned, len = {}",
+                len
+            )));
+        }
+        let count = len / 4;
         if count == 0 {
             Err(Error::UnknownItem("get_item_count".into()))
         } else {
@@ -283,7 +297,7 @@ impl Cursor {
             res.offset = self.offset;
             res.add_offset(item_start);
             res.size = total_size;
-            res.sub_size(item_start)
+            res.sub_size(item_start)?;
         } else {
             temp.offset = self.offset;
             let calc_offset = calculate_offset(NUM_T_SIZE, item_index + 2, 0);
@@ -293,7 +307,7 @@ impl Cursor {
             res.offset = self.offset;
             res.add_offset(item_start);
             res.size = item_end;
-            res.sub_size(item_start);
+            res.sub_size(item_start)?;
         }
         res.validate()?;
         Ok(res)
@@ -323,7 +337,7 @@ impl Cursor {
         let item_id = self.unpack_number()?;
         let mut cursor = self.clone();
         cursor.add_offset(NUM_T_SIZE);
-        cursor.sub_size(NUM_T_SIZE);
+        cursor.sub_size(NUM_T_SIZE)?;
         cursor.validate()?;
         Ok(Union { item_id, cursor })
     }
@@ -338,7 +352,7 @@ impl TryFrom<Cursor> for u64 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 8];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_u64".into()))
         } else {
@@ -351,7 +365,7 @@ impl TryFrom<Cursor> for i64 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 8];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_i64".into()))
         } else {
@@ -364,7 +378,7 @@ impl TryFrom<Cursor> for u32 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 4];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_u32".into()))
         } else {
@@ -377,7 +391,7 @@ impl TryFrom<Cursor> for i32 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 4];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_i32".into()))
         } else {
@@ -390,7 +404,7 @@ impl TryFrom<Cursor> for u16 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 2];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_u16".into()))
         } else {
@@ -403,7 +417,7 @@ impl TryFrom<Cursor> for i16 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 2];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_i16".into()))
         } else {
@@ -416,7 +430,7 @@ impl TryFrom<Cursor> for u8 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 1];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_u8".into()))
         } else {
@@ -429,7 +443,7 @@ impl TryFrom<Cursor> for i8 {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
         let mut buf = [0u8; 1];
-        let size = read_at(&cur, &mut buf[..])?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             Err(Error::FieldCount("convert_to_i8".into()))
         } else {
@@ -444,7 +458,7 @@ impl TryFrom<Cursor> for Vec<u8> {
         let mut buf = Vec::<u8>::new();
         buf.resize(cur.size, 0);
 
-        let size = read_at(&cur, buf.as_mut_slice())?;
+        let size = cur.read_at(buf.as_mut_slice())?;
         if size != buf.len() {
             return Err(Error::Read(format!(
                 "size({}) != buf.len()({})",

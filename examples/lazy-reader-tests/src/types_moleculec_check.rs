@@ -152,77 +152,77 @@ pub fn check_f16(d1: &types_api::Word, d2: &types_api2::Word) -> ResCheckErr {
     TypesCheckErr::check_mol_data(d1, d2)
 }
 pub fn check_f17(d1: &types_api::Word2, d2: &types_api2::Word2) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f18(d1: &types_api::Word3, d2: &types_api2::Word3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f19(d1: &types_api::Word4, d2: &types_api2::Word4) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f20(d1: &types_api::Word5, d2: &types_api2::Word5) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f21(d1: &types_api::Word6, d2: &types_api2::Word6) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f22(d1: &types_api::Word7, d2: &types_api2::Word7) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f23(d1: &types_api::Word8, d2: &types_api2::Word8) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f24(d1: &types_api::Byte3x3, d2: &types_api2::Byte3x3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f25(d1: &types_api::Byte5x3, d2: &types_api2::Byte5x3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f26(d1: &types_api::Byte7x3, d2: &types_api2::Byte7x3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f27(d1: &types_api::Byte9x3, d2: &types_api2::Byte9x3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
@@ -304,7 +304,7 @@ pub fn check_f37(d1: &types_api::StructJ, d2: &types_api2::StructJ) -> ResCheckE
     Ok(())
 }
 pub fn check_f38(d1: &types_api::StructIx3, d2: &types_api2::StructIx3) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
     for i in 0..d1.mol_len()? {
         check_f36(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
@@ -329,56 +329,56 @@ pub fn check_f41(d1: &types_api::Bytes, d2: &Cursor) -> ResCheckErr {
     TypesCheckErr::check_mol_data(d1, &d2)
 }
 pub fn check_f42(d1: &types_api::Words, d2: &types_api2::Words) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f43(d1: &types_api::Byte3Vec, d2: &types_api2::Byte3Vec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f44(d1: &types_api::Byte7Vec, d2: &types_api2::Byte7Vec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         TypesCheckErr::check_mol_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f45(d1: &types_api::StructIVec, d2: &types_api2::StructIVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         check_f36(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f46(d1: &types_api::StructJVec, d2: &types_api2::StructJVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         check_f37(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f47(d1: &types_api::StructPVec, d2: &types_api2::StructPVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         check_f40(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f48(d1: &types_api::BytesVec, d2: &types_api2::BytesVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         check_f41(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
     Ok(())
 }
 pub fn check_f49(d1: &types_api::WordsVec, d2: &types_api2::WordsVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         check_f42(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
     }
@@ -619,7 +619,7 @@ pub fn check_f67(
     Ok(())
 }
 pub fn check_f68(d1: &types_api::ByteOptVec, d2: &types_api2::ByteOptVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         let dd1 = d1.mol_get(i)?.to_opt();
         let dd2 = d2.get(i)?;
@@ -628,7 +628,7 @@ pub fn check_f68(d1: &types_api::ByteOptVec, d2: &types_api2::ByteOptVec) -> Res
     Ok(())
 }
 pub fn check_f69(d1: &types_api::WordOptVec, d2: &types_api2::WordOptVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         let dd1 = d1.mol_get(i)?.to_opt();
         let dd2 = d2.get(i)?.map(|f| f.into());
@@ -637,7 +637,7 @@ pub fn check_f69(d1: &types_api::WordOptVec, d2: &types_api2::WordOptVec) -> Res
     Ok(())
 }
 pub fn check_f70(d1: &types_api::WordsOptVec, d2: &types_api2::WordsOptVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         let dd1 = d1.mol_get(i)?.to_opt();
         let dd2 = d2.get(i)?.map(|f| f.into());
@@ -646,7 +646,7 @@ pub fn check_f70(d1: &types_api::WordsOptVec, d2: &types_api2::WordsOptVec) -> R
     Ok(())
 }
 pub fn check_f71(d1: &types_api::BytesOptVec, d2: &types_api2::BytesOptVec) -> ResCheckErr {
-    TypesCheckErr::check_lenght(d1.mol_len()?, d2.len()?)?;
+    TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         let dd1 = d1.mol_get(i)?.to_opt();
         let dd2 = d2.get(i)?.map(|f| f.try_into().unwrap());
@@ -665,7 +665,7 @@ pub fn check_f72(d1: &types_api::UnionA, d2: &types_api2::UnionA) -> ResCheckErr
             check_f16(&v, &v2.into())?;
         }
         types_api::UnionAUnion::StructA(v) => {
-            let v2 = d2.as_structa()?;
+            let v2 = d2.as_struct_a()?;
             check_f28(&v, &v2)?;
         }
         types_api::UnionAUnion::Bytes(v) => {
@@ -685,7 +685,7 @@ pub fn check_f72(d1: &types_api::UnionA, d2: &types_api2::UnionA) -> ResCheckErr
             check_f56(&v, &v2)?;
         }
         types_api::UnionAUnion::Table6Opt(v) => {
-            let v2 = d2.as_table6opt()?;
+            let v2 = d2.as_table6_opt()?;
             check_f66(&v.to_opt(), &v2)?;
         }
     };

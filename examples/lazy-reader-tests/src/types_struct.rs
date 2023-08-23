@@ -240,7 +240,7 @@ impl TypesStructIx3 {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructIx3) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len(), self.d.len())?;
+        TypesCheckErr::check_length(d.len(), self.d.len())?;
         for i in 0..d.len() {
             let dd = d.get(i)?;
             self.d[i].check(&dd)?;

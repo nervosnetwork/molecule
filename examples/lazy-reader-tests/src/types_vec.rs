@@ -48,7 +48,7 @@ impl TypesVec<TypesArrayWord> {
             .build()
     }
     pub fn check(&self, d: &types_api2::Words) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -62,7 +62,7 @@ impl TypesVec<TypesArray<u8, 3>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::Byte3Vec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -76,7 +76,7 @@ impl TypesVec<TypesArray<u8, 7>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::Byte7Vec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -90,7 +90,7 @@ impl TypesVec<TypesStructI> {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructIVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?)?;
         }
@@ -104,7 +104,7 @@ impl TypesVec<TypesStructJ> {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructJVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?)?;
         }
@@ -118,7 +118,7 @@ impl TypesVec<TypesStructP> {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructPVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?)?;
         }
@@ -132,7 +132,7 @@ impl TypesVec<TypesVec<u8>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::BytesVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.try_into().unwrap())?;
         }
@@ -155,7 +155,7 @@ impl TypesVec<TypesVec<TypesArrayWord>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::WordsVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -169,7 +169,7 @@ impl TypesVec<TypesOption<u8>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::ByteOptVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -183,7 +183,7 @@ impl TypesVec<TypesOption<TypesArrayWord>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::WordOptVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -197,7 +197,7 @@ impl TypesVec<TypesOption<TypesVec<TypesArrayWord>>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::WordsOptVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }
@@ -211,7 +211,7 @@ impl TypesVec<TypesOption<TypesVec<u8>>> {
             .build()
     }
     pub fn check(&self, d: &types_api2::BytesOptVec) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d.len()?, self.d.len())?;
+        TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
             self.d[i].check(&d.get(i)?.into())?;
         }

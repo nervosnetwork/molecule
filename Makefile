@@ -36,7 +36,6 @@ clippy:
 	@set -eu; \
 	for dir in ${RUST_PROJS}; do \
 		cd "$${dir}"; \
-		cargo clean; \
 		cargo clippy --all --all-targets --all-features; \
 		cd - > /dev/null; \
 	done

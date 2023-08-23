@@ -78,7 +78,7 @@ impl TypesCheckErr {
             Self::Mol2Err(v) => v,
         }
     }
-    pub fn check_lenght(l1: usize, l2: usize) -> Result<(), Self> {
+    pub fn check_length(l1: usize, l2: usize) -> Result<(), Self> {
         if l1 == l2 {
             Ok(())
         } else {
@@ -98,7 +98,7 @@ impl TypesCheckErr {
     }
 
     pub fn check_data<T1: Eq + Debug, T: Mol2Vec<RetType = T1>>(d1: &T, d2: &[T1]) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d1.mol_len()?, d2.len())?;
+        TypesCheckErr::check_length(d1.mol_len()?, d2.len())?;
 
         for i in 0..d1.mol_len()? {
             TypesCheckErr::check_1_data(&d1.mol_get(i)?, &d2[i])?;
@@ -111,7 +111,7 @@ impl TypesCheckErr {
         d1: &T1,
         d2: &T2,
     ) -> ResCheckErr {
-        TypesCheckErr::check_lenght(d1.mol_len()?, d2.mol_len()?)?;
+        TypesCheckErr::check_length(d1.mol_len()?, d2.mol_len()?)?;
         for i in 0..d1.mol_len()? {
             TypesCheckErr::check_1_data(&d1.mol_get(i)?, &d2.mol_get(i)?)?;
         }
@@ -204,12 +204,12 @@ impl TypesUnionA {
         match self {
             Self::Byte(v) => v.check(&d.as_byte()?),
             Self::Word(v) => v.check2(&d.as_word()?.into()),
-            Self::StructA(v) => v.check(&d.as_structa()?),
+            Self::StructA(v) => v.check(&d.as_struct_a()?),
             Self::Bytes(v) => v.check(&d.as_bytes()?.try_into().unwrap()),
             Self::Words(v) => v.check(&d.as_words()?.into()),
             Self::Table0(v) => v.check(&d.as_table0()?),
             Self::Table6(v) => v.check(&d.as_table6()?),
-            Self::Table6Opt(v) => v.check(&d.as_table6opt()?),
+            Self::Table6Opt(v) => v.check(&d.as_table6_opt()?),
         }
     }
 }
