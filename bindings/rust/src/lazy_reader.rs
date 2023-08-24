@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefCell;
@@ -22,6 +22,7 @@ pub enum Error {
     Data(String),
     Overflow(String),
     Read(String),
+    Verify(String),
 }
 pub trait Read {
     /**
@@ -34,7 +35,7 @@ pub trait Read {
 
 pub const MAX_CACHE_SIZE: usize = 2048;
 pub const MIN_CACHE_SIZE: usize = 64;
-pub const NUM_T_SIZE: usize = 4;
+pub const NUMBER_SIZE: usize = 4;
 
 pub struct DataSource {
     reader: Box<dyn Read>,
@@ -89,10 +90,10 @@ impl Cursor {
             || (self.offset + read_len) > (ds.cache_start_point + ds.cache_size)
         {
             let reader = &ds.reader;
-            let size = reader.read(&mut ds.cache[..], self.offset).unwrap();
+            let size = reader.read(&mut ds.cache[..], self.offset)?;
             if size < read_len {
                 return Err(Error::Read(format!(
-                    "read_at `if size({}) < read_len({})`",
+                    "read_at: `if size({}) < read_len({})`",
                     size, read_len
                 )));
             }
@@ -101,7 +102,7 @@ impl Cursor {
 
             if ds.cache_size > ds.cache.len() {
                 return Err(Error::Read(format!(
-                    "read_at `if ds.cache_size({}) > ds.cache.len()({})`",
+                    "read_at: `if ds.cache_size({}) > ds.cache.len()({})`",
                     ds.cache_size,
                     ds.cache.len()
                 )));
@@ -110,28 +111,36 @@ impl Cursor {
         if self.offset < ds.cache_start_point
             || (self.offset - ds.cache_start_point) > ds.cache.len()
         {
-            return Err(Error::Read(
-                "read_at `if cur.offset < ds.start_point || ...`".into(),
-            ));
+            return Err(Error::Read(format!(
+                "read_at: `if self.offset({}) < ds.cache_start_point({}) || ...`",
+                self.offset, ds.cache_start_point
+            )));
         }
         let read_point = self.offset - ds.cache_start_point;
         if read_point + read_len > ds.cache_size {
-            return Err(Error::Read(
-                "read_at `if read_point + read_len > ds.cache_size`".into(),
-            ));
+            return Err(Error::Read(format!(
+                "read_at: `if read_point({}) + read_len({}) > ds.cache_size({})`",
+                read_point, read_len, ds.cache_size
+            )));
         }
         buf.copy_from_slice(&ds.cache[read_point..(read_point + read_len)]);
         Ok(read_len)
     }
 
-    pub fn add_offset(&mut self, offset: usize) {
-        self.offset = self.offset.checked_add(offset).unwrap();
+    pub fn add_offset(&mut self, offset: usize) -> Result<(), Error> {
+        self.offset = self.offset.checked_add(offset).ok_or_else(|| {
+            Error::Overflow(format!(
+                "add_offset: self.offset({}) + offset({})",
+                self.offset, offset
+            ))
+        })?;
+        Ok(())
     }
 
     pub fn sub_size(&mut self, shrink_size: usize) -> Result<(), Error> {
         self.size = self.size.checked_sub(shrink_size).ok_or_else(|| {
             Error::Overflow(format!(
-                "sub_size: self.size({}) - shrink_size({}) failed",
+                "sub_size: self.size({}) - shrink_size({})",
                 self.size, shrink_size
             ))
         })?;
@@ -141,9 +150,11 @@ impl Cursor {
     pub fn validate(&self) -> Result<(), Error> {
         if let Some(size) = self.offset.checked_add(self.size) {
             if size > self.data_source.borrow().total_size {
-                Err(Error::TotalSize(
-                    "validate: size > cur.source.total_size".into(),
-                ))
+                Err(Error::TotalSize(format!(
+                    "validate: size({}) > total_size({})",
+                    size,
+                    self.data_source.borrow().total_size
+                )))
             } else {
                 Ok(())
             }
@@ -156,49 +167,118 @@ impl Cursor {
         let mut src = [0u8; 4];
         let size = self.read_at(&mut src[..])?;
         if size != 4 {
-            Err(Error::FieldCount("unpack_number".into()))
+            Err(Error::FieldCount(format!(
+                "unpack_number: size({}) != 4",
+                size
+            )))
         } else {
             let res = u32::from_le_bytes(src);
             Ok(res as usize)
         }
     }
-
-    pub fn verify_fixed_size(&self, total_size: usize) -> Result<(), Error> {
-        if self.size == total_size {
-            Ok(())
-        } else {
-            Err(Error::TotalSize(format!(
-                "self.size({}) == total_size({})",
-                self.size, total_size
-            )))
+    pub fn verify_fixed_size(&self, size: usize) -> Result<(), Error> {
+        if self.size != size {
+            return Err(Error::Header(format!(
+                "verify_fixed: self.size({}) != size({})",
+                self.size, size
+            )));
         }
+        Ok(())
+    }
+    pub fn verify_table(&self, expected_field_count: usize, compatible: bool) -> Result<(), Error> {
+        self.verify_dynvec()?;
+        let mut cur = self.clone();
+        cur.add_offset(NUMBER_SIZE)?;
+        let first_offset = cur.unpack_number()?;
+        let field_count = first_offset / NUMBER_SIZE - 1;
+        if field_count < expected_field_count {
+            return Err(Error::Verify(format!(
+                "field_count({}) < expected_field_count({})",
+                field_count, expected_field_count
+            )));
+        } else if !compatible && field_count > expected_field_count {
+            return Err(Error::Verify(format!(
+                "field_count({}) > expected_field_count({})",
+                field_count, expected_field_count
+            )));
+        };
+        Ok(())
     }
 
-    pub fn fixvec_verify(&self, item_size: usize) -> Result<(), Error> {
-        if self.size < NUM_T_SIZE {
-            return Err(Error::FieldCount(format!(
-                "fixvec_verify, self.size({}) < NUM_T_SIZE",
+    pub fn verify_dynvec(&self) -> Result<(), Error> {
+        let total_size = self.unpack_number()?;
+        if self.size != total_size {
+            return Err(Error::Verify(format!(
+                "verify_dynvec: self.size({}) != total_size({})",
+                self.size, total_size
+            )));
+        }
+        if total_size == NUMBER_SIZE {
+            return Ok(());
+        }
+        if total_size < NUMBER_SIZE * 2 {
+            return Err(Error::Verify(format!(
+                "verify_dynvec: total_size({}) < 8",
+                total_size
+            )));
+        }
+        let mut cur = self.clone();
+        cur.add_offset(NUMBER_SIZE)?;
+        let first_offset = cur.unpack_number()?;
+        if first_offset % NUMBER_SIZE != 0 || first_offset < NUMBER_SIZE * 2 {
+            return Err(Error::Verify(format!(
+                "verify_dynvec: invalid first_offset({})",
+                first_offset
+            )));
+        }
+        if total_size < first_offset {
+            return Err(Error::Verify(format!(
+                "verify_dynvec: invalid first_offset({}), total_size({})",
+                first_offset, total_size
+            )));
+        }
+        // offsets are ordered increasingly
+        let count = first_offset / 4 - 1;
+        let mut last_offset = None;
+        for _ in 0..count {
+            let offset = cur.unpack_number()?;
+            if last_offset.is_some() && last_offset.unwrap() > offset {
+                return Err(Error::Verify(format!(
+                    "verify_dynvec: invalid offset({} and {})",
+                    last_offset.unwrap(),
+                    offset
+                )));
+            }
+            last_offset = Some(offset);
+            cur.add_offset(NUMBER_SIZE)?;
+        }
+        Ok(())
+    }
+    pub fn verify_fixvec(&self, item_size: usize) -> Result<(), Error> {
+        if self.size < NUMBER_SIZE {
+            return Err(Error::Verify(format!(
+                "verify_fixvec: self.size({}) < NUMBER_SIZE(4)",
                 self.size
             )));
         }
         let item_count = self.unpack_number()?;
         if item_count == 0 {
-            if self.size == NUM_T_SIZE {
+            if self.size == NUMBER_SIZE {
                 return Ok(());
             } else {
-                return Err(Error::Header(format!(
-                    "self.size({}) == NUM_T_SIZE",
+                return Err(Error::Verify(format!(
+                    "verify_fixvec: self.size({}) != 4",
                     self.size
                 )));
             }
         }
 
-        let total_size = calculate_offset(item_size, item_count, NUM_T_SIZE);
+        let total_size = calculate_offset(item_size, item_count, NUMBER_SIZE)?;
         if self.size == total_size {
             Ok(())
         } else {
-            Err(Error::TotalSize(format!(
-                "self.size({}) == total_size({})",
+            Err(Error::Verify(format!(
+                "verify_fixvec: self.size({}) != total_size({})",
                 self.size, total_size
             )))
         }
@@ -212,12 +292,12 @@ impl Cursor {
     }
 
     pub fn dynvec_length(&self) -> Result<usize, Error> {
-        if self.size == NUM_T_SIZE {
+        if self.size == NUMBER_SIZE {
             Ok(0)
         } else {
             let mut cur2 = self.clone();
-            cur2.add_offset(NUM_T_SIZE);
-            cur2.sub_size(NUM_T_SIZE)?;
+            cur2.add_offset(NUMBER_SIZE)?;
+            cur2.sub_size(NUMBER_SIZE)?;
             cur2.validate()?;
             cur2.get_item_count()
         }
@@ -227,7 +307,7 @@ impl Cursor {
         let len = self.unpack_number()?;
         if len % 4 != 0 {
             return Err(Error::UnknownItem(format!(
-                "get_item_count not aligned, len = {}",
+                "get_item_count: not aligned, len = {}",
                 len
             )));
         }
@@ -250,7 +330,7 @@ impl Cursor {
 
     pub fn slice_by_offset(&self, offset: usize, size: usize) -> Result<Cursor, Error> {
         let mut cur2 = self.clone();
-        cur2.add_offset(offset);
+        cur2.add_offset(offset)?;
         cur2.size = size;
         cur2.validate()?;
         Ok(cur2)
@@ -265,12 +345,12 @@ impl Cursor {
         let item_count = self.unpack_number()?;
         if item_index >= item_count {
             Err(Error::OutOfBound(format!(
-                "item_index({}) >= item_count({})",
+                "fixvec_slice_by_index: item_index({}) >= item_count({})",
                 item_index, item_count
             )))
         } else {
-            let offset = calculate_offset(item_size, item_index, NUM_T_SIZE);
-            cur2.add_offset(offset);
+            let offset = calculate_offset(item_size, item_index, NUMBER_SIZE)?;
+            cur2.add_offset(offset)?;
             cur2.size = item_size;
             cur2.validate()?;
             Ok(cur2)
@@ -281,31 +361,31 @@ impl Cursor {
         let mut res = self.clone();
         let mut temp = self.clone();
         let total_size = self.unpack_number()?;
-        temp.add_offset(NUM_T_SIZE);
+        temp.add_offset(NUMBER_SIZE)?;
         let item_count = temp.get_item_count()?;
         if item_index >= item_count {
             return Err(Error::OutOfBound(format!(
-                "item_index({}) >= item_count({})",
+                "dynvec_slice_by_index: item_index({}) >= item_count({})",
                 item_index, item_count
             )));
         }
         temp.offset = self.offset;
-        let temp_offset = calculate_offset(NUM_T_SIZE, item_index + 1, 0);
-        temp.add_offset(temp_offset);
+        let temp_offset = calculate_offset(NUMBER_SIZE, item_index + 1, 0)?;
+        temp.add_offset(temp_offset)?;
         let item_start = temp.unpack_number()?;
         if (item_index + 1) == item_count {
             res.offset = self.offset;
-            res.add_offset(item_start);
+            res.add_offset(item_start)?;
             res.size = total_size;
             res.sub_size(item_start)?;
         } else {
             temp.offset = self.offset;
-            let calc_offset = calculate_offset(NUM_T_SIZE, item_index + 2, 0);
-            temp.add_offset(calc_offset);
+            let calc_offset = calculate_offset(NUMBER_SIZE, item_index + 2, 0)?;
+            temp.add_offset(calc_offset)?;
 
             let item_end = temp.unpack_number()?;
             res.offset = self.offset;
-            res.add_offset(item_start);
+            res.add_offset(item_start)?;
             res.size = item_end;
             res.sub_size(item_start)?;
         }
@@ -319,7 +399,7 @@ impl Cursor {
 
     pub fn fixvec_slice_raw_bytes(&self) -> Result<Cursor, Error> {
         let mut res = self.clone();
-        res.add_offset(NUM_T_SIZE);
+        res.add_offset(NUMBER_SIZE)?;
         res.size = self.unpack_number()?;
         res.validate()?;
         Ok(res)
@@ -336,121 +416,52 @@ impl Cursor {
     pub fn union_unpack(&self) -> Result<Union, Error> {
         let item_id = self.unpack_number()?;
         let mut cursor = self.clone();
-        cursor.add_offset(NUM_T_SIZE);
-        cursor.sub_size(NUM_T_SIZE)?;
+        cursor.add_offset(NUMBER_SIZE)?;
+        cursor.sub_size(NUMBER_SIZE)?;
         cursor.validate()?;
         Ok(Union { item_id, cursor })
     }
 }
 
-fn calculate_offset(item_size: usize, item_count: usize, offset: usize) -> usize {
-    let res = item_size.checked_mul(item_count).unwrap();
-    res.checked_add(offset).unwrap()
+fn calculate_offset(item_size: usize, item_count: usize, offset: usize) -> Result<usize, Error> {
+    let res = item_size.checked_mul(item_count).ok_or_else(|| {
+        Error::Overflow(format!(
+            "calculate_offset: item_size({}) * item_count({}) overflow",
+            item_size, item_count
+        ))
+    })?;
+    res.checked_add(offset)
+        .ok_or_else(|| Error::Overflow(format!("calculate_offset: offset({}) overflow", offset)))
 }
 
-impl TryFrom<Cursor> for u64 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 8];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_u64".into()))
-        } else {
-            Ok(u64::from_le_bytes(buf))
+macro_rules! impl_cursor_primitive {
+    ($type: ty) => {
+        impl TryFrom<Cursor> for $type {
+            type Error = Error;
+            fn try_from(cur: Cursor) -> Result<Self, Error> {
+                let mut buf = [0u8; (<$type>::BITS / 8) as usize];
+                let size = cur.read_at(&mut buf[..])?;
+                if size != buf.len() {
+                    Err(Error::FieldCount(format!(
+                        "TryFrom<Cursor>: convert {} bytes to primitive",
+                        <$type>::BITS / 8
+                    )))
+                } else {
+                    Ok(<$type>::from_le_bytes(buf))
+                }
+            }
         }
-    }
+    };
 }
 
-impl TryFrom<Cursor> for i64 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 8];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_i64".into()))
-        } else {
-            Ok(i64::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for u32 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 4];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_u32".into()))
-        } else {
-            Ok(u32::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for i32 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 4];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_i32".into()))
-        } else {
-            Ok(i32::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for u16 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 2];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_u16".into()))
-        } else {
-            Ok(u16::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for i16 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 2];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_i16".into()))
-        } else {
-            Ok(i16::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for u8 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 1];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_u8".into()))
-        } else {
-            Ok(u8::from_le_bytes(buf))
-        }
-    }
-}
-
-impl TryFrom<Cursor> for i8 {
-    type Error = Error;
-    fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = [0u8; 1];
-        let size = cur.read_at(&mut buf[..])?;
-        if size != buf.len() {
-            Err(Error::FieldCount("convert_to_i8".into()))
-        } else {
-            Ok(i8::from_le_bytes(buf))
-        }
-    }
-}
+impl_cursor_primitive!(u64);
+impl_cursor_primitive!(i64);
+impl_cursor_primitive!(u32);
+impl_cursor_primitive!(i32);
+impl_cursor_primitive!(u16);
+impl_cursor_primitive!(i16);
+impl_cursor_primitive!(u8);
+impl_cursor_primitive!(i8);
 
 impl TryFrom<Cursor> for Vec<u8> {
     type Error = Error;
@@ -461,7 +472,7 @@ impl TryFrom<Cursor> for Vec<u8> {
         let size = cur.read_at(buf.as_mut_slice())?;
         if size != buf.len() {
             return Err(Error::Read(format!(
-                "size({}) != buf.len()({})",
+                "TryFrom<Cursor>: size({}) != buf.len()({})",
                 size,
                 buf.len()
             )));
@@ -476,7 +487,7 @@ impl Read for Vec<u8> {
         let mem_len = self.len();
         if offset >= mem_len {
             return Err(Error::OutOfBound(format!(
-                "offset({}) >= mem_len({})",
+                "read: offset({}) >= mem_len({})",
                 offset, mem_len
             )));
         }
@@ -485,9 +496,10 @@ impl Read for Vec<u8> {
         let min_len = min(remaining_len, buf.len());
 
         if (offset + min_len) > mem_len {
-            return Err(Error::OutOfBound(
-                "(offset + min_len) > mem_len".to_string(),
-            ));
+            return Err(Error::OutOfBound(format!(
+                "read: (offset({}) + min_len({})) > mem_len({})",
+                offset, min_len, mem_len
+            )));
         }
         buf[0..min_len].copy_from_slice(&self.as_slice()[offset..offset + min_len]);
         Ok(min_len)

@@ -564,3 +564,38 @@ fn test_large_buf() {
     let data = test_data.to_bytes();
     test_data.check(&data).expect("test base");
 }
+
+#[test]
+fn test_iterator() {
+    use types_api2::*;
+
+    let test_data = TypesAll::default();
+    let data = test_data.to_bytes();
+    let cursor = Cursor::new(data.len(), Box::new(data.to_vec()));
+    let all_in_one = AllInOne { cursor };
+    let f48 = all_in_one.f48().unwrap();
+
+    let mut count: usize = 0;
+    for _ in f48.iter() {
+        count += 1;
+    }
+    assert_eq!(count, f48.len().unwrap());
+
+    let mut count: usize = 0;
+    let len = f48.len().unwrap();
+    for _ in f48 {
+        count += 1;
+    }
+    assert_eq!(count, len);
+}
+
+#[test]
+fn test_verify() {
+    use types_api2::*;
+
+    let test_data = TypesAll::default();
+    let data = test_data.to_bytes();
+    let cursor = Cursor::new(data.len(), Box::new(data.to_vec()));
+    let all_in_one = AllInOne { cursor };
+    all_in_one.verify(false).unwrap();
+}

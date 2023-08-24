@@ -1,23 +1,4 @@
 use super::{ident_new, LazyReaderGenerator};
-/// ## Terminology
-/// - field, existing in "struct", "table"
-/// - field name, name of field
-/// - field type, type of field
-/// - field type name, name of field type
-/// - item, existing in "dynvec", "union" and "option"
-/// - item name, there is no such thing, the item is without name
-/// - item type, type of item
-/// - item type name, name of item type
-/// - type name, item type name or field type name
-/// - raw name, a struct name without "Type", same as name
-/// - type category, field type or item type are classified into 3 categories, see TypeCategory.
-///   Different category has different implementation.
-/// - C/Rust transformed name: transformed from "field type name" or "item type name",
-///   according to their type category, e.g. uint32_t, mol2_cursor_t, XXXType
-/// - name, used for class name only
-/// - class type name, name with "Type" suffix, e.g. SampleTableType
-/// - common array, the set of Array, FixVec and DynVec, they share method like "len", "get"
-/// - common table, the set of Table, Struct, they share same method like ".t->XXX"
 use crate::ast::{self, HasName, *};
 use case::CaseExt;
 use proc_macro2::{Literal, TokenStream};
@@ -48,7 +29,7 @@ impl LazyReaderGenerator for ast::Union {
         };
         writeln!(output, "{}", q)?;
 
-        for item in self.items() {
+        for (item_index, item) in self.items().iter().enumerate() {
             let item_type_name = item.typ().name();
             let item_type_name = ident_new(&format!("as_{}", item_type_name.to_snake()));
             let (transformed_name, tc) = get_rust_type_category(item.typ());
@@ -57,6 +38,9 @@ impl LazyReaderGenerator for ast::Union {
                 impl #name {
                     pub fn #item_type_name(&self) -> Result<#transformed_name, Error> {
                         let item = self.cursor.union_unpack()?;
+                        if item.item_id != #item_index {
+                            return Err(Error::Header(format!("invalid item type id in union: {}", item.item_id)));
+                        }
                         let cur = item.cursor.clone();
                         #convert_code
                     }
@@ -64,7 +48,14 @@ impl LazyReaderGenerator for ast::Union {
             };
             writeln!(output, "{}", q)?;
         }
-
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, _compatible: bool) -> Result<(), Error> {
+                    Ok(())
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
         Ok(())
     }
 }
@@ -80,14 +71,36 @@ impl LazyReaderGenerator for ast::Array {
             Some(self),
             None,
             None,
-        )
+        )?;
+        let total_size = self.item_count() * self.item_size();
+        let name = ident_new(self.name());
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, _compatible: bool) -> Result<(), Error> {
+                    self.cursor.verify_fixed_size(#total_size)
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
+        Ok(())
     }
 }
 impl LazyReaderGenerator for ast::Option_ {}
 
 impl LazyReaderGenerator for ast::Struct {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        generate_rust_common_table(output, self.name(), self.fields(), Some(self.field_sizes()))
+        generate_rust_common_table(output, self.name(), self.fields(), Some(self.field_sizes()))?;
+        let name = ident_new(self.name());
+        let total_size: usize = self.field_sizes().iter().sum();
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, _compatible: bool) -> Result<(), Error> {
+                    self.cursor.verify_fixed_size(#total_size)
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
+        Ok(())
     }
 }
 
@@ -103,7 +116,18 @@ impl LazyReaderGenerator for ast::FixVec {
             None,
             Some(self),
             None,
-        )
+        )?;
+        let name = ident_new(self.name());
+        let item_size = self.item_size();
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, _compatible: bool) -> Result<(), Error> {
+                    self.cursor.verify_fixvec(#item_size)
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
+        Ok(())
     }
 }
 
@@ -118,32 +142,53 @@ impl LazyReaderGenerator for ast::DynVec {
             None,
             None,
             Some(self),
-        )
+        )?;
+        let name = ident_new(self.name());
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, _compatible: bool) -> Result<(), Error> {
+                    self.cursor.verify_dynvec()
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
+        Ok(())
     }
 }
 
 impl LazyReaderGenerator for ast::Table {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        generate_rust_common_table(output, self.name(), self.fields(), None)
+        generate_rust_common_table(output, self.name(), self.fields(), None)?;
+        let field_count = self.fields().len();
+        let name = ident_new(self.name());
+        let q = quote! {
+            impl #name {
+                pub fn verify(&self, compatible: bool) -> Result<(), Error> {
+                    self.cursor.verify_table(#field_count, compatible)
+                }
+            }
+        };
+        writeln!(output, "{}", q)?;
+        Ok(())
     }
 }
 
 fn generate_rust_common_array<W: io::Write>(
     output: &mut W,
-    name: &str,
+    plain_name: &str,
     type_name: TokenStream,
     tc: TypeCategory,
     array: Option<&ast::Array>,
     fixvec: Option<&ast::FixVec>,
     _dynvec: Option<&ast::DynVec>,
 ) -> io::Result<()> {
-    let n = ident_new(name);
+    let name = ident_new(plain_name);
     let q = quote! {
-        pub struct #n {
+        pub struct #name {
             pub cursor: Cursor,
         }
 
-        impl From<Cursor> for #n {
+        impl From<Cursor> for #name {
             fn from(cursor: Cursor) -> Self {
                 Self { cursor }
             }
@@ -156,33 +201,33 @@ fn generate_rust_common_array<W: io::Write>(
     if let Some(arr) = array {
         let item_count = Literal::usize_unsuffixed(arr.item_count());
         let q = quote! {
-            impl #n {
+            impl #name {
                 pub fn len(&self) -> usize { #item_count }
              }
         };
         writeln!(output, "{}", q)?;
     } else if fixvec.is_some() {
         let q = quote! {
-            impl #n {
+            impl #name {
                 pub fn len(&self) -> Result<usize, Error> {  self.cursor.fixvec_length()  }
             }
         };
         writeln!(output, "{}", q)?;
     } else {
         let q = quote! {
-            impl #n {
+            impl #name {
                 pub fn len(&self) -> Result<usize, Error> { self.cursor.dynvec_length() }
             }
         };
         writeln!(output, "{}", q)?;
     }
-    generate_rust_common_array_impl(output, name, type_name, tc, array, fixvec)?;
+    generate_rust_common_array_impl(output, plain_name, type_name, tc, array, fixvec)?;
     Ok(())
 }
 
 fn generate_rust_common_array_impl<W: io::Write>(
     output: &mut W,
-    name: &str,
+    plain_name: &str,
     item_name: TokenStream,
     tc: TypeCategory,
     array: Option<&Array>,
@@ -198,7 +243,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
         quote! { dynvec_slice_by_index(index) }
     };
     let convert_code = tc.gen_convert_code();
-    let name = ident_new(name);
+    let name = ident_new(plain_name);
     let iterator_name = ident_new(&format!("{}Iterator", name));
     let iterator_ref_name = ident_new(&format!("{}IteratorRef", name));
     let q = quote! {
@@ -262,7 +307,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
             }
         }
         impl #name {
-            fn iter(&self) -> #iterator_ref_name {
+            pub fn iter(&self) -> #iterator_ref_name {
                 let len = self.len().unwrap();
                 #iterator_ref_name {
                     cur: &self,
@@ -278,33 +323,33 @@ fn generate_rust_common_array_impl<W: io::Write>(
 
 fn generate_rust_common_table<W: io::Write>(
     output: &mut W,
-    name: &str,
+    plain_name: &str,
     fields: &[FieldDecl],
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
-    let n = ident_new(name);
+    let name = ident_new(plain_name);
     let q = quote! {
 
-        pub struct #n {
+        pub struct #name {
             pub cursor: Cursor,
         }
 
-        impl From<Cursor> for #n {
+        impl From<Cursor> for #name {
             fn from(cursor: Cursor) -> Self {
-                #n { cursor }
+                #name { cursor }
             }
         }
     };
     writeln!(output, "{}", q)?;
     for (index, field) in fields.iter().enumerate() {
-        generate_rust_common_table_impl(output, name, field, index, field_sizes)?;
+        generate_rust_common_table_impl(output, plain_name, field, index, field_sizes)?;
     }
     Ok(())
 }
 
 fn generate_rust_common_table_impl<W: io::Write>(
     output: &mut W,
-    name: &str,
+    plain_name: &str,
     field: &FieldDecl,
     index: usize,
     field_sizes: Option<&[usize]>,
@@ -313,7 +358,7 @@ fn generate_rust_common_table_impl<W: io::Write>(
     let (transformed_name, tc) = get_rust_type_category(field.typ());
     let slice_by = generate_rust_slice_by(index, &field_sizes);
     let convert_code = tc.gen_convert_code();
-    let name = ident_new(name);
+    let name = ident_new(plain_name);
     let field_name = ident_new(field_name);
     let q = quote! {
         impl #name {

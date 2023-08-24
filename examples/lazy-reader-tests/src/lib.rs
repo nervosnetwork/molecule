@@ -143,6 +143,7 @@ impl From<molecule::lazy_reader::Error> for TypesCheckErr {
             Data(v) => Self::Mol2Err(format!("Data({})", v)),
             Overflow(v) => Self::Mol2Err(format!("Overflow({})", v)),
             Read(v) => Self::Mol2Err(format!("Read({})", v)),
+            Verify(v) => Self::Mol2Err(format!("Verify({})", v)),
         }
     }
 }
