@@ -189,6 +189,10 @@ impl Cursor {
         self.verify_dynvec()?;
         let mut cur = self.clone();
         cur.add_offset(NUMBER_SIZE)?;
+        if self.size == cur.size {
+            // empty table
+            return Ok(());
+        }
         let first_offset = cur.unpack_number()?;
         let field_count = first_offset / NUMBER_SIZE - 1;
         if field_count < expected_field_count {

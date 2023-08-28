@@ -13,6 +13,10 @@ use rand::{random, rngs::ThreadRng, thread_rng, Rng, RngCore};
 
 use super::*;
 
+fn new_cursor(d: &[u8]) -> Cursor {
+    Cursor::new(d.len(), Box::new(d.to_vec()))
+}
+
 #[derive(Default)]
 pub struct TypesAll {
     f0: TypesArray<u8, 1>,
@@ -273,8 +277,10 @@ impl TypesAll {
         use crate::types_api2_mol2::Mol2Vec;
         use types_api2::*;
 
-        let cursor = Cursor::new(data.len(), Box::new(data.to_vec()));
+        let cursor = new_cursor(data);
         let all_in_one = AllInOne { cursor };
+        all_in_one.verify(true)?;
+        all_in_one.verify(false)?;
 
         self.f0
             .check(&all_in_one.f0()?)
@@ -571,7 +577,7 @@ fn test_iterator() {
 
     let test_data = TypesAll::default();
     let data = test_data.to_bytes();
-    let cursor = Cursor::new(data.len(), Box::new(data.to_vec()));
+    let cursor = new_cursor(&data);
     let all_in_one = AllInOne { cursor };
     let f48 = all_in_one.f48().unwrap();
 
@@ -595,7 +601,523 @@ fn test_verify() {
 
     let test_data = TypesAll::default();
     let data = test_data.to_bytes();
-    let cursor = Cursor::new(data.len(), Box::new(data.to_vec()));
+    let cursor = new_cursor(&data);
     let all_in_one = AllInOne { cursor };
     all_in_one.verify(false).unwrap();
+    all_in_one.verify(true).unwrap();
+}
+
+#[test]
+fn test_err_rng_len() {
+    let mut rng = thread_rng();
+
+    fn generate_vec(len: usize, rng: &mut ThreadRng) -> Vec<u8> {
+        let mut len = len;
+        if len == 0 {
+            len = rng.gen::<usize>() % 1024;
+        }
+        let mut r = Vec::new();
+        r.resize(len, 0);
+        rng.fill_bytes(&mut r);
+        r
+    }
+
+    let data = generate_vec(0, &mut rng);
+    let compatible = true;
+
+    assert_eq!(
+        types_api::Byte2Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte2 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte7Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte7 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte11Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte11 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte16Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte16 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Word2Reader::verify(&data, compatible).is_err(),
+        types_api2::Word2 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Word5Reader::verify(&data, compatible).is_err(),
+        types_api2::Word5 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Word8Reader::verify(&data, compatible).is_err(),
+        types_api2::Word8 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte3x3Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte3x3 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte7x3Reader::verify(&data, compatible).is_err(),
+        types_api2::Byte7x3 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructAReader::verify(&data, compatible).is_err(),
+        types_api2::StructA {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructBReader::verify(&data, compatible).is_err(),
+        types_api2::StructB {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructCReader::verify(&data, compatible).is_err(),
+        types_api2::StructC {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructDReader::verify(&data, compatible).is_err(),
+        types_api2::StructD {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructFReader::verify(&data, compatible).is_err(),
+        types_api2::StructF {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructJReader::verify(&data, compatible).is_err(),
+        types_api2::StructJ {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructIx3Reader::verify(&data, compatible).is_err(),
+        types_api2::StructIx3 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructPReader::verify(&data, compatible).is_err(),
+        types_api2::StructP {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::BytesReader::verify(&data, compatible).is_err(),
+        types_api2::Bytes {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::WordsReader::verify(&data, compatible).is_err(),
+        types_api2::Words {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte3VecReader::verify(&data, compatible).is_err(),
+        types_api2::Byte3Vec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Byte7VecReader::verify(&data, compatible).is_err(),
+        types_api2::Byte7Vec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructIVecReader::verify(&data, compatible).is_err(),
+        types_api2::StructIVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructJVecReader::verify(&data, compatible).is_err(),
+        types_api2::StructJVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::StructPVecReader::verify(&data, compatible).is_err(),
+        types_api2::StructPVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::BytesVecReader::verify(&data, compatible).is_err(),
+        types_api2::BytesVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::WordsVecReader::verify(&data, compatible).is_err(),
+        types_api2::WordsVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Table0Reader::verify(&data, compatible).is_err(),
+        types_api2::Table0 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Table1Reader::verify(&data, compatible).is_err(),
+        types_api2::Table1 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Table2Reader::verify(&data, compatible).is_err(),
+        types_api2::Table2 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Table4Reader::verify(&data, compatible).is_err(),
+        types_api2::Table4 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::Table6Reader::verify(&data, compatible).is_err(),
+        types_api2::Table6 {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::ByteOptVecReader::verify(&data, compatible).is_err(),
+        types_api2::ByteOptVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::WordOptVecReader::verify(&data, compatible).is_err(),
+        types_api2::WordOptVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::WordsOptVecReader::verify(&data, compatible).is_err(),
+        types_api2::WordsOptVec {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::TableAReader::verify(&data, compatible).is_err(),
+        types_api2::TableA {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+    assert_eq!(
+        types_api::TableBReader::verify(&data, compatible).is_err(),
+        types_api2::TableB {
+            cursor: new_cursor(&data),
+        }
+        .verify(compatible)
+        .is_err()
+    );
+}
+
+#[test]
+fn test_union() {
+    fn test_union_item(base: TypesUnionA) {
+        let mut rng = thread_rng();
+
+        let data = base.to_mol();
+        let item_id = data.item_id();
+
+        // success
+        let buf = data.as_bytes().to_vec();
+        types_api2::UnionA {
+            cursor: new_cursor(&buf),
+        }
+        .verify(true)
+        .unwrap();
+
+        // Error item
+        let mut buf = data.as_bytes().to_vec();
+        buf[0..4].copy_from_slice(&rng.gen_range(8u32..0xFFFFFFFEu32).to_le_bytes());
+
+        types_api2::UnionA {
+            cursor: new_cursor(&buf),
+        }
+        .verify(true)
+        .unwrap_err();
+
+        if item_id != 3 {
+            // Error length
+            let mut buf = data.as_bytes().to_vec();
+            if item_id != 4 {
+                buf.extend_from_slice(&rng.gen::<u32>().to_le_bytes());
+            } else {
+                buf.extend_from_slice({
+                    let mut d = rng.gen::<u32>();
+                    if d % 2 == 0 {
+                        d += 1;
+                    }
+                    &d.to_le_bytes()
+                })
+            }
+
+            types_api2::UnionA {
+                cursor: new_cursor(&buf),
+            }
+            .verify(true)
+            .unwrap_err();
+        }
+    }
+
+    test_union_item(TypesUnionA::Byte(TypesArray::default()));
+    test_union_item(TypesUnionA::Word(TypesArrayWord::default()));
+    test_union_item(TypesUnionA::StructA(TypesStructA::default()));
+    test_union_item(TypesUnionA::Bytes(TypesVec::default()));
+    test_union_item(TypesUnionA::Words(TypesVec::default()));
+    test_union_item(TypesUnionA::Table0(TypesTable0::default()));
+    test_union_item(TypesUnionA::Table6(TypesTable6::default()));
+    test_union_item(TypesUnionA::Table6Opt(TypesOption::default()));
+}
+
+#[test]
+fn test_table6() {
+    let base = TypesTable6::default();
+    let data = base.to_mol();
+    let mut rng = thread_rng();
+
+    let buf = data.as_bytes().to_vec();
+    types_api2::Table6 {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect("table6");
+
+    // rng item
+    let mut buf = data.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    types_api2::Table6 {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify table6");
+
+    // subitem
+    let data_builder = data.as_builder();
+    let mut buf = data_builder.f6.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    let data_builder = data_builder.f6(types_api::Table5::new_unchecked(
+        molecule::bytes::Bytes::from(buf),
+    ));
+
+    let buf = data_builder.build().as_bytes().to_vec();
+    types_api2::Table6 {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify table6");
+}
+
+#[test]
+fn test_table_a() {
+    let base = TypesTableA::default();
+    let data = base.to_mol();
+    let mut rng = thread_rng();
+
+    // success
+    let buf = data.as_bytes().to_vec();
+    types_api2::TableA {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect("verify TableA");
+
+    // rng item
+    let mut buf = data.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    types_api2::TableA {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify TableA");
+
+    // subitem table1
+    let data_builder = data.clone().as_builder();
+    let mut buf = data_builder.f5.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    let data_builder = data_builder.f5(types_api::Table1::new_unchecked(
+        molecule::bytes::Bytes::from(buf),
+    ));
+
+    let buf = data_builder.build().as_bytes().to_vec();
+    types_api2::TableA {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify TableA");
+
+    // subitem union
+    let data_builder = data.clone().as_builder();
+    let mut buf = data_builder.f7.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    let data_builder = data_builder.f7(types_api::UnionA::new_unchecked(
+        molecule::bytes::Bytes::from(buf),
+    ));
+
+    let buf = data_builder.build().as_bytes().to_vec();
+    types_api2::TableA {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify TableA");
+}
+
+#[test]
+fn test_table_b() {
+    let base = TypesTableB::default();
+    let data = base.to_mol();
+    let mut rng = thread_rng();
+
+    // success
+    let buf = data.as_bytes().to_vec();
+    types_api2::TableB {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect("verify TableB");
+
+    // rng item
+    let mut buf = data.as_bytes().to_vec();
+    buf[0..4].copy_from_slice(&rng.gen_range(7u32..0xFFFFFFFEu32).to_le_bytes());
+    types_api2::TableB {
+        cursor: new_cursor(&buf),
+    }
+    .verify(true)
+    .expect_err("verify TableA");
+}
+
+#[test]
+fn test_struct_verify() {
+    let base = TypesStructP::default();
+    let data = base.to_mol();
+
+    let mut buf = data.as_bytes().to_vec();
+    let mut rng = thread_rng();
+    rng.fill_bytes(buf.as_mut());
+
+    types_api2::StructP {
+        cursor: new_cursor(&buf),
+    }
+    .verify(false)
+    .expect("verify StructP");
+
+    let mut buf = data.as_bytes().to_vec();
+    buf.extend_from_slice(&rng.gen::<u64>().to_le_bytes());
+    types_api2::StructP {
+        cursor: new_cursor(&buf),
+    }
+    .verify(false)
+    .expect_err("");
+
+    let mut buf = data.as_bytes().to_vec();
+    buf = buf[..buf.len() - 3].to_vec();
+    types_api2::StructP {
+        cursor: new_cursor(&buf),
+    }
+    .verify(false)
+    .expect_err("");
 }

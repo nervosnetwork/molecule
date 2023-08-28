@@ -14,7 +14,6 @@ impl super::LanguageGenerator for Generator {
             output,
             r#"
         extern crate alloc;
-        use alloc::vec::Vec;
         use molecule::lazy_reader::Cursor;
         use molecule::lazy_reader::Error;
         use core::convert::TryInto;"#
