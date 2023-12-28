@@ -15,6 +15,7 @@ impl Generator for ast::Option_ {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
+        writeln!(writer, "{}", self.gen_from())?;
         Ok(())
     }
 }
@@ -25,6 +26,7 @@ impl Generator for ast::Union {
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
         writeln!(writer, "{}", self.gen_enumerator())?;
+        writeln!(writer, "{}", self.gen_from())?;
         Ok(())
     }
 }
@@ -34,6 +36,7 @@ impl Generator for ast::Array {
         writeln!(writer, "{}", self.gen_entity())?;
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
+        writeln!(writer, "{}", self.gen_from())?;
         Ok(())
     }
 }
@@ -53,6 +56,7 @@ impl Generator for ast::FixVec {
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
         writeln!(writer, "{}", self.gen_iterator())?;
+        writeln!(writer, "{}", self.gen_from_iter())?;
         Ok(())
     }
 }
@@ -63,6 +67,7 @@ impl Generator for ast::DynVec {
         writeln!(writer, "{}", self.gen_reader())?;
         writeln!(writer, "{}", self.gen_builder())?;
         writeln!(writer, "{}", self.gen_iterator())?;
+        writeln!(writer, "{}", self.gen_from_iter())?;
         Ok(())
     }
 }

@@ -28,6 +28,20 @@ pub(in super::super) trait ImplBuilder: HasName {
     }
 }
 
+impl ast::Option_ {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        let item_name = entity_name(self.item().typ().name());
+        quote!(
+            impl From<#item_name> for #entity {
+                fn from(value: #item_name) -> Self {
+                    Self::new_builder().set(Some(value)).build()
+                }
+            }
+        )
+    }
+}
+
 impl ImplBuilder for ast::Option_ {
     fn impl_builder_internal(&self) -> m4::TokenStream {
         quote!(
@@ -44,6 +58,25 @@ impl ImplBuilder for ast::Option_ {
                     .unwrap_or(Ok(()))
             }
         )
+    }
+}
+
+impl ast::Union {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        self.items()
+            .iter()
+            .map(|item| {
+                let item_name = entity_name(item.typ().name());
+                quote!(
+                    impl From<#item_name> for #entity {
+                        fn from(value: #item_name) -> Self {
+                            Self::new_builder().set(value).build()
+                        }
+                    }
+                )
+            })
+            .collect()
     }
 }
 
@@ -78,6 +111,36 @@ impl ImplBuilder for ast::Array {
             fn write<W: molecule::io::Write>(&self, writer: &mut W) -> molecule::io::Result<()> {
                 #write_inners
                 Ok(())
+            }
+        )
+    }
+}
+
+impl ast::Array {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        let item_name = entity_name(self.item().typ().name());
+        let n = self.item_count();
+        let nth = (0..n).map(|i| quote::format_ident!("nth{}", i));
+        quote!(
+            impl From<[#item_name; #n]> for #entity {
+                fn from(value: [#item_name; #n]) -> Self {
+                    Self::new_builder().set(value).build()
+                }
+            }
+
+            impl ::core::convert::TryFrom<&[#item_name]> for #entity {
+                type Error = ::core::array::TryFromSliceError;
+                fn try_from(value: &[#item_name]) -> Result<Self, ::core::array::TryFromSliceError> {
+                    // Use TryFrom<&[T]> for &[T; n].
+                    Ok(Self::new_builder().set(<&[#item_name; #n]>::try_from(value)?.clone()).build())
+                }
+            }
+
+            impl From<#entity> for [#item_name; #n] {
+                fn from(value: #entity) -> Self {
+                    [#(value.#nth(),)*]
+                }
             }
         )
     }
@@ -160,6 +223,30 @@ impl ImplBuilder for ast::DynVec {
                 Ok(())
             }
         )
+    }
+}
+
+fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
+    let entity = entity_name(name);
+    let item_name = entity_name(item_name);
+    quote!(
+        impl ::core::iter::FromIterator<#item_name> for #entity {
+            fn from_iter<T: IntoIterator<Item = #item_name>>(iter: T) -> Self {
+                Self::new_builder().extend(iter).build()
+            }
+        }
+    )
+}
+
+impl ast::FixVec {
+    pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
+        gen_from_iter(self.name(), self.item().typ().name())
+    }
+}
+
+impl ast::DynVec {
+    pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
+        gen_from_iter(self.name(), self.item().typ().name())
     }
 }
 
