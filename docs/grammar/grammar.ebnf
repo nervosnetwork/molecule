@@ -15,6 +15,7 @@ newline                 =   "\n" | "\r\n";
 
 identifier              =   letter, { letter | digit | "_" };
 number                  =   nonzero, { digit };
+number_greater_or_equal_than_zero = { digit };
 
 whitespace              =   ifs | newline;
 break                   =   whitespace, { whitespace };
@@ -30,7 +31,7 @@ field_decl              =   identifier, break_opt, ":", break_opt,
                             identifier, break_opt,
                             field_end;
 custom_union_item_decl  =   identifier, break_opt, ":", break_opt,
-                            number,     break_opt,
+                            number_greater_or_equal_than_zero, break_opt,
                             field_end;
 option_decl             =   "option", break, identifier, break_opt,
                             "(", break_opt,
