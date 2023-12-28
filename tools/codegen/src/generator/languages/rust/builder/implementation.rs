@@ -1,7 +1,7 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use super::super::utilities::{builder_name, entity_name, field_name, usize_lit};
+use super::super::utilities::{builder_name, entity_name, field_name, reader_name, usize_lit};
 use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplBuilder: HasName {
@@ -119,8 +119,48 @@ impl ImplBuilder for ast::Array {
 impl ast::Array {
     pub(crate) fn gen_from(&self) -> m4::TokenStream {
         let entity = entity_name(self.name());
+        let reader = reader_name(self.name());
         let item_name = entity_name(self.item().typ().name());
         let n = self.item_count();
+        let maybe_byte_arr = if self.item().typ().name() == "byte" {
+            quote!(
+                impl From<[u8; #n]> for #entity {
+                    fn from(value: [u8; #n]) -> Self {
+                        #reader::new_unchecked(&value).to_entity()
+                    }
+                }
+
+                impl ::core::convert::TryFrom<&[u8]> for #entity {
+                    type Error = ::core::array::TryFromSliceError;
+                    fn try_from(value: &[u8]) -> Result<Self, ::core::array::TryFromSliceError> {
+                        Ok(<[u8; #n]>::try_from(value)?.into())
+                    }
+                }
+
+                impl From<#entity> for [u8; #n] {
+                    #[track_caller]
+                    fn from(value: #entity) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+
+                impl<'a> From<#reader<'a>> for &'a [u8; #n] {
+                    #[track_caller]
+                    fn from(value: #reader<'a>) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+
+                impl<'a> From<&'a #reader<'a>> for &'a [u8; #n] {
+                    #[track_caller]
+                    fn from(value: &'a #reader<'a>) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+            )
+        } else {
+            quote!()
+        };
         let nth = (0..n).map(|i| quote::format_ident!("nth{}", i));
         quote!(
             impl From<[#item_name; #n]> for #entity {
@@ -138,10 +178,13 @@ impl ast::Array {
             }
 
             impl From<#entity> for [#item_name; #n] {
+                #[track_caller]
                 fn from(value: #entity) -> Self {
                     [#(value.#nth(),)*]
                 }
             }
+
+            #maybe_byte_arr
         )
     }
 }
@@ -228,6 +271,17 @@ impl ImplBuilder for ast::DynVec {
 
 fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
     let entity = entity_name(name);
+    let maybe_byte_vec = if item_name == "byte" {
+        quote!(
+            impl ::core::iter::FromIterator<u8> for #entity {
+                fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+                    Self::new_builder().extend(iter.into_iter().map(Into::into)).build()
+                }
+            }
+        )
+    } else {
+        quote!()
+    };
     let item_name = entity_name(item_name);
     quote!(
         impl ::core::iter::FromIterator<#item_name> for #entity {
@@ -235,6 +289,8 @@ fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
                 Self::new_builder().extend(iter).build()
             }
         }
+
+        #maybe_byte_vec
     )
 }
 
