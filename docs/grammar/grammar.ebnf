@@ -15,7 +15,7 @@ newline                 =   "\n" | "\r\n";
 
 identifier              =   letter, { letter | digit | "_" };
 number                  =   nonzero, { digit };
-number_greater_or_equal_than_zero = { digit };
+number_greater_or_equal_than_zero = zero | { number };
 
 whitespace              =   ifs | newline;
 break                   =   whitespace, { whitespace };
