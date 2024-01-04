@@ -1,7 +1,7 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use super::super::utilities::{builder_name, entity_name, field_name, usize_lit};
+use super::super::utilities::{builder_name, entity_name, field_name, reader_name, usize_lit};
 use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplBuilder: HasName {
@@ -28,6 +28,20 @@ pub(in super::super) trait ImplBuilder: HasName {
     }
 }
 
+impl ast::Option_ {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        let item_name = entity_name(self.item().typ().name());
+        quote!(
+            impl From<#item_name> for #entity {
+                fn from(value: #item_name) -> Self {
+                    Self::new_builder().set(Some(value)).build()
+                }
+            }
+        )
+    }
+}
+
 impl ImplBuilder for ast::Option_ {
     fn impl_builder_internal(&self) -> m4::TokenStream {
         quote!(
@@ -44,6 +58,25 @@ impl ImplBuilder for ast::Option_ {
                     .unwrap_or(Ok(()))
             }
         )
+    }
+}
+
+impl ast::Union {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        self.items()
+            .iter()
+            .map(|item| {
+                let item_name = entity_name(item.typ().name());
+                quote!(
+                    impl From<#item_name> for #entity {
+                        fn from(value: #item_name) -> Self {
+                            Self::new_builder().set(value).build()
+                        }
+                    }
+                )
+            })
+            .collect()
     }
 }
 
@@ -79,6 +112,79 @@ impl ImplBuilder for ast::Array {
                 #write_inners
                 Ok(())
             }
+        )
+    }
+}
+
+impl ast::Array {
+    pub(crate) fn gen_from(&self) -> m4::TokenStream {
+        let entity = entity_name(self.name());
+        let reader = reader_name(self.name());
+        let item_name = entity_name(self.item().typ().name());
+        let n = self.item_count();
+        let maybe_byte_arr = if self.item().typ().name() == "byte" {
+            quote!(
+                impl From<[u8; #n]> for #entity {
+                    fn from(value: [u8; #n]) -> Self {
+                        #reader::new_unchecked(&value).to_entity()
+                    }
+                }
+
+                impl ::core::convert::TryFrom<&[u8]> for #entity {
+                    type Error = ::core::array::TryFromSliceError;
+                    fn try_from(value: &[u8]) -> Result<Self, ::core::array::TryFromSliceError> {
+                        Ok(<[u8; #n]>::try_from(value)?.into())
+                    }
+                }
+
+                impl From<#entity> for [u8; #n] {
+                    #[track_caller]
+                    fn from(value: #entity) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+
+                impl<'a> From<#reader<'a>> for &'a [u8; #n] {
+                    #[track_caller]
+                    fn from(value: #reader<'a>) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+
+                impl<'a> From<&'a #reader<'a>> for &'a [u8; #n] {
+                    #[track_caller]
+                    fn from(value: &'a #reader<'a>) -> Self {
+                        ::core::convert::TryFrom::try_from(value.as_slice()).unwrap()
+                    }
+                }
+            )
+        } else {
+            quote!()
+        };
+        let nth = (0..n).map(|i| quote::format_ident!("nth{}", i));
+        quote!(
+            impl From<[#item_name; #n]> for #entity {
+                fn from(value: [#item_name; #n]) -> Self {
+                    Self::new_builder().set(value).build()
+                }
+            }
+
+            impl ::core::convert::TryFrom<&[#item_name]> for #entity {
+                type Error = ::core::array::TryFromSliceError;
+                fn try_from(value: &[#item_name]) -> Result<Self, ::core::array::TryFromSliceError> {
+                    // Use TryFrom<&[T]> for &[T; n].
+                    Ok(Self::new_builder().set(<&[#item_name; #n]>::try_from(value)?.clone()).build())
+                }
+            }
+
+            impl From<#entity> for [#item_name; #n] {
+                #[track_caller]
+                fn from(value: #entity) -> Self {
+                    [#(value.#nth(),)*]
+                }
+            }
+
+            #maybe_byte_arr
         )
     }
 }
@@ -160,6 +266,43 @@ impl ImplBuilder for ast::DynVec {
                 Ok(())
             }
         )
+    }
+}
+
+fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
+    let entity = entity_name(name);
+    let maybe_byte_vec = if item_name == "byte" {
+        quote!(
+            impl ::core::iter::FromIterator<u8> for #entity {
+                fn from_iter<T: IntoIterator<Item = u8>>(iter: T) -> Self {
+                    Self::new_builder().extend(iter.into_iter().map(Into::into)).build()
+                }
+            }
+        )
+    } else {
+        quote!()
+    };
+    let item_name = entity_name(item_name);
+    quote!(
+        impl ::core::iter::FromIterator<#item_name> for #entity {
+            fn from_iter<T: IntoIterator<Item = #item_name>>(iter: T) -> Self {
+                Self::new_builder().extend(iter).build()
+            }
+        }
+
+        #maybe_byte_vec
+    )
+}
+
+impl ast::FixVec {
+    pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
+        gen_from_iter(self.name(), self.item().typ().name())
+    }
+}
+
+impl ast::DynVec {
+    pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
+        gen_from_iter(self.name(), self.item().typ().name())
     }
 }
 
