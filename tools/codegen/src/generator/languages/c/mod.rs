@@ -5,7 +5,7 @@ use case::CaseExt;
 use crate::{ast, C_API_VERSION_MIN, VERSION};
 
 #[macro_use]
-pub(self) mod utilities;
+mod utilities;
 
 mod import;
 

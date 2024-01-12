@@ -246,7 +246,7 @@ union Foo {
         let ast0 = Parser::parse(&schema_file0.into_temp_path());
         let ast1 = Parser::parse(&schema_file1.into_temp_path());
 
-        for ast in vec![ast0, ast1] {
+        for ast in [ast0, ast1] {
             // get union items
             if let TopDecl::Union(union) = ast
                 .decls()
