@@ -4,29 +4,29 @@ use quote::quote;
 
 use crate::{ast, VERSION};
 
-pub(self) mod utilities;
+mod utilities;
 
-pub(self) mod builder;
-pub(self) mod entity;
-pub(self) mod reader;
+mod builder;
+mod entity;
+mod reader;
 
 /// Constants for `{ Entity, Reader }`
-pub(self) mod display;
+mod display;
 
 /// Constants for `{ Entity, Reader, Builder }`
-pub(self) mod constants;
+mod constants;
 
 /// Constants for `{ Entity, Reader }`
-pub(self) mod properties;
+mod properties;
 
 /// Constants for `{ Entity, Reader }`
-pub(self) mod getters;
+mod getters;
 
 /// Iterator for `{ Union } x { Entity, Reader }`
-pub(self) mod iterator;
+mod iterator;
 
 /// Enumerator for `{ Vector } x { Entity, Reader }`
-pub(self) mod enumerator;
+mod enumerator;
 
 mod import;
 use import::GenImport as _;
