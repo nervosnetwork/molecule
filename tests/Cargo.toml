@@ -8,11 +8,11 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
-codegen-0_7_3 = {package = "molecule-codegen", version = "0.7.3", features = ["compiler-plugin"]}
+codegen-0_7_3 = {package = "molecule-codegen", version = "=0.7.3", features = ["compiler-plugin"]}
 codegen-dev = {package = "molecule-codegen", path = "../tools/codegen", features = ["compiler-plugin"]}
 molecule = {package = "molecule", path = "../bindings/rust"}
 
 [build-dependencies]
-codegen-0_7_3 = {package = "molecule-codegen", version = "0.7.3", features = ["compiler-plugin"]}
+codegen-0_7_3 = {package = "molecule-codegen", version = "=0.7.3", features = ["compiler-plugin"]}
 codegen-dev = {package = "molecule-codegen", path = "../tools/codegen", features = ["compiler-plugin"]}
 molecule = {package = "molecule", path = "../bindings/rust"}

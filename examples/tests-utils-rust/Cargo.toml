@@ -13,4 +13,4 @@ tests-loader = { package ="molecule-tests-loader", path = "../tests-loader" }
 syn = "1.0.58"
 quote = "1.0.8"
 proc-macro2 = "1.0.24"
-serde_yaml = "0.8.15"
+serde_yaml = "0.8.26"
