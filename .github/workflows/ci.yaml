@@ -16,13 +16,11 @@ jobs:
     name: Checks / Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
           toolchain: 1.58.1
-          override: true
           components: rustfmt
       - name: Run
         run: make fmt
@@ -30,13 +28,11 @@ jobs:
     name: Checks / Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
           toolchain: 1.71.1
-          override: true
           components: clippy
       - name: Run
         run: make clippy
@@ -45,13 +41,11 @@ jobs:
     needs: [ rustfmt, clippy ]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
           toolchain: 1.56.1 # MSRV
-          override: true
       - name: Run
         run: make ci-msrv
   test-crates:
@@ -59,13 +53,11 @@ jobs:
     needs: [ rustfmt, clippy ]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
           toolchain: 1.58.1
-          override: true
       - name: Run
         run: make ci-crates
   test-examples:
@@ -73,13 +65,11 @@ jobs:
     needs: [ rustfmt, clippy ]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup
-        uses: actions-rs/toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          profile: minimal
           toolchain: 1.58.1
-          override: true
       - name: Run
         run: make ci-examples
   success:
