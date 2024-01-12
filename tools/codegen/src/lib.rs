@@ -7,7 +7,7 @@ pub(crate) mod parser;
 pub(crate) mod utils;
 
 #[cfg(feature = "compiler-plugin")]
-mod ir;
+pub mod ir;
 
 pub use compiler::Compiler;
 pub use generator::Language;

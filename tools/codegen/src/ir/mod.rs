@@ -8,31 +8,31 @@ use property::Property;
 pub use format::Format;
 pub(crate) use from_ast::ToIntermediate;
 
-use crate::ast::SyntaxVersion;
+pub use crate::ast::SyntaxVersion;
 
 /// Intermediate file.
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Ir {
+pub struct Ir {
     #[serde(default)]
-    syntax_version: SyntaxVersion,
-    namespace: String,
-    imports: Vec<ImportStmt>,
+    pub syntax_version: SyntaxVersion,
+    pub namespace: String,
+    pub imports: Vec<ImportStmt>,
     #[serde(rename = "declarations")]
-    decls: Vec<TopDecl>,
+    pub decls: Vec<TopDecl>,
 }
 
 #[derive(Debug, Clone, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ImportStmt {
-    name: String,
-    paths: Vec<String>,
-    path_supers: usize,
+pub struct ImportStmt {
+    pub name: String,
+    pub paths: Vec<String>,
+    pub path_supers: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, tag = "type", rename_all = "lowercase")]
-pub(crate) enum TopDecl {
+pub enum TopDecl {
     #[serde(rename = "option")]
     Option_(Option_),
     Union(Union),
@@ -45,86 +45,86 @@ pub(crate) enum TopDecl {
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Option_ {
-    name: String,
-    item: ItemDecl,
+pub struct Option_ {
+    pub name: String,
+    pub item: ItemDecl,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Union {
-    name: String,
+pub struct Union {
+    pub name: String,
 
     #[serde(deserialize_with = "deserialize_union_items")]
-    items: Vec<UnionItemDecl>,
+    pub items: Vec<UnionItemDecl>,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Array {
-    name: String,
-    item: ItemDecl,
-    item_count: usize,
+pub struct Array {
+    pub name: String,
+    pub item: ItemDecl,
+    pub item_count: usize,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Struct {
-    name: String,
-    fields: Vec<FieldDecl>,
+pub struct Struct {
+    pub name: String,
+    pub fields: Vec<FieldDecl>,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FixVec {
-    name: String,
-    item: ItemDecl,
+pub struct FixVec {
+    pub name: String,
+    pub item: ItemDecl,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct DynVec {
-    name: String,
-    item: ItemDecl,
+pub struct DynVec {
+    pub name: String,
+    pub item: ItemDecl,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Table {
-    name: String,
-    fields: Vec<FieldDecl>,
+pub struct Table {
+    pub name: String,
+    pub fields: Vec<FieldDecl>,
     #[serde(default = "zero", skip_serializing_if = "is_zero")]
-    imported_depth: usize,
+    pub imported_depth: usize,
 }
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, transparent)]
-pub(crate) struct ItemDecl {
-    typ: String,
+pub struct ItemDecl {
+    pub typ: String,
 }
 
 #[derive(Debug, Property, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct UnionItemDecl {
-    typ: String,
-    id: usize,
+pub struct UnionItemDecl {
+    pub typ: String,
+    pub id: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
-enum UnionItemsForCompatibility {
+pub enum UnionItemsForCompatibility {
     ItemsForCompatibility(Vec<ItemDecl>),
     Items(Vec<UnionItemDecl>),
 }
@@ -149,10 +149,10 @@ where
 
 #[derive(Debug, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FieldDecl {
-    name: String,
+pub struct FieldDecl {
+    pub name: String,
     #[serde(rename = "type")]
-    typ: String,
+    pub typ: String,
 }
 
 const fn zero() -> usize {
