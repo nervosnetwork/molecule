@@ -18,6 +18,8 @@ faster-hex = { version = "^0.6", optional = true }
 [features]
 default = ["std"]
 std = ["bytes/std", "faster-hex"]
+# Provide impls for bytes in no_std environment without depending on atomic
+bytes_vec = []
 
 [badges]
 maintenance = { status = "experimental" }
