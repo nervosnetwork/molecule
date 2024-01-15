@@ -11,7 +11,7 @@ pub(crate) use from_ast::ToIntermediate;
 pub use crate::ast::SyntaxVersion;
 
 /// Intermediate file.
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ir {
     #[serde(default)]
@@ -22,7 +22,7 @@ pub struct Ir {
     pub decls: Vec<TopDecl>,
 }
 
-#[derive(Debug, Clone, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImportStmt {
     pub name: String,
@@ -30,7 +30,7 @@ pub struct ImportStmt {
     pub path_supers: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, tag = "type", rename_all = "lowercase")]
 pub enum TopDecl {
     #[serde(rename = "option")]
@@ -43,7 +43,7 @@ pub enum TopDecl {
     Table(Table),
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Option_ {
     pub name: String,
@@ -52,7 +52,7 @@ pub struct Option_ {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Union {
     pub name: String,
@@ -63,7 +63,7 @@ pub struct Union {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Array {
     pub name: String,
@@ -73,7 +73,7 @@ pub struct Array {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Struct {
     pub name: String,
@@ -82,7 +82,7 @@ pub struct Struct {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixVec {
     pub name: String,
@@ -91,7 +91,7 @@ pub struct FixVec {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DynVec {
     pub name: String,
@@ -100,7 +100,7 @@ pub struct DynVec {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Table {
     pub name: String,
@@ -109,20 +109,20 @@ pub struct Table {
     pub imported_depth: usize,
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, transparent)]
 pub struct ItemDecl {
     pub typ: String,
 }
 
-#[derive(Debug, Property, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnionItemDecl {
     pub typ: String,
     pub id: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum UnionItemsForCompatibility {
     ItemsForCompatibility(Vec<ItemDecl>),
@@ -147,7 +147,7 @@ where
     })
 }
 
-#[derive(Debug, Property, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FieldDecl {
     pub name: String,

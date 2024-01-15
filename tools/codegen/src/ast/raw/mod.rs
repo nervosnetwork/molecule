@@ -21,7 +21,7 @@ impl Default for SyntaxVersion {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Property)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Property)]
 #[property(get(public))]
 #[cfg_attr(
     feature = "compiler-plugin",
