@@ -9,15 +9,19 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "std")] {
         extern crate std;
 
+        pub use bytes;
         pub mod io {
             pub use std::io::{Error, Result, Write};
         }
     } else {
+        #[cfg(feature = "bytes_vec")]
+        pub mod bytes;
+        #[cfg(not(feature = "bytes_vec"))]
+        pub use bytes;
         pub mod io;
     }
 }
 
-pub use bytes;
 pub mod error;
 pub mod prelude;
 mod primitive;
