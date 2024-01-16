@@ -29,7 +29,7 @@ path = "src/compiler-rust.rs"
 
 [dependencies]
 clap = { version = "3", features = ["yaml", "cargo"] }
-which = "4.0.2"
+which = "4.3.0"
 molecule-codegen = { version = "=0.7.5", path = "../codegen", features = ["compiler-plugin"] }
 
 [badges]

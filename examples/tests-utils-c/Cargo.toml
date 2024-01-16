@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 codegen = { package ="molecule-codegen", path = "../../tools/codegen" }
 tests-loader = { package ="molecule-tests-loader", path = "../tests-loader" }
-serde_yaml = "0.8.15"
+serde_yaml = "0.8.26"
