@@ -167,14 +167,14 @@ vector WordsOptVec <WordsOpt>;
 vector BytesOptVec <BytesOpt>;
 
 union UnionA {
-    byte,
-    Word,
-    StructA,
-    Bytes,
-    Words,
-    Table0,
-    Table6,
-    Table6Opt,
+    byte : 2,
+    Word : 3,
+    StructA : 7,
+    Bytes : 11,
+    Words : 4278190081,
+    Table0 : 4278190082,
+    Table6 : 4278190083,
+    Table6Opt : 4278190084,
 }
 
 union UnionB {
@@ -299,4 +299,6 @@ table AllInOne {
     f72: UnionA,
     f73: TableA,
     f74: TableB,
+    f75: UnionB,
+    f76: UnionD,
 }

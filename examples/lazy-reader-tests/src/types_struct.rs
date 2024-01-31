@@ -53,8 +53,8 @@ impl TypesStructA {
     pub fn check(&self, d: &types_api2::StructA) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -72,8 +72,8 @@ impl TypesStructB {
     pub fn check(&self, d: &types_api2::StructB) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -92,8 +92,8 @@ impl TypesStructC {
     pub fn check(&self, d: &types_api2::StructC) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -112,8 +112,8 @@ impl TypesStructD {
     pub fn check(&self, d: &types_api2::StructD) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -131,9 +131,9 @@ impl TypesStructE {
     }
     pub fn check(&self, d: &types_api2::StructE) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
-        self.f2.check(&d.f2()?.into())?;
+        self.f2.check(&Cursor::try_from(d.f2()?)?.into())?;
         self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -150,7 +150,7 @@ impl TypesStructF {
     }
     pub fn check(&self, d: &types_api2::StructF) -> ResCheckErr {
         self.f1.check(&d.f1()?.into())?;
-        self.f2.check(&d.f2()?.into())?;
+        self.f2.check(&Cursor::try_from(d.f2()?)?.into())?;
         self.f3.check(&d.f3()?.into())?;
         Ok(())
     }
@@ -172,9 +172,9 @@ impl TypesStructG {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructG) -> ResCheckErr {
-        self.f1.check(&d.f1()?.into())?;
+        self.f1.check(&Cursor::try_from(d.f1()?)?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
         self.f4.check(&d.f4()?.into())?;
         Ok(())
     }
@@ -192,10 +192,10 @@ impl TypesStructH {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructH) -> ResCheckErr {
-        self.f1.check(&d.f1()?.into())?;
+        self.f1.check(&Cursor::try_from(d.f1()?)?.into())?;
         self.f2.check(&d.f2()?.into())?;
-        self.f3.check(&d.f3()?.into())?;
-        self.f4.check(&d.f4()?.into())?;
+        self.f3.check(&Cursor::try_from(d.f3()?)?.into())?;
+        self.f4.check(&Cursor::try_from(d.f4()?)?.into())?;
         Ok(())
     }
 }
@@ -210,7 +210,7 @@ impl TypesStructI {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructI) -> ResCheckErr {
-        self.f1.check(&d.f1()?.into())?;
+        self.f1.check(&Cursor::try_from(d.f1()?)?.into())?;
         self.f2.check(&d.f2()?.into())?;
         Ok(())
     }
@@ -226,7 +226,7 @@ impl TypesStructJ {
             .build()
     }
     pub fn check(&self, d: &types_api2::StructJ) -> ResCheckErr {
-        self.f1.check(&d.f1()?.into())?;
+        self.f1.check(&Cursor::try_from(d.f1()?)?.into())?;
         self.f2.check(&d.f2()?.into())?;
         Ok(())
     }

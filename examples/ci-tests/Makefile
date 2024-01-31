@@ -22,7 +22,7 @@ C_DEPS = ${MOL_DEPS} \
 
 CC = gcc
 CXX = g++
-CFLAGS = -Wall -Werror
+CFLAGS = -Wall -Werror -Wno-array-bounds
 
 clean:
 	@cargo clean

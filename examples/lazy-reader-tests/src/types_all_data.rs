@@ -102,6 +102,9 @@ pub struct TypesAll {
     f72: TypesUnionA,
     f73: TypesTableA,
     f74: TypesTableB,
+
+    f75: TypesUnionB,
+    f76: TypesUnionD,
 }
 
 impl TypesAll {
@@ -183,6 +186,8 @@ impl TypesAll {
             f72: TypesUnionA::new_rng(&mut rng, config),
             f73: TypesTableA::new_rng(&mut rng, config),
             f74: TypesTableB::new_rng(&mut rng, config),
+            f75: TypesUnionB::new_rng(&mut rng, config),
+            f76: TypesUnionD::new_rng(&mut rng, config),
         }
     }
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -268,6 +273,8 @@ impl TypesAll {
             .f72(self.f72.to_mol())
             .f73(self.f73.to_mol())
             .f74(self.f74.to_mol())
+            .f75(self.f75.to_mol())
+            .f76(self.f76.to_mol())
             .build();
 
         builder.as_reader().as_slice().to_vec()
@@ -286,53 +293,53 @@ impl TypesAll {
             .check(&all_in_one.f0()?)
             .map_err(|f| f.to(format!("f0:{}", f.as_str())))?;
         self.f1
-            .check(&all_in_one.f1()?.into())
+            .check(&Cursor::try_from(all_in_one.f1()?)?.into())
             .map_err(|f| f.to(format!("f1:{}", f.as_str())))?;
         self.f2
-            .check(&all_in_one.f2()?.into())
+            .check(&Cursor::try_from(all_in_one.f2()?)?.into())
             .map_err(|f| f.to(format!("f2:{}", f.as_str())))?;
         self.f3
-            .check(&all_in_one.f3()?.into())
+            .check(&Cursor::try_from(all_in_one.f3()?)?.into())
             .map_err(|f| f.to(format!("f3:{}", f.as_str())))?;
         self.f4
-            .check(&all_in_one.f4()?.into())
+            .check(&Cursor::try_from(all_in_one.f4()?)?.into())
             .map_err(|f| f.to(format!("f74:{}", f.as_str())))?;
         self.f5
-            .check(&all_in_one.f5()?.into())
+            .check(&Cursor::try_from(all_in_one.f5()?)?.into())
             .map_err(|f| f.to(format!("f5:{}", f.as_str())))?;
         self.f6
-            .check(&all_in_one.f6()?.into())
+            .check(&Cursor::try_from(all_in_one.f6()?)?.into())
             .map_err(|f| f.to(format!("f6:{}", f.as_str())))?;
         self.f7
-            .check(&all_in_one.f7()?.into())
+            .check(&Cursor::try_from(all_in_one.f7()?)?.into())
             .map_err(|f| f.to(format!("f7:{}", f.as_str())))?;
         self.f8
-            .check(&all_in_one.f8()?.into())
+            .check(&Cursor::try_from(all_in_one.f8()?)?.into())
             .map_err(|f| f.to(format!("f8:{}", f.as_str())))?;
         self.f9
-            .check(&all_in_one.f9()?.into())
+            .check(&Cursor::try_from(all_in_one.f9()?)?.into())
             .map_err(|f| f.to(format!("f9:{}", f.as_str())))?;
         self.f10
-            .check(&all_in_one.f10()?.into())
+            .check(&Cursor::try_from(all_in_one.f10()?)?.into())
             .map_err(|f| f.to(format!("f10:{}", f.as_str())))?;
         self.f11
-            .check(&all_in_one.f11()?.into())
+            .check(&Cursor::try_from(all_in_one.f11()?)?.into())
             .map_err(|f| f.to(format!("f11:{}", f.as_str())))?;
         self.f12
-            .check(&all_in_one.f12()?.into())
+            .check(&Cursor::try_from(all_in_one.f12()?)?.into())
             .map_err(|f| f.to(format!("f12:{}", f.as_str())))?;
         self.f13
-            .check(&all_in_one.f13()?.into())
+            .check(&Cursor::try_from(all_in_one.f13()?)?.into())
             .map_err(|f| f.to(format!("f13:{}", f.as_str())))?;
         self.f14
-            .check(&all_in_one.f14()?.into())
+            .check(&Cursor::try_from(all_in_one.f14()?)?.into())
             .map_err(|f| f.to(format!("f14:{}", f.as_str())))?;
         self.f15
-            .check(&all_in_one.f15()?.into())
+            .check(&Cursor::try_from(all_in_one.f15()?)?.into())
             .map_err(|f| f.to(format!("f15:{}", f.as_str())))?;
 
         self.f16
-            .check2(&all_in_one.f16()?.into())
+            .check2(&Cursor::try_from(all_in_one.f16()?)?.into())
             .map_err(|f| f.to(format!("f16:{}", f.as_str())))?;
         self.f17
             .check(&all_in_one.f17()?.into())
@@ -512,7 +519,12 @@ impl TypesAll {
         self.f74
             .check(&all_in_one.f74()?)
             .map_err(|f| f.to(format!("f74:{}", f.as_str())))?;
-
+        self.f75
+            .check(&all_in_one.f75()?)
+            .map_err(|f| f.to(format!("f75:{}", f.as_str())))?;
+        self.f76
+            .check(&all_in_one.f76()?)
+            .map_err(|f| f.to(format!("f76:{}", f.as_str())))?;
         types_api::AllInOneReader::verify(&data, true).expect("check data");
 
         check_mol(
@@ -925,26 +937,26 @@ fn test_union() {
 
         // success
         let buf = data.as_bytes().to_vec();
-        types_api2::UnionA {
-            cursor: new_cursor(&buf),
-        }
-        .verify(true)
-        .unwrap();
+
+        types_api2::UnionA::try_from(new_cursor(&buf))
+            .expect("new UnionA failed")
+            .verify(true)
+            .expect("verify unionA failed");
 
         // Error item
         let mut buf = data.as_bytes().to_vec();
         buf[0..4].copy_from_slice(&rng.gen_range(8u32..0xFFFFFFFEu32).to_le_bytes());
 
-        types_api2::UnionA {
-            cursor: new_cursor(&buf),
+        let union_a = types_api2::UnionA::try_from(new_cursor(&buf));
+        if union_a.is_ok() && union_a.unwrap().verify(true).is_ok() {
+            panic!("verify failedunionA failed");
         }
-        .verify(true)
-        .unwrap_err();
 
-        if item_id != 3 {
+        if item_id != 11 {
+            // exclude Bytes
             // Error length
             let mut buf = data.as_bytes().to_vec();
-            if item_id != 4 {
+            if item_id != 0xFF000001 {
                 buf.extend_from_slice(&rng.gen::<u32>().to_le_bytes());
             } else {
                 buf.extend_from_slice({
@@ -956,11 +968,10 @@ fn test_union() {
                 })
             }
 
-            types_api2::UnionA {
-                cursor: new_cursor(&buf),
+            let union_a = types_api2::UnionA::try_from(new_cursor(&buf));
+            if union_a.is_ok() && union_a.unwrap().verify(true).is_ok() {
+                panic!("verify failedunionA failed");
             }
-            .verify(true)
-            .unwrap_err();
         }
     }
 
@@ -972,6 +983,7 @@ fn test_union() {
     test_union_item(TypesUnionA::Table0(TypesTable0::default()));
     test_union_item(TypesUnionA::Table6(TypesTable6::default()));
     test_union_item(TypesUnionA::Table6Opt(TypesOption::default()));
+    test_union_item(TypesUnionA::Table6Opt(TypesOption::new_none()));
 }
 
 #[test]

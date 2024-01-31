@@ -14,8 +14,7 @@ impl super::LanguageGenerator for Generator {
             output,
             r#"
         extern crate alloc;
-        use molecule::lazy_reader::Cursor;
-        use molecule::lazy_reader::Error;
+        use molecule::lazy_reader::{{Cursor, Error, NUMBER_SIZE}};
         use core::convert::TryInto;"#
         )?;
 
@@ -42,6 +41,24 @@ impl super::LanguageGenerator for Generator {
 
 fn ident_new(name: &str) -> Ident {
     Ident::new(name, proc_macro2::Span::call_site())
+}
+
+fn ident_new_camel(name: &str) -> Ident {
+    let mut camel_case = String::new();
+    let mut capitalize_next = true;
+
+    for c in name.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            camel_case.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            camel_case.push(c);
+        }
+    }
+
+    ident_new(&camel_case)
 }
 
 pub trait LazyReaderGenerator: HasName {

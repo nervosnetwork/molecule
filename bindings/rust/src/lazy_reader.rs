@@ -23,7 +23,14 @@ pub enum Error {
     Overflow(String),
     Read(String),
     Verify(String),
+    Unknow(String),
 }
+impl From<core::convert::Infallible> for Error {
+    fn from(value: core::convert::Infallible) -> Self {
+        Self::Unknow(format!("conver failed: {:?}", value))
+    }
+}
+
 pub trait Read {
     /**
      * try to read `buf.len()` bytes from data source with `offset`, then fill it in `buf`.
@@ -470,10 +477,9 @@ impl_cursor_primitive!(i8);
 impl TryFrom<Cursor> for Vec<u8> {
     type Error = Error;
     fn try_from(cur: Cursor) -> Result<Self, Error> {
-        let mut buf = Vec::<u8>::new();
-        buf.resize(cur.size, 0);
+        let mut buf = vec![0u8; cur.size];
 
-        let size = cur.read_at(buf.as_mut_slice())?;
+        let size = cur.read_at(&mut buf[..])?;
         if size != buf.len() {
             return Err(Error::Read(format!(
                 "TryFrom<Cursor>: size({}) != buf.len()({})",
@@ -481,6 +487,24 @@ impl TryFrom<Cursor> for Vec<u8> {
                 buf.len()
             )));
         }
+        Ok(buf)
+    }
+}
+
+impl<const N: usize> TryFrom<Cursor> for [u8; N] {
+    type Error = Error;
+    fn try_from(cur: Cursor) -> Result<Self, Error> {
+        let mut buf = [0u8; N];
+
+        let size = cur.read_at(&mut buf[..])?;
+        if size != N || size != cur.size {
+            return Err(Error::Read(format!(
+                "TryFrom<Cursor>: size({}) != buf.len()({})",
+                size,
+                buf.len()
+            )));
+        }
+
         Ok(buf)
     }
 }
@@ -513,6 +537,12 @@ impl Read for Vec<u8> {
 impl From<Vec<u8>> for Cursor {
     fn from(mem: Vec<u8>) -> Self {
         Cursor::new(mem.len(), Box::new(mem))
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for Cursor {
+    fn from(mem: [u8; N]) -> Self {
+        Cursor::new(mem.len(), Box::new(mem.to_vec()))
     }
 }
 // end of example

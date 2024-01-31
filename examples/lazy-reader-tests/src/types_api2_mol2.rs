@@ -212,7 +212,7 @@ impl Mol2Vec for Word2 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word3 {
@@ -221,7 +221,7 @@ impl Mol2Vec for Word3 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word4 {
@@ -230,7 +230,7 @@ impl Mol2Vec for Word4 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word5 {
@@ -239,7 +239,7 @@ impl Mol2Vec for Word5 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word6 {
@@ -248,7 +248,7 @@ impl Mol2Vec for Word6 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word7 {
@@ -257,7 +257,7 @@ impl Mol2Vec for Word7 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Word8 {
@@ -266,7 +266,7 @@ impl Mol2Vec for Word8 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte3x3 {
@@ -275,7 +275,7 @@ impl Mol2Vec for Byte3x3 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte5x3 {
@@ -284,7 +284,7 @@ impl Mol2Vec for Byte5x3 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte7x3 {
@@ -293,7 +293,7 @@ impl Mol2Vec for Byte7x3 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte9x3 {
@@ -302,7 +302,7 @@ impl Mol2Vec for Byte9x3 {
         Ok(self.len())
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Words {
@@ -311,7 +311,7 @@ impl Mol2Vec for Words {
         Ok(self.len()?)
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte3Vec {
@@ -320,7 +320,7 @@ impl Mol2Vec for Byte3Vec {
         Ok(self.len()?)
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for Byte7Vec {
@@ -329,7 +329,7 @@ impl Mol2Vec for Byte7Vec {
         Ok(self.len()?)
     }
     fn mol_get(&self, index: usize) -> Result<Self::RetType, TypesCheckErr> {
-        Ok(Self::RetType::from(self.get(index)?))
+        Ok(Self::RetType::from(Cursor::try_from(self.get(index)?)?))
     }
 }
 impl Mol2Vec for BytesVec {

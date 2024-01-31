@@ -9,13 +9,20 @@ use std::{
 fn compile_schema_rust(schema: &str) {
     let mut compiler = Compiler::new();
     let out_dir = path::PathBuf::from(&env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string()));
+    let mut file_path = out_dir.clone();
     compiler
         .input_schema_file(schema)
         .generate_code(Language::Rust)
         .output_dir(out_dir)
         .run()
         .unwrap();
-
+    file_path.push("types.rs");
+    Command::new("rustfmt")
+        .arg(<PathBuf as AsRef<OsStr>>::as_ref(&file_path))
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap();
     println!("cargo:rerun-if-changed={}", schema);
 }
 

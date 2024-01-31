@@ -4,23 +4,23 @@ use molecule::prelude::Byte;
 
 pub fn check_mol(d1: &types_api::AllInOne, d2: &types_api2::AllInOne) -> ResCheckErr {
     check_f0(&d1.f0(), &d2.f0()?.into())?;
-    check_f1(&d1.f1(), &d2.f1()?.into())?;
-    check_f2(&d1.f2(), &d2.f2()?.into())?;
-    check_f3(&d1.f3(), &d2.f3()?.into())?;
-    check_f4(&d1.f4(), &d2.f4()?.into())?;
-    check_f5(&d1.f5(), &d2.f5()?.into())?;
-    check_f6(&d1.f6(), &d2.f6()?.into())?;
-    check_f7(&d1.f7(), &d2.f7()?.into())?;
-    check_f8(&d1.f8(), &d2.f8()?.into())?;
-    check_f9(&d1.f9(), &d2.f9()?.into())?;
-    check_f10(&d1.f10(), &d2.f10()?.into())?;
-    check_f11(&d1.f11(), &d2.f11()?.into())?;
-    check_f12(&d1.f12(), &d2.f12()?.into())?;
-    check_f13(&d1.f13(), &d2.f13()?.into())?;
-    check_f14(&d1.f14(), &d2.f14()?.into())?;
-    check_f15(&d1.f15(), &d2.f15()?.into())?;
+    check_f1(&d1.f1(), &Cursor::try_from(d2.f1()?)?.into())?;
+    check_f2(&d1.f2(), &Cursor::try_from(d2.f2()?)?.into())?;
+    check_f3(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f4(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
+    check_f5(&d1.f5(), &Cursor::try_from(d2.f5()?)?.into())?;
+    check_f6(&d1.f6(), &Cursor::try_from(d2.f6()?)?.into())?;
+    check_f7(&d1.f7(), &Cursor::try_from(d2.f7()?)?.into())?;
+    check_f8(&d1.f8(), &Cursor::try_from(d2.f8()?)?.into())?;
+    check_f9(&d1.f9(), &Cursor::try_from(d2.f9()?)?.into())?;
+    check_f10(&d1.f10(), &Cursor::try_from(d2.f10()?)?.into())?;
+    check_f11(&d1.f11(), &Cursor::try_from(d2.f11()?)?.into())?;
+    check_f12(&d1.f12(), &Cursor::try_from(d2.f12()?)?.into())?;
+    check_f13(&d1.f13(), &Cursor::try_from(d2.f13()?)?.into())?;
+    check_f14(&d1.f14(), &Cursor::try_from(d2.f14()?)?.into())?;
+    check_f15(&d1.f15(), &Cursor::try_from(d2.f15()?)?.into())?;
 
-    check_f16(&d1.f16(), &d2.f16()?.into())?;
+    check_f16(&d1.f16(), &Cursor::try_from(d2.f16()?)?.into())?;
     check_f17(&d1.f17(), &d2.f17()?.into())?;
     check_f18(&d1.f18(), &d2.f18()?.into())?;
     check_f19(&d1.f19(), &d2.f19()?.into())?;
@@ -67,7 +67,10 @@ pub fn check_mol(d1: &types_api::AllInOne, d2: &types_api2::AllInOne) -> ResChec
     check_f56(&d1.f56(), &d2.f56()?.into())?;
 
     check_f57(&d1.f57().to_opt(), &d2.f57()?)?;
-    check_f58(&d1.f58().to_opt(), &d2.f58()?.map(|f| f.into()))?;
+    check_f58(
+        &d1.f58().to_opt(),
+        &d2.f58()?.map(|f| Cursor::try_from(f).unwrap().into()),
+    )?;
     check_f59(&d1.f59().to_opt(), &d2.f59()?)?;
     check_f60(&d1.f60().to_opt(), &d2.f60()?)?;
     check_f61(
@@ -231,74 +234,74 @@ pub fn check_f27(d1: &types_api::Byte9x3, d2: &types_api2::Byte9x3) -> ResCheckE
 pub fn check_f28(d1: &types_api::StructA, d2: &types_api2::StructA) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
-    check_f1(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f1(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f29(d1: &types_api::StructB, d2: &types_api2::StructB) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
-    check_f2(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f2(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f30(d1: &types_api::StructC, d2: &types_api2::StructC) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
-    check_f3(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f3(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f31(d1: &types_api::StructD, d2: &types_api2::StructD) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
-    check_f4(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f4(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f32(d1: &types_api::StructE, d2: &types_api2::StructE) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
-    check_f1(&d1.f2(), &d2.f2()?.into())?;
+    check_f1(&d1.f2(), &Cursor::try_from(d2.f2()?)?.into())?;
     check_f0(&d1.f3(), &d2.f3()?.into())?;
-    check_f1(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f33(d1: &types_api::StructF, d2: &types_api2::StructF) -> ResCheckErr {
     check_f0(&d1.f1(), &d2.f1()?.into())?;
-    check_f2(&d1.f2(), &d2.f2()?.into())?;
+    check_f2(&d1.f2(), &Cursor::try_from(d2.f2()?)?.into())?;
     check_f0(&d1.f3(), &d2.f3()?.into())?;
 
     Ok(())
 }
 pub fn check_f34(d1: &types_api::StructG, d2: &types_api2::StructG) -> ResCheckErr {
-    check_f2(&d1.f1(), &d2.f1()?.into())?;
+    check_f2(&d1.f1(), &Cursor::try_from(d2.f1()?)?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
     check_f17(&d1.f4(), &d2.f4()?.into())?;
 
     Ok(())
 }
 pub fn check_f35(d1: &types_api::StructH, d2: &types_api2::StructH) -> ResCheckErr {
-    check_f2(&d1.f1(), &d2.f1()?.into())?;
+    check_f2(&d1.f1(), &Cursor::try_from(d2.f1()?)?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
-    check_f1(&d1.f3(), &d2.f3()?.into())?;
-    check_f3(&d1.f4(), &d2.f4()?.into())?;
+    check_f1(&d1.f3(), &Cursor::try_from(d2.f3()?)?.into())?;
+    check_f3(&d1.f4(), &Cursor::try_from(d2.f4()?)?.into())?;
 
     Ok(())
 }
 pub fn check_f36(d1: &types_api::StructI, d2: &types_api2::StructI) -> ResCheckErr {
-    check_f2(&d1.f1(), &d2.f1()?.into())?;
+    check_f2(&d1.f1(), &Cursor::try_from(d2.f1()?)?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
 
     Ok(())
 }
 pub fn check_f37(d1: &types_api::StructJ, d2: &types_api2::StructJ) -> ResCheckErr {
-    check_f5(&d1.f1(), &d2.f1()?.into())?;
+    check_f5(&d1.f1(), &Cursor::try_from(d2.f1()?)?.into())?;
     check_f0(&d1.f2(), &d2.f2()?.into())?;
 
     Ok(())
@@ -631,7 +634,7 @@ pub fn check_f69(d1: &types_api::WordOptVec, d2: &types_api2::WordOptVec) -> Res
     TypesCheckErr::check_length(d1.mol_len()?, d2.len()?)?;
     for i in 0..d1.mol_len()? {
         let dd1 = d1.mol_get(i)?.to_opt();
-        let dd2 = d2.get(i)?.map(|f| f.into());
+        let dd2 = d2.get(i)?.map(|f| Cursor::try_from(f).unwrap().into());
         check_f58(&dd1, &dd2)?;
     }
     Ok(())
@@ -656,38 +659,38 @@ pub fn check_f71(d1: &types_api::BytesOptVec, d2: &types_api2::BytesOptVec) -> R
 }
 pub fn check_f72(d1: &types_api::UnionA, d2: &types_api2::UnionA) -> ResCheckErr {
     match d1.to_enum() {
-        types_api::UnionAUnion::Byte(v) => {
-            let v2 = d2.as_byte()?;
-            TypesCheckErr::check_1_data(&v, &v2.into())?;
-        }
-        types_api::UnionAUnion::Word(v) => {
-            let v2 = d2.as_word()?;
-            check_f16(&v, &v2.into())?;
-        }
-        types_api::UnionAUnion::StructA(v) => {
-            let v2 = d2.as_struct_a()?;
-            check_f28(&v, &v2)?;
-        }
-        types_api::UnionAUnion::Bytes(v) => {
-            let v2 = d2.as_bytes()?;
-            check_f41(&v, &v2.try_into().unwrap())?;
-        }
-        types_api::UnionAUnion::Words(v) => {
-            let v2 = d2.as_words()?;
-            check_f42(&v, &v2)?;
-        }
-        types_api::UnionAUnion::Table0(v) => {
-            let v2 = d2.as_table0()?;
-            check_f50(&v, &v2)?;
-        }
-        types_api::UnionAUnion::Table6(v) => {
-            let v2 = d2.as_table6()?;
-            check_f56(&v, &v2)?;
-        }
-        types_api::UnionAUnion::Table6Opt(v) => {
-            let v2 = d2.as_table6_opt()?;
-            check_f66(&v.to_opt(), &v2)?;
-        }
+        types_api::UnionAUnion::Byte(v) => match d2 {
+            types_api2::UnionA::Byte(v2) => TypesCheckErr::check_1_data(&v, &v2.clone().into())?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Word(v) => match d2 {
+            types_api2::UnionA::Word(v2) => check_f16(&v, v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::StructA(v) => match d2 {
+            types_api2::UnionA::StructA(v2) => check_f28(&v, &v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Bytes(v) => match d2 {
+            types_api2::UnionA::Bytes(v2) => check_f41(&v, &v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Words(v) => match d2 {
+            types_api2::UnionA::Words(v2) => check_f42(&v, &v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Table0(v) => match d2 {
+            types_api2::UnionA::Table0(v2) => check_f50(&v, v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Table6(v) => match d2 {
+            types_api2::UnionA::Table6(v2) => check_f56(&v, v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
+        types_api::UnionAUnion::Table6Opt(v) => match d2 {
+            types_api2::UnionA::Table6Opt(v2) => check_f66(&v.to_opt(), v2)?,
+            _ => return Err(TypesCheckErr::Data(format!("check union type is failed"))),
+        },
     };
 
     Ok(())

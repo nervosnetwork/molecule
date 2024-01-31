@@ -1,5 +1,6 @@
 use super::*;
 use crate::{types_api, types_api2};
+use molecule::lazy_reader::Cursor;
 use molecule::prelude::{Builder, Entity};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 
@@ -50,7 +51,7 @@ impl TypesVec<TypesArrayWord> {
     pub fn check(&self, d: &types_api2::Words) -> ResCheckErr {
         TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
-            self.d[i].check(&d.get(i)?.into())?;
+            self.d[i].check(&Cursor::try_from(d.get(i)?)?.into())?;
         }
         Ok(())
     }
@@ -64,7 +65,7 @@ impl TypesVec<TypesArray<u8, 3>> {
     pub fn check(&self, d: &types_api2::Byte3Vec) -> ResCheckErr {
         TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
-            self.d[i].check(&d.get(i)?.into())?;
+            self.d[i].check(&Cursor::try_from(d.get(i)?)?.into())?;
         }
         Ok(())
     }
@@ -78,7 +79,7 @@ impl TypesVec<TypesArray<u8, 7>> {
     pub fn check(&self, d: &types_api2::Byte7Vec) -> ResCheckErr {
         TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
-            self.d[i].check(&d.get(i)?.into())?;
+            self.d[i].check(&Cursor::try_from(d.get(i)?)?.into())?;
         }
         Ok(())
     }
@@ -185,7 +186,13 @@ impl TypesVec<TypesOption<TypesArrayWord>> {
     pub fn check(&self, d: &types_api2::WordOptVec) -> ResCheckErr {
         TypesCheckErr::check_length(d.len()?, self.d.len())?;
         for i in 0..d.len()? {
-            self.d[i].check(&d.get(i)?.into())?;
+            self.d[i].check(
+                &match d.get(i)? {
+                    Some(v) => Some(Cursor::try_from(v)?),
+                    None => None,
+                }
+                .into(),
+            )?;
         }
         Ok(())
     }

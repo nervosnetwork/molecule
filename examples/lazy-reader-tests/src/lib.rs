@@ -10,6 +10,7 @@ pub mod types_struct;
 pub mod types_table;
 pub mod types_vec;
 
+use molecule::lazy_reader::Cursor;
 use molecule::prelude::{Builder, Entity};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use std::fmt::Debug;
@@ -144,7 +145,13 @@ impl From<molecule::lazy_reader::Error> for TypesCheckErr {
             Overflow(v) => Self::Mol2Err(format!("Overflow({})", v)),
             Read(v) => Self::Mol2Err(format!("Read({})", v)),
             Verify(v) => Self::Mol2Err(format!("Verify({})", v)),
+            Unknow(v) => Self::Mol2Err(format!("Unknow({})", v)),
         }
+    }
+}
+impl From<std::convert::Infallible> for TypesCheckErr {
+    fn from(value: std::convert::Infallible) -> Self {
+        Self::Mol2Err(format!("conver failed: {:?}", value))
     }
 }
 
@@ -203,14 +210,138 @@ impl TypesUnionA {
         // let item_id = d.item_id();
 
         match self {
-            Self::Byte(v) => v.check(&d.as_byte()?),
-            Self::Word(v) => v.check2(&d.as_word()?.into()),
-            Self::StructA(v) => v.check(&d.as_struct_a()?),
-            Self::Bytes(v) => v.check(&d.as_bytes()?.try_into().unwrap()),
-            Self::Words(v) => v.check(&d.as_words()?.into()),
-            Self::Table0(v) => v.check(&d.as_table0()?),
-            Self::Table6(v) => v.check(&d.as_table6()?),
-            Self::Table6Opt(v) => v.check(&d.as_table6_opt()?),
+            Self::Byte(v) => match d {
+                types_api2::UnionA::Byte(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Word(v) => match d {
+                types_api2::UnionA::Word(v2) => v.check2(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::StructA(v) => match d {
+                types_api2::UnionA::StructA(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Bytes(v) => match d {
+                types_api2::UnionA::Bytes(v2) => {
+                    v.check(&v2.clone().try_into()?)
+                }
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Words(v) => match d {
+                types_api2::UnionA::Words(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Table0(v) => match d {
+                types_api2::UnionA::Table0(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Table6(v) => match d {
+                types_api2::UnionA::Table6(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Table6Opt(v) => match d {
+                types_api2::UnionA::Table6Opt(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+        }
+    }
+}
+
+pub enum TypesUnionB {
+    Byte(TypesArray<u8, 1>), // 2
+    Word(TypesArrayWord),    //4
+}
+impl BaseTypes for TypesUnionB {
+    fn new_rng(rng: &mut ThreadRng, config: &TypesConfig) -> Self {
+        let v = if config.min_size {
+            0 // Self::Byte
+        } else {
+            rng.gen_range(0..1)
+        };
+        match v {
+            0 => Self::Byte(TypesArray::new_rng(rng, config)),
+            1 => Self::Word(TypesArrayWord::new_rng(rng, config)),
+
+            _ => panic!("unknow error"),
+        }
+    }
+}
+impl Default for TypesUnionB {
+    fn default() -> Self {
+        Self::new_rng(&mut thread_rng(), &TypesConfig::default())
+    }
+}
+impl TypesUnionB {
+    pub fn to_mol(&self) -> types_api::UnionB {
+        let t = match self {
+            Self::Byte(v) => types_api::UnionBUnion::Byte(v.to_mol()),
+            Self::Word(v) => types_api::UnionBUnion::Word(v.to_mol2()),
+        };
+        types_api::UnionB::new_builder().set(t).build()
+    }
+
+    pub fn check(&self, d: &types_api2::UnionB) -> ResCheckErr {
+        // let item_id = d.item_id();
+
+        match self {
+            Self::Byte(v) => match d {
+                types_api2::UnionB::Byte(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Word(v) => match d {
+                types_api2::UnionB::Word(v2) => v.check2(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+        }
+    }
+}
+
+pub enum TypesUnionD {
+    Word(TypesArrayWord),    //2
+    Byte(TypesArray<u8, 1>), // 4
+}
+impl BaseTypes for TypesUnionD {
+    fn new_rng(rng: &mut ThreadRng, config: &TypesConfig) -> Self {
+        let v = if config.min_size {
+            0 // Self::Byte
+        } else {
+            rng.gen_range(0..1)
+        };
+        match v {
+            0 => Self::Word(TypesArrayWord::new_rng(rng, config)),
+            1 => Self::Byte(TypesArray::new_rng(rng, config)),
+
+            _ => panic!("unknow error"),
+        }
+    }
+}
+impl Default for TypesUnionD {
+    fn default() -> Self {
+        Self::new_rng(&mut thread_rng(), &TypesConfig::default())
+    }
+}
+impl TypesUnionD {
+    pub fn to_mol(&self) -> types_api::UnionD {
+        let t = match self {
+            Self::Word(v) => types_api::UnionDUnion::Word(v.to_mol2()),
+            Self::Byte(v) => types_api::UnionDUnion::Byte(v.to_mol()),
+        };
+        types_api::UnionD::new_builder().set(t).build()
+    }
+
+    pub fn check(&self, d: &types_api2::UnionD) -> ResCheckErr {
+        // let item_id = d.item_id();
+
+        match self {
+            Self::Word(v) => match d {
+                types_api2::UnionD::Word(v2) => v.check2(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
+            Self::Byte(v) => match d {
+                types_api2::UnionD::Byte(v2) => v.check(v2),
+                _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
+            },
         }
     }
 }

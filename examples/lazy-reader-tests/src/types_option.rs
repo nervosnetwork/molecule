@@ -36,6 +36,12 @@ impl<T: BaseTypes> Default for TypesOption<T> {
     }
 }
 
+impl<T> TypesOption<T> {
+    pub fn new_none() -> Self {
+        Self { d: None }
+    }
+}
+
 impl TypesOption<u8> {
     pub fn to_mol(&self) -> types_api::ByteOpt {
         types_api::ByteOpt::new_builder()
