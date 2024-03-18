@@ -1,6 +1,6 @@
 [package]
 name = "moleculec"
-version = "0.7.5"
+version = "0.8.0"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Schema compiler for molecule."
@@ -30,7 +30,7 @@ path = "src/compiler-rust.rs"
 [dependencies]
 clap = { version = "3", features = ["yaml", "cargo"] }
 which = "4.3.0"
-molecule-codegen = { version = "=0.7.5", path = "../codegen", features = ["compiler-plugin"] }
+molecule-codegen = { version = "=0.8.0", path = "../codegen", features = ["compiler-plugin"] }
 
 [badges]
 maintenance = { status = "experimental" }
