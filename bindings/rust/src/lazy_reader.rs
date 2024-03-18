@@ -32,11 +32,7 @@ impl From<core::convert::Infallible> for Error {
 }
 
 pub trait Read {
-    /**
-     * try to read `buf.len()` bytes from data source with `offset`, then fill it in `buf`.
-     * the return size can be smaller than `buf.len()` which means the remaining data length is
-     * smaller than `buf.len()`
-     */
+    // Pull some bytes from this source into the specified buffer with `offset`, returning how many bytes were read.
     fn read(&self, buf: &mut [u8], offset: usize) -> Result<usize, Error>;
 }
 
@@ -46,12 +42,57 @@ pub const NUMBER_SIZE: usize = 4;
 
 pub struct DataSource {
     reader: Box<dyn Read>,
-
     total_size: usize,
     cache_start_point: usize,
-    // cache size may be smaller than cache.len()
-    cache_size: usize,
+    // cache actual size may be smaller than cache.len()
+    cache_actual_size: usize,
     cache: Vec<u8>,
+}
+
+impl DataSource {
+    pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
+        DataSource {
+            reader,
+            total_size,
+            cache_start_point: 0,
+            cache_actual_size: 0,
+            cache: vec![0u8; MAX_CACHE_SIZE],
+        }
+    }
+
+    // Pull some bytes from this source into the specified buffer with `offset` and `read_len`, returning how many bytes were read.
+    // If the requested range is out of bound, an `Error::Read` will be returned.
+    pub fn read_at(
+        &mut self,
+        buf: &mut [u8],
+        offset: usize,
+        read_len: usize,
+    ) -> Result<usize, Error> {
+        // Read directly if the requested length is larger than maximum cache size
+        if read_len > self.cache.len() {
+            return self.reader.read(buf, offset);
+        }
+        // Check if the requested data is in cache
+        if offset >= self.cache_start_point
+            && offset + read_len <= self.cache_start_point + self.cache_actual_size
+        {
+            let read_point = offset - self.cache_start_point;
+            buf.copy_from_slice(&self.cache[read_point..(read_point + read_len)]);
+            return Ok(read_len);
+        }
+        // Cache miss, read from reader and update cache
+        let read_actual_size = self.reader.read(&mut self.cache[..], offset)?;
+        self.cache_start_point = offset;
+        self.cache_actual_size = read_actual_size;
+        if read_actual_size < read_len {
+            return Err(Error::Read(format!(
+                "read_at: read_actual_size({}) < read_len({})",
+                read_actual_size, read_len
+            )));
+        }
+        buf[..read_len].copy_from_slice(&self.cache[0..read_len]);
+        Ok(read_len)
+    }
 }
 
 #[derive(Clone)]
@@ -68,70 +109,23 @@ pub struct Union {
 
 impl Cursor {
     /**
-    cache_size: normally it can be set to MAX_CACHE_SIZE(2K)
     total_size: the size of cursor. If it's set a smaller value,
     `out of bound` will occur when `reader` try to read the data beyond that.
     reader: interface to read underlying data
      */
     pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
-        let data_source = DataSource {
-            reader,
-            total_size,
-            cache_start_point: 0,
-            cache_size: 0, // when created, cache is not filled
-            cache: vec![0u8; MAX_CACHE_SIZE],
-        };
+        let data_source = DataSource::new(total_size, reader);
         Cursor {
             offset: 0,
             size: total_size,
             data_source: Rc::new(RefCell::new(data_source)),
         }
     }
+
     pub fn read_at(&self, buf: &mut [u8]) -> Result<usize, Error> {
         let read_len = min(self.size, buf.len());
-        let ds = &mut *self.data_source.borrow_mut();
-        if read_len > ds.cache.len() {
-            return ds.reader.read(buf, self.offset);
-        }
-        if self.offset < ds.cache_start_point
-            || (self.offset + read_len) > (ds.cache_start_point + ds.cache_size)
-        {
-            let reader = &ds.reader;
-            let size = reader.read(&mut ds.cache[..], self.offset)?;
-            if size < read_len {
-                return Err(Error::Read(format!(
-                    "read_at: `if size({}) < read_len({})`",
-                    size, read_len
-                )));
-            }
-            ds.cache_size = size;
-            ds.cache_start_point = self.offset;
-
-            if ds.cache_size > ds.cache.len() {
-                return Err(Error::Read(format!(
-                    "read_at: `if ds.cache_size({}) > ds.cache.len()({})`",
-                    ds.cache_size,
-                    ds.cache.len()
-                )));
-            }
-        }
-        if self.offset < ds.cache_start_point
-            || (self.offset - ds.cache_start_point) > ds.cache.len()
-        {
-            return Err(Error::Read(format!(
-                "read_at: `if self.offset({}) < ds.cache_start_point({}) || ...`",
-                self.offset, ds.cache_start_point
-            )));
-        }
-        let read_point = self.offset - ds.cache_start_point;
-        if read_point + read_len > ds.cache_size {
-            return Err(Error::Read(format!(
-                "read_at: `if read_point({}) + read_len({}) > ds.cache_size({})`",
-                read_point, read_len, ds.cache_size
-            )));
-        }
-        buf.copy_from_slice(&ds.cache[read_point..(read_point + read_len)]);
-        Ok(read_len)
+        let mut data_source = self.data_source.borrow_mut();
+        data_source.read_at(buf, self.offset, read_len)
     }
 
     pub fn add_offset(&mut self, offset: usize) -> Result<(), Error> {
