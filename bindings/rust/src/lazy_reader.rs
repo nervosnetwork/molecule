@@ -23,11 +23,11 @@ pub enum Error {
     Overflow(String),
     Read(String),
     Verify(String),
-    Unknow(String),
+    Unknown(String),
 }
 impl From<core::convert::Infallible> for Error {
     fn from(value: core::convert::Infallible) -> Self {
-        Self::Unknow(format!("conver failed: {:?}", value))
+        Self::Unknown(format!("convert failed: {:?}", value))
     }
 }
 

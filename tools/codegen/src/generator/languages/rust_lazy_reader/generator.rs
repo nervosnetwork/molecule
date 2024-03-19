@@ -150,7 +150,7 @@ impl LazyReaderGenerator for ast::Union {
 
                     match item.item_id {
                         #( #q )*
-                        _ => Err(Error::UnknownItem(format!("unknow item id: {}", item.item_id)))
+                        _ => Err(Error::UnknownItem(format!("unknown item id: {}", item.item_id)))
                     }
                 }
             }

@@ -13,7 +13,10 @@ impl super::LanguageGenerator for Generator {
         writeln!(
             output,
             r#"
+        #![allow(dead_code)]
+        #![allow(unused_imports)]            
         extern crate alloc;
+        use alloc::format;
         use molecule::lazy_reader::{{Cursor, Error, NUMBER_SIZE}};
         use core::convert::TryInto;"#
         )?;

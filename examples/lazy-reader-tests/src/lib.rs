@@ -145,7 +145,7 @@ impl From<molecule::lazy_reader::Error> for TypesCheckErr {
             Overflow(v) => Self::Mol2Err(format!("Overflow({})", v)),
             Read(v) => Self::Mol2Err(format!("Read({})", v)),
             Verify(v) => Self::Mol2Err(format!("Verify({})", v)),
-            Unknow(v) => Self::Mol2Err(format!("Unknow({})", v)),
+            Unknown(v) => Self::Mol2Err(format!("Unknown({})", v)),
         }
     }
 }
@@ -223,9 +223,7 @@ impl TypesUnionA {
                 _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
             },
             Self::Bytes(v) => match d {
-                types_api2::UnionA::Bytes(v2) => {
-                    v.check(&v2.clone().try_into()?)
-                }
+                types_api2::UnionA::Bytes(v2) => v.check(&v2.clone().try_into()?),
                 _ => Err(TypesCheckErr::Data(format!("check union type is failed"))),
             },
             Self::Words(v) => match d {
