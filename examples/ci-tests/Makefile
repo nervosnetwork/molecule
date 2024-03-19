@@ -27,6 +27,7 @@ CFLAGS = -Wall -Werror -Wno-array-bounds
 clean:
 	@cargo clean
 	@rm -rf ${TMP}
+	@rm -rf c/test-vector-default.c c/test-vector-simple.c c/tests-api.h c/tests-gen.h
 
 tmpdir:
 	@if [ ! -d "${TARGET_TMP_DIR}" ]; then mkdir -p "${TARGET_TMP_DIR}"; fi
