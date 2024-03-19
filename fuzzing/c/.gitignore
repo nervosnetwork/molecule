@@ -1,0 +1,7 @@
+fuzzer
+coverage
+fuzz-*.log
+crash-*
+*.profraw
+coverage_dir
+manually-gen

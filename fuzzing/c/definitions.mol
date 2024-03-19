@@ -1,0 +1,26 @@
+array ArrayType [byte; 3];
+
+struct StructType {
+    f1: ArrayType,
+    f2: byte,
+}
+
+vector FixVecType <byte>;
+vector DynVecType <FixVecType>;
+option OptType (DynVecType);
+
+table TableType {
+    f1: FixVecType,
+    f2: DynVecType,
+    f3: StructType,
+    f4: ArrayType,
+    f5: OptType,
+}
+
+union UnionType {
+    ArrayType,
+    StructType,
+    FixVecType,
+    DynVecType,
+    TableType,
+}
