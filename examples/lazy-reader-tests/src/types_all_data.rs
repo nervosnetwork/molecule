@@ -928,6 +928,13 @@ fn test_err_rng_len() {
 }
 
 #[test]
+fn test_empty_union() {
+    let cursor = new_cursor(&[]);
+    let result = types_api2::UnionA::try_from(cursor);
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_union() {
     fn test_union_item(base: TypesUnionA) {
         let mut rng = thread_rng();

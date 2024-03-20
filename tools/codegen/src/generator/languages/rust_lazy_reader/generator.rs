@@ -108,11 +108,10 @@ impl LazyReaderGenerator for ast::Union {
                     if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
                         quote! {{
                             if cur.fixvec_length()? != cur.size - NUMBER_SIZE {
-                                return Err(Error::TotalSize(format!(
-                                    "total_size: {} != {}",
+                                return Err(Error::TotalSize(
                                     cur.fixvec_length()?,
                                     cur.size
-                                )));
+                                ));
                             }
 
                             cur.add_offset(NUMBER_SIZE)?;
@@ -150,7 +149,7 @@ impl LazyReaderGenerator for ast::Union {
 
                     match item.item_id {
                         #( #q )*
-                        _ => Err(Error::UnknownItem(format!("unknown item id: {}", item.item_id)))
+                        _ => Err(Error::UnknownItem)
                     }
                 }
             }
@@ -394,6 +393,7 @@ fn generate_rust_common_array<W: io::Write>(
 ) -> io::Result<()> {
     let name = ident_new(plain_name);
     let q = quote! {
+        #[derive(Clone)]
         pub struct #name {
             pub cursor: Cursor,
         }
@@ -539,7 +539,7 @@ fn generate_rust_common_table<W: io::Write>(
 ) -> io::Result<()> {
     let name = ident_new(plain_name);
     let q = quote! {
-
+        #[derive(Clone)]
         pub struct #name {
             pub cursor: Cursor,
         }
