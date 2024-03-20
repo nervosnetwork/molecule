@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
 }
 
 pub mod error;
+pub mod lazy_reader;
 pub mod prelude;
 mod primitive;
 

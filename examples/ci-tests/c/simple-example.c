@@ -138,7 +138,7 @@ void test_build_simple() {
     mol_seg_t uniona;
     {
         const uint8_t expected[] = {
-            ____, ____, ____, ____,
+            0x02, ____, ____, ____,
             0x12,
         };
         MolBuilder_UnionA_init(&b);
@@ -148,7 +148,7 @@ void test_build_simple() {
     }
     {
         const uint8_t expected[] = {
-            0x03, ____, ____, ____,
+            0x0b, ____, ____, ____,
             0x03, ____, ____, ____,
             0x12, 0x34, 0x56,
         };

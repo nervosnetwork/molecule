@@ -100,7 +100,7 @@ fn union_default() {
     test_default!(
         UnionA,
         s!("0x\
-            00000000\
+            02000000\
             00\
             ")
     );

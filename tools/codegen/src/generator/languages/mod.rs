@@ -4,11 +4,13 @@ use crate::ast;
 
 mod c;
 mod rust;
+mod rust_lazy_reader;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Language {
     C,
     Rust,
+    RustLazyReader,
 }
 
 pub(super) trait LanguageGenerator {
@@ -20,6 +22,7 @@ impl fmt::Display for Language {
         match *self {
             Self::C => write!(f, "C"),
             Self::Rust => write!(f, "Rust"),
+            Self::RustLazyReader => write!(f, "Rust(Lazy Reader)"),
         }
     }
 }
@@ -30,6 +33,7 @@ impl TryFrom<&str> for Language {
         match value.to_lowercase().as_str() {
             "c" => Ok(Self::C),
             "rust" => Ok(Self::Rust),
+            "rust-lazy-reader" => Ok(Self::RustLazyReader),
             lang => Err(format!("unsupport language: [{}]", lang)),
         }
     }
@@ -40,6 +44,7 @@ impl Language {
         match self {
             Self::C => "h",
             Self::Rust => "rs",
+            Self::RustLazyReader => "rs",
         }
     }
 
@@ -47,6 +52,7 @@ impl Language {
         match self {
             Self::C => c::Generator::generate(writer, ast),
             Self::Rust => rust::Generator::generate(writer, ast),
+            Self::RustLazyReader => rust_lazy_reader::Generator::generate(writer, ast),
         }
     }
 }

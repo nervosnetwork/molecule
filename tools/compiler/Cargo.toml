@@ -27,6 +27,10 @@ path = "src/compiler-c.rs"
 name = "moleculec-rust"
 path = "src/compiler-rust.rs"
 
+[[bin]]
+name = "moleculec-rust-lazy-reader"
+path = "src/compiler-rust-lazy-reader.rs"
+
 [dependencies]
 clap = { version = "3", features = ["yaml", "cargo"] }
 which = "4.3.0"
