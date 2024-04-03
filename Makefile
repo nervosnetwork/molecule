@@ -2,6 +2,7 @@ ci:
 	@set -eu; \
 	export RUSTFLAGS='-D warnings'; \
 	make fmt clippy; \
+	make ci-lazy-reader; \
 	make cargo-test ci-examples ci-crates; \
 	echo "Success!"
 
@@ -35,7 +36,6 @@ clippy:
 	@set -eu; \
 	for dir in ${RUST_PROJS}; do \
 		cd "$${dir}"; \
-		cargo clean; \
 		cargo clippy --all --all-targets --all-features; \
 		cd - > /dev/null; \
 	done
@@ -72,4 +72,13 @@ ci-crates:
 ci-examples:
 	@set -eu; \
 	cd examples/ci-tests; \
-	make clean test
+	make clean test; \
+	cd - > /dev/null; \
+
+ci-lazy-reader:
+	@set -eu; \
+	cd examples/lazy-reader-tests; \
+	make test; \
+	cd - > /dev/null; \
+
+
