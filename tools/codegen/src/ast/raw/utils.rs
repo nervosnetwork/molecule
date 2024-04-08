@@ -185,7 +185,7 @@ impl utils::ParserUtils for parser::Parser {
                 path_buf.set_extension("mol");
                 let path_new = path_buf.as_path();
                 if is_same_file(path, path_new).unwrap() {
-                    panic!("found cyclic dependencie");
+                    panic!("found cyclic dependencies");
                 }
 
                 if path_bufs

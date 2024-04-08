@@ -25,7 +25,7 @@ impl TryFrom<&str> for Format {
         match value.to_uppercase().as_str() {
             "JSON" => Ok(Self::JSON),
             "YAML" => Ok(Self::YAML),
-            format => Err(format!("unsupport format: [{}]", format)),
+            format => Err(format!("unsupported format: [{}]", format)),
         }
     }
 }

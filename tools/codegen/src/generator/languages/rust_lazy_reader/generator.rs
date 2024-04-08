@@ -28,7 +28,7 @@ impl ast::Union {
                     "uint64" => "u64",
                     "int64" => "i64",
                     _ => {
-                        panic!("unknow type: {}", v.name())
+                        panic!("unknown type: {}", v.name())
                     }
                 });
                 quote!(#name)
