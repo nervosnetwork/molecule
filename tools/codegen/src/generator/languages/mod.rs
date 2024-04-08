@@ -34,7 +34,7 @@ impl TryFrom<&str> for Language {
             "c" => Ok(Self::C),
             "rust" => Ok(Self::Rust),
             "rust-lazy-reader" => Ok(Self::RustLazyReader),
-            lang => Err(format!("unsupport language: [{}]", lang)),
+            lang => Err(format!("unsupported language: [{}]", lang)),
         }
     }
 }
