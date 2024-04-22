@@ -1,3 +1,87 @@
+//! # Molecule lazy reader
+//! In the previous implementation, the molecule requires that all data be
+//! loaded into memory before deserialization. This is a significant limitation
+//! in on-chain scripts as ckb-vm only has 4M memory. This feature
+//! implementation aims to resolve this issue by implementing a lazy reader.
+//!
+//! If we examine the [molecule
+//! spec](https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0008-serialization/0008-serialization.md),
+//! specific data can be retrieved by navigating through "hops". By reading
+//! only the header, we can estimate where to navigate and avoid reading the
+//! rest of the data. In many scenarios where only certain parts of the data are
+//! required, a lazy reader mechanism can be utilized.
+//!
+//! Here is an example about how to make a lazy reader from transaction:
+//!```
+//!use blockchain;
+//!use alloc::boxed::Box;
+//!use ckb_std::{ckb_constants::Source, error::SysError, syscalls};
+//!pub use molecule::lazy_reader::{Cursor, Error, Read};
+//!fn read_data<F: Fn(&mut [u8], usize) -> Result<usize, SysError>>(
+//!    load_func: F,
+//!    buf: &mut [u8],
+//!    offset: usize,
+//!    total_size: usize,
+//!) -> Result<usize, Error> {
+//!    if offset >= total_size {
+//!        return Err(Error::OutOfBound(offset, total_size));
+//!    }
+//!    let remaining_len = total_size - offset;
+//!    let min_len = min(remaining_len, buf.len());
+//!    if (offset + min_len) > total_size {
+//!        return Err(Error::OutOfBound(offset + min_len, total_size));
+//!    }
+//!    let actual_len = match load_func(buf, offset) {
+//!        Ok(l) => l,
+//!        Err(err) => match err {
+//!            SysError::LengthNotEnough(l) => l,
+//!            _ => return Err(Error::OutOfBound(0, 0)),
+//!        },
+//!    };
+//!    let read_len = min(buf.len(), actual_len);
+//!    Ok(read_len)
+//!}
+//!fn read_size<F: Fn(&mut [u8]) -> Result<usize, SysError>>(load_func: F) -> Result<usize, Error> {
+//!    let mut buf = [0u8; 4];
+//!    match load_func(&mut buf) {
+//!        Ok(l) => Ok(l),
+//!        Err(e) => match e {
+//!            SysError::LengthNotEnough(l) => Ok(l),
+//!            _ => Err(Error::OutOfBound(0, 0)),
+//!        },
+//!    }
+//!}
+//!pub struct TransactionReader {
+//!    pub total_size: usize,
+//!}
+//!impl TransactionReader {
+//!    pub fn new() -> Self {
+//!        let total_size = read_size(|buf| syscalls::load_transaction(buf, 0)).unwrap();
+//!        Self { total_size }
+//!    }
+//!}
+//!impl Read for TransactionReader {
+//!    fn read(&self, buf: &mut [u8], offset: usize) -> Result<usize, Error> {
+//!        read_data(
+//!            |buf, offset| syscalls::load_transaction(buf, offset),
+//!            buf,
+//!            offset,
+//!            self.total_size,
+//!        )
+//!    }
+//!}
+//!impl From<TransactionReader> for Cursor {
+//!    fn from(data: TransactionReader) -> Self {
+//!        Cursor::new(data.total_size, Box::new(data))
+//!    }
+//!}
+//!pub fn new_transaction() -> blockchain::Transaction {
+//!    let tx_reader = TransactionReader::new();
+//!    let cursor: Cursor = tx_reader.into();
+//!    blockchain::Transaction::from(cursor)
+//!}
+//! ```
+//!
 extern crate alloc;
 
 use alloc::boxed::Box;
@@ -30,8 +114,13 @@ impl From<core::convert::Infallible> for Error {
     }
 }
 
+///
+/// To make a lazy reader cursor from scratch, this trait must be implemented.
+/// See `Cursor::new` about how to create a cursor based on this trait.
+///
 pub trait Read {
-    // Pull some bytes from this source into the specified buffer with `offset`, returning how many bytes were read.
+    /// Pull some bytes from this source into the specified buffer with
+    /// `offset`, returning how many bytes were read.
     fn read(&self, buf: &mut [u8], offset: usize) -> Result<usize, Error>;
 }
 
@@ -39,6 +128,9 @@ pub const MAX_CACHE_SIZE: usize = 2048;
 pub const MIN_CACHE_SIZE: usize = 64;
 pub const NUMBER_SIZE: usize = 4;
 
+///
+/// A data source structure keeps internal state: cache, total size and reader.
+///
 pub struct DataSource {
     reader: Box<dyn Read>,
     total_size: usize,
@@ -49,6 +141,9 @@ pub struct DataSource {
 }
 
 impl DataSource {
+    ///
+    /// Create a data source from `reader` and corresponding `total_size`
+    ///
     pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
         DataSource {
             reader,
@@ -59,8 +154,9 @@ impl DataSource {
         }
     }
 
-    // Pull some bytes from this source into the specified buffer with `offset` and `read_len`, returning how many bytes were read.
-    // If the requested range is out of bound, an `Error::Read` will be returned.
+    /// Pull some bytes from this source into the specified buffer with `offset`
+    /// and `read_len`, returning how many bytes were read. If the requested
+    /// range is out of bound, an `Error::Read` will be returned.
     pub fn read_at(
         &mut self,
         buf: &mut [u8],
@@ -94,6 +190,10 @@ impl DataSource {
     }
 }
 
+///
+/// The Cursor represents a slice or view of data without actually being loaded into memory.
+/// It is a slice of data source with range `[offset, offset + size)`
+///
 #[derive(Clone)]
 pub struct Cursor {
     pub offset: usize,
@@ -107,11 +207,9 @@ pub struct Union {
 }
 
 impl Cursor {
-    /**
-    total_size: the size of cursor. If it's set a smaller value,
-    `out of bound` will occur when `reader` try to read the data beyond that.
-    reader: interface to read underlying data
-     */
+    ///
+    /// Create a cursor from `reader` and its corresponding total size
+    ///
     pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
         let data_source = DataSource::new(total_size, reader);
         Cursor {
@@ -120,23 +218,33 @@ impl Cursor {
             data_source: Rc::new(RefCell::new(data_source)),
         }
     }
-
+    ///
+    /// Read from a cursor into `buf` and returns actually read size.
+    ///
     pub fn read_at(&self, buf: &mut [u8]) -> Result<usize, Error> {
         let read_len = min(self.size, buf.len());
         let mut data_source = self.data_source.borrow_mut();
         data_source.read_at(buf, self.offset, read_len)
     }
 
+    ///
+    /// Move `offset` forward and shrink a cursor from beginning.
+    ///
     pub fn add_offset(&mut self, offset: usize) -> Result<(), Error> {
         self.offset = self.offset.checked_add(offset).ok_or(Error::Overflow)?;
         Ok(())
     }
-
+    ///
+    /// Shrink a cursor from end.
+    ///
     pub fn sub_size(&mut self, shrink_size: usize) -> Result<(), Error> {
         self.size = self.size.checked_sub(shrink_size).ok_or(Error::Overflow)?;
         Ok(())
     }
 
+    ///
+    /// Validate a cursor to ensure that size and offset are not out of bounds.
+    ///
     pub fn validate(&self) -> Result<(), Error> {
         if let Some(size) = self.offset.checked_add(self.size) {
             if size > self.data_source.borrow().total_size {
@@ -149,6 +257,9 @@ impl Cursor {
         }
     }
 
+    ///
+    /// Read the first 4 bytes and unpack them into a u32 in little endian format.
+    ///
     pub fn unpack_number(&self) -> Result<usize, Error> {
         let mut src = [0u8; 4];
         let size = self.read_at(&mut src[..])?;
@@ -159,12 +270,20 @@ impl Cursor {
             Ok(res as usize)
         }
     }
+    ///
+    /// Verify that a cursor has size bytes.
+    ///
     pub fn verify_fixed_size(&self, size: usize) -> Result<(), Error> {
         if self.size != size {
             return Err(Error::Header(self.size, size));
         }
         Ok(())
     }
+    ///
+    /// Verify that a cursor is a valid molecule `table` with
+    /// `expected_field_count` fields. if `compatible` is true, actual fields
+    /// count can be larger than `expected_field_count`.
+    ///  
     pub fn verify_table(&self, expected_field_count: usize, compatible: bool) -> Result<(), Error> {
         self.verify_dynvec()?;
         let mut cur = self.clone();
@@ -181,6 +300,9 @@ impl Cursor {
         Ok(())
     }
 
+    ///
+    /// Verify that a cursor is a valid molecule `dynvec`
+    ///
     pub fn verify_dynvec(&self) -> Result<(), Error> {
         let total_size = self.unpack_number()?;
         if self.size != total_size {
@@ -214,6 +336,9 @@ impl Cursor {
         }
         Ok(())
     }
+    ///
+    /// Verify that a cursor is a valid molecule `fixvec`
+    ///
     pub fn verify_fixvec(&self, item_size: usize) -> Result<(), Error> {
         if self.size < NUMBER_SIZE {
             return Err(Error::Verify);
@@ -235,13 +360,21 @@ impl Cursor {
         }
     }
 
+    ///
+    /// Verify that a cursor is with zero size
+    ///
     pub fn option_is_none(&self) -> bool {
         self.size == 0
     }
+    ///
+    /// Assuming a cursor is a fixvec, return the length of the fixvec.
+    ///
     pub fn fixvec_length(&self) -> Result<usize, Error> {
         self.unpack_number()
     }
-
+    ///
+    /// Assuming a cursor is a dynvec, return the length of the dynvec.
+    ///
     pub fn dynvec_length(&self) -> Result<usize, Error> {
         if self.size == NUMBER_SIZE {
             Ok(0)
@@ -253,7 +386,11 @@ impl Cursor {
             cur2.get_item_count()
         }
     }
-
+    ///
+    /// Assume a cursor is `fixvec`, `dynvec`, or `table`, return the item count.
+    ///
+    /// See [molecule memory layout](https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0008-serialization/0008-serialization.md#memory-layout)
+    ///
     pub fn get_item_count(&self) -> Result<usize, Error> {
         let len = self.unpack_number()?;
         if len % 4 != 0 {
@@ -267,15 +404,23 @@ impl Cursor {
         }
     }
 
+    /// Same to `dynvec_length`
     pub fn table_actual_field_count(&self) -> Result<usize, Error> {
         self.dynvec_length()
     }
 
+    ///
+    /// Verify a table has extra field larger than `field_count`
+    ///
     pub fn table_has_extra_fields(&self, field_count: usize) -> Result<bool, Error> {
         let count = self.table_actual_field_count()?;
         Ok(count > field_count)
     }
 
+    ///
+    /// Create a new cursor by adding an `offset` and setting the `size` to that
+    /// of the original cursor.    
+    ///
     pub fn slice_by_offset(&self, offset: usize, size: usize) -> Result<Cursor, Error> {
         let mut cur2 = self.clone();
         cur2.add_offset(offset)?;
@@ -283,7 +428,10 @@ impl Cursor {
         cur2.validate()?;
         Ok(cur2)
     }
-
+    ///
+    /// Create a new cursor by adding an offset and shrinking the size to that
+    /// of the original cursor.
+    ///
     pub fn slice_by_start(&self, delta: usize) -> Result<Cursor, Error> {
         let mut cur2 = self.clone();
         cur2.add_offset(delta)?;
@@ -292,6 +440,10 @@ impl Cursor {
         Ok(cur2)
     }
 
+    ///
+    /// Assume a cursor is fixvec with item size `item_size`, return an item
+    /// with index `item_index`
+    ///
     pub fn fixvec_slice_by_index(
         &self,
         item_size: usize,
@@ -309,7 +461,9 @@ impl Cursor {
             Ok(cur2)
         }
     }
-
+    ///
+    /// Assuming a cursor is dynvec, return an item with index `item_index`
+    ///
     pub fn dynvec_slice_by_index(&self, item_index: usize) -> Result<Cursor, Error> {
         let mut res = self.clone();
         let mut temp = self.clone();
@@ -343,10 +497,12 @@ impl Cursor {
         Ok(res)
     }
 
+    /// Assuming a cursor is `table`, return a field with index `field_index`
     pub fn table_slice_by_index(&self, field_index: usize) -> Result<Cursor, Error> {
         self.dynvec_slice_by_index(field_index)
     }
 
+    /// Assuming a cursor is `fixvec`, return raw data without header.
     pub fn fixvec_slice_raw_bytes(&self) -> Result<Cursor, Error> {
         let mut res = self.clone();
         res.add_offset(NUMBER_SIZE)?;
@@ -355,14 +511,16 @@ impl Cursor {
         Ok(res)
     }
 
+    /// helper function for generated code
     pub fn convert_to_array(&self) -> Result<Cursor, Error> {
         Ok(self.clone())
     }
 
+    /// same to fixvec_slice_raw_bytes
     pub fn convert_to_rawbytes(&self) -> Result<Cursor, Error> {
         self.fixvec_slice_raw_bytes()
     }
-
+    /// Assume a cursor is `union`. Return a `union`.
     pub fn union_unpack(&self) -> Result<Union, Error> {
         let item_id = self.unpack_number()?;
         let mut cursor = self.clone();
@@ -431,7 +589,9 @@ impl<const N: usize> TryFrom<Cursor> for [u8; N] {
     }
 }
 
-// it's an example about how to build a data source from memory
+///
+/// an example about how to build a cursor from `Vec<u8>`
+///
 impl Read for Vec<u8> {
     fn read(&self, buf: &mut [u8], offset: usize) -> Result<usize, Error> {
         let mem_len = self.len();
@@ -461,4 +621,3 @@ impl<const N: usize> From<[u8; N]> for Cursor {
         Cursor::new(mem.len(), Box::new(mem.to_vec()))
     }
 }
-// end of example
