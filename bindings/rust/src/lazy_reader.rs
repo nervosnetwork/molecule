@@ -12,7 +12,7 @@
 //! required, a lazy reader mechanism can be utilized.
 //!
 //! Here is an example about how to make a lazy reader from transaction:
-//!```
+//!```ignore
 //!use blockchain;
 //!use alloc::boxed::Box;
 //!use ckb_std::{ckb_constants::Source, error::SysError, syscalls};
@@ -387,7 +387,7 @@ impl Cursor {
         }
     }
     ///
-    /// Assume a cursor is `fixvec`, `dynvec`, or `table`, return the item count.
+    /// Assuming a cursor is `fixvec`, `dynvec`, or `table`, return the item count.
     ///
     /// See [molecule memory layout](https://github.com/nervosnetwork/rfcs/blob/master/rfcs/0008-serialization/0008-serialization.md#memory-layout)
     ///
@@ -441,7 +441,7 @@ impl Cursor {
     }
 
     ///
-    /// Assume a cursor is fixvec with item size `item_size`, return an item
+    /// Assuming a cursor is fixvec with item size `item_size`, return an item
     /// with index `item_index`
     ///
     pub fn fixvec_slice_by_index(
@@ -520,7 +520,7 @@ impl Cursor {
     pub fn convert_to_rawbytes(&self) -> Result<Cursor, Error> {
         self.fixvec_slice_raw_bytes()
     }
-    /// Assume a cursor is `union`. Return a `union`.
+    /// Assuming a cursor is `union`. Return a `union`.
     pub fn union_unpack(&self) -> Result<Union, Error> {
         let item_id = self.unpack_number()?;
         let mut cursor = self.clone();
