@@ -5,12 +5,12 @@ LLVM_PROFDATA=llvm-profdata-16
 LLVM_COV=llvm-cov-16
 CORPUS_DIR=corpus
 
-FUZZER_FLAGS=-g -O1 -fsanitize=fuzzer,address,undefined -I ../bindings/c/include -I .
+FUZZER_FLAGS=-g -O1 -fsanitize=fuzzer,address,undefined -I ../../bindings/c/include -I .
 
 COVERAGE_DIR=coverage_dir
-COVERAGE_FLAGS=-g -fprofile-instr-generate -fcoverage-mapping -I ../bindings/c/include -I .
+COVERAGE_FLAGS=-g -fprofile-instr-generate -fcoverage-mapping -I ../../bindings/c/include -I .
 
-EXTERNAL_HEADERS=./fuzzer_func.h ../bindings/c/include/molecule_reader.h
+EXTERNAL_HEADERS=./fuzzer_func.h ../../bindings/c/include/molecule_reader.h
 
 all: fuzzer coverage
 
