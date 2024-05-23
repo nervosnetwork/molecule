@@ -235,6 +235,9 @@ impl GenReader for ast::DynVec {
         w!(o, "        mol_seg_t inner;                               ");
         w!(o, "        inner.ptr = input->ptr + offset;               ");
         w!(o, "        inner.size = end - offset;                     ");
+        w!(o, "        if (mol_contained_by(&inner, input)!=MOL_OK) {{");
+        w!(o, "            return MOL_ERR_OFFSET;                     ");
+        w!(o, "        }}                                             ");
         w!(o, "        mol_errno errno = {}(&inner, compatible);   ", f);
         w!(o, "        if (errno != MOL_OK) {{                        ");
         w!(o, "            return MOL_ERR_DATA;                       ");
@@ -247,6 +250,9 @@ impl GenReader for ast::DynVec {
         w!(o, "    mol_seg_t inner;                                   ");
         w!(o, "    inner.ptr = input->ptr + offset;                   ");
         w!(o, "    inner.size = total_size - offset;                  ");
+        w!(o, "    if (mol_contained_by(&inner, input) != MOL_OK) {{  ");
+        w!(o, "        return MOL_ERR_OFFSET;                         ");
+        w!(o, "    }}                                                 ");
         w!(o, "    return {}(&inner, compatible);                  ", f);
         w!(o, "}}                                                     ");
         Ok(())
@@ -350,6 +356,9 @@ impl GenReader for ast::Table {
                     let f = format!("{}_verify", field.typ().reader_prefix());
                     w!(o, "        inner.ptr = input->ptr + offsets[{}];       ", i);
                     w!(o, "        inner.size = offsets[{}] - offsets[{}];  ", j, i);
+                    w!(o, "        if (mol_contained_by(&inner, input)!=MOL_OK) {{");
+                    w!(o, "            return MOL_ERR_OFFSET;                     ");
+                    w!(o, "        }}                                             ");
                     w!(o, "        errno = {}(&inner, compatible);             ", f);
                     w!(o, "        if (errno != MOL_OK) {{                        ");
                     w!(o, "            return MOL_ERR_DATA;                       ");
