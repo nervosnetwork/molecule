@@ -14,6 +14,25 @@ Another serialization system: minimalist and canonicalization.
 - [Schema Language](docs/schema_language.md)
 - [Real-World Examples](docs/real_world_examples.md)
 
+## Features
+* `default` — Default features: `std`, utilizes `faster-hex` for hexadecimal operations and enables [bytes] standard features.
+* `std` (enabled by default)  — Default features: `std`, utilizes `faster-hex` for hexadecimal operations and enables [bytes] standard features.
+* `bytes_vec` - Introduced in version 0.8, the 0.8 molecule defaults to [bytes], which has implications for use in the CKB runtime. The `bytes_vec` feature provides users with a compatibility option to maintain consistency with previous versions.
+
+## Use in CKB scripts
+When used in CKB scripts, no-std needs to be specified.
+
+```toml
+molecule = { version = "0.7", default-features = false }
+```
+
+Particularly, for versions later than 0.8, you need to additionally specify the bytes_vec feature.
+
+```toml
+molecule = { version = "0.8.0", default-features = false, features = ["bytes_vec"] }
+```
+
+
 ## Tools
 
 ### Schema Compiler and Code Generator
@@ -77,3 +96,4 @@ Licensed under [MIT License].
 [Rust]: https://www.rust-lang.org/
 [Cargo]: https://doc.rust-lang.org/cargo/
 [C]: https://en.wikipedia.org/wiki/C_%28programming_language%29
+[bytes]: https://github.com/tokio-rs/bytes
