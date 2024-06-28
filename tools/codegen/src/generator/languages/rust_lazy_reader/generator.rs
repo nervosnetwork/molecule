@@ -1,12 +1,13 @@
-use super::{ident_new, ident_new_camel, LazyReaderGenerator};
+use super::LazyReaderGenerator;
 use crate::ast::{self, HasName, *};
+use crate::generator::{field_name, ident_name, ident_new};
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 use std::io;
 
 impl ast::Union {
     fn get_item_name(typ: &TopDecl) -> TokenStream {
-        let item_name = ident_new_camel(typ.name());
+        let item_name = ident_name(typ.name(), "");
         let item_type_name = Self::get_type_name(typ);
 
         quote! {
@@ -41,12 +42,12 @@ impl ast::Union {
                 if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
                     quote!(Cursor)
                 } else {
-                    let name = ident_new_camel(typ.name());
+                    let name = ident_name(typ.name(), "");
                     quote!(#name)
                 }
             }
             _ => {
-                let name = ident_new_camel(typ.name());
+                let name = ident_name(typ.name(), "");
                 quote!(#name)
             }
         }
@@ -55,7 +56,7 @@ impl ast::Union {
 
 impl LazyReaderGenerator for ast::Union {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
 
         // generate enum:
         let q = self.items().iter().map(|item| {
@@ -78,7 +79,7 @@ impl LazyReaderGenerator for ast::Union {
         let q = self.items().iter().map(|item| {
             let item_id = item.id();
             let item_name_str = item.typ().name();
-            let item_name = ident_new_camel(item_name_str);
+            let item_name = ident_name(item_name_str, "");
             let item_type = Self::get_type_name(item.typ());
 
             let q = match item.typ().as_ref() {
@@ -95,7 +96,7 @@ impl LazyReaderGenerator for ast::Union {
                     }
                 },
                 TopDecl::Option_(o) => {
-                    let item_name = ident_new_camel(o.item().typ().name());
+                    let item_name = ident_name(o.item().typ().name(), "");
                     quote! {{
                         if cur.option_is_none() {
                             None
@@ -158,7 +159,7 @@ impl LazyReaderGenerator for ast::Union {
 
         // generate verify
         let verify_items = self.items().iter().enumerate().map(|(_i, item)| {
-            let item_name = ident_new_camel(item.typ().name());
+            let item_name = ident_name(item.typ().name(), "");
             match item.typ().as_ref() {
                 TopDecl::Primitive(_) => {
                     quote!( Self::#item_name(_v) =>  Ok(()), )
@@ -223,7 +224,7 @@ impl LazyReaderGenerator for ast::Array {
             None,
         )?;
         let total_size = self.item_count() * self.item_size();
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
 
         let verify_sub = {
             let func = verify_typ(self.item().typ().as_ref(), quote!(self.get(i)?));
@@ -259,7 +260,7 @@ impl LazyReaderGenerator for ast::Option_ {}
 impl LazyReaderGenerator for ast::Struct {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
         generate_rust_common_table(output, self.name(), self.fields(), Some(self.field_sizes()))?;
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
         let total_size: usize = self.field_sizes().iter().sum();
 
         let verify_fields = self
@@ -296,7 +297,7 @@ impl LazyReaderGenerator for ast::FixVec {
             None,
         )?;
 
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
         let item_size = self.item_size();
 
         let q = quote! {
@@ -341,7 +342,7 @@ impl LazyReaderGenerator for ast::DynVec {
             quote!(compatible)
         };
 
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
         let q = quote! {
             impl #name {
                 pub fn verify(&self, #val_compatible: bool) -> Result<(), Error> {
@@ -360,7 +361,7 @@ impl LazyReaderGenerator for ast::Table {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
         generate_rust_common_table(output, self.name(), self.fields(), None)?;
         let field_count = self.fields().len();
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
 
         let verify_fields = self
             .fields()
@@ -391,7 +392,7 @@ fn generate_rust_common_array<W: io::Write>(
     fixvec: Option<&ast::FixVec>,
     _dynvec: Option<&ast::DynVec>,
 ) -> io::Result<()> {
-    let name = ident_new(plain_name);
+    let name = ident_name(plain_name, "");
     let q = quote! {
         #[derive(Clone)]
         pub struct #name {
@@ -453,9 +454,9 @@ fn generate_rust_common_array_impl<W: io::Write>(
         quote! { dynvec_slice_by_index(index) }
     };
     let convert_code = tc.gen_convert_code();
-    let name = ident_new(plain_name);
-    let iterator_name = ident_new(&format!("{}Iterator", name));
-    let iterator_ref_name = ident_new(&format!("{}IteratorRef", name));
+    let name = ident_name(plain_name, "");
+    let iterator_name = ident_name(plain_name, "Iterator");
+    let iterator_ref_name = ident_name(plain_name, "IteratorRef");
     let q = quote! {
         impl #name {
             pub fn get(&self, index: usize) -> Result<#item_name, Error> {
@@ -537,7 +538,7 @@ fn generate_rust_common_table<W: io::Write>(
     fields: &[FieldDecl],
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
-    let name = ident_new(plain_name);
+    let name = ident_name(plain_name, "");
     let q = quote! {
         #[derive(Clone)]
         pub struct #name {
@@ -564,12 +565,11 @@ fn generate_rust_common_table_impl<W: io::Write>(
     index: usize,
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
-    let field_name = field.name();
     let (transformed_name, tc) = get_rust_type_category(field.typ());
     let slice_by = generate_rust_slice_by(index, &field_sizes);
     let convert_code = tc.gen_convert_code();
-    let name = ident_new(plain_name);
-    let field_name = ident_new(field_name);
+    let name = ident_name(plain_name, "");
+    let field_name = field_name(field.name());
     let q = quote! {
         impl #name {
             pub fn #field_name(&self) -> Result<#transformed_name, Error> {
@@ -687,7 +687,7 @@ impl TypeCategory {
 fn get_rust_type_category(typ: &TopDecl) -> (TokenStream, TypeCategory) {
     let name = typ.name();
     let mut tc = TypeCategory::Primitive;
-    let token_name = ident_new(name);
+    let token_name = ident_name(name, "");
     let mut transformed_name = quote! { #token_name };
     match typ {
         // if the field type is array and the field type name is "uint8", "int8" ...
@@ -774,7 +774,7 @@ fn generate_rust_slice_by(index: usize, fields_sizes: &Option<&[usize]>) -> Toke
 }
 
 fn verify_typ(typ: &TopDecl, q_val: TokenStream) -> TokenStream {
-    let type_name = ident_new(typ.name());
+    let type_name = ident_name(typ.name(), "");
     match typ {
         TopDecl::Primitive(_) => {
             quote!()
@@ -841,7 +841,7 @@ fn verify_typ(typ: &TopDecl, q_val: TokenStream) -> TokenStream {
 }
 
 fn verify_filed(f: &FieldDecl) -> TokenStream {
-    let field = ident_new(f.name());
+    let field = field_name(f.name());
     let typ = f.typ();
     verify_typ(typ.as_ref(), quote!(self.#field()?))
 }

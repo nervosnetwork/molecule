@@ -4,7 +4,7 @@ use quote::quote;
 
 use crate::{ast, VERSION};
 
-mod utilities;
+pub(crate) mod utilities;
 
 mod builder;
 mod entity;
