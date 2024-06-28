@@ -176,6 +176,15 @@ impl super::Ast {
             if decls_idx.insert(name, decl).is_some() || !decls_keys.insert(name) {
                 panic!("the name `{}` is used more than once", name);
             };
+
+            let decls_keys_clone = decls_keys
+                .iter()
+                .cloned()
+                .map(str::to_lowercase)
+                .collect::<HashSet<String>>();
+            if decls_keys_clone.len() != decls_keys.len() {
+                panic!("the name `{}` is used more than once, It seems that only the capitalization is inconsistent", name);
+            }
         }
         let mut decls_result = HashMap::new();
         decls_result.insert(
