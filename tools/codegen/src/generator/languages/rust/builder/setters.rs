@@ -119,9 +119,7 @@ fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
             self
         }
         pub fn extend<T: ::core::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
-            for elem in iter {
-                self.0.push(elem);
-            }
+            self.0.extend(iter);
             self
         }
         pub fn replace(&mut self, index: usize, v: #inner) -> Option<#inner> {
