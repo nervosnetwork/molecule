@@ -7,6 +7,7 @@ use crate::ir::{self, ToIntermediate as _};
 
 mod languages;
 
+pub(crate) use languages::rust::utilities::{field_name, ident_name, ident_new};
 pub use languages::Language;
 
 #[derive(Debug, Clone, Copy)]
