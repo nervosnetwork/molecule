@@ -45,15 +45,15 @@ macro_rules! test_option_set_default {
 }
 
 macro_rules! test_vector_push_default {
-    ($type:ident, $expected1:expr, $expected2:expr, $expected3:expr) => {
+    ($type:ident, $item:ident, $expected1:expr, $expected2:expr, $expected3:expr) => {
         let t = types::$type::default();
-        let t = test_vector_push_default!($type, t, $expected1);
-        let t = test_vector_push_default!($type, t, $expected2);
-        let _ = test_vector_push_default!($type, t, $expected3);
+        let t = test_vector_push_default!($type, $item, t, $expected1);
+        let t = test_vector_push_default!($type, $item, t, $expected2);
+        let _ = test_vector_push_default!($type, $item, t, $expected3);
     };
-    ($type:ident, $input:ident, $expected:expr) => {{
+    ($type:ident, $item:ident, $input:ident, $expected:expr) => {{
         let expected = $expected;
-        let builder = $input.as_builder().push(Default::default());
+        let builder = $input.as_builder().push(types::$item::default());
         let result = builder.build();
         assert_eq!(
             result.as_slice(),
@@ -426,6 +426,7 @@ fn option_set_default() {
 fn fixvec_push_default() {
     test_vector_push_default!(
         Bytes,
+        Byte,
         s!("0x\
             01000000\
             00\
@@ -444,6 +445,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         Words,
+        Word,
         s!("0x\
             01000000\
             0000\
@@ -462,6 +464,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         Byte3Vec,
+        Byte3,
         s!("0x\
             01000000\
             000000\
@@ -480,6 +483,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         Byte7Vec,
+        Byte7,
         s!("0x\
             01000000\
             00000000_000000\
@@ -498,6 +502,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         StructIVec,
+        StructI,
         s!("0x\
             01000000\
             00000000\
@@ -516,6 +521,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         StructJVec,
+        StructJ,
         s!("0x\
             01000000\
             00000000_000000\
@@ -534,6 +540,7 @@ fn fixvec_push_default() {
     );
     test_vector_push_default!(
         StructPVec,
+        StructP,
         s!("0x\
             01000000\
             00000000_00000000\
@@ -581,8 +588,8 @@ fn dynvec_push_default() {
                  00000000\
                  00000000\
                  ");
-    test_vector_push_default!(BytesVec, s1, s2, s3);
-    test_vector_push_default!(WordsVec, s1, s2, s3);
+    test_vector_push_default!(BytesVec, Bytes, s1, s2, s3);
+    test_vector_push_default!(WordsVec, Words, s1, s2, s3);
     let s1 = s!("0x\
                  08000000\
                  \
@@ -601,8 +608,8 @@ fn dynvec_push_default() {
                  10000000\
                  10000000\
                  ");
-    test_vector_push_default!(ByteOptVec, s1, s2, s3);
-    test_vector_push_default!(WordOptVec, s1, s2, s3);
-    test_vector_push_default!(WordsOptVec, s1, s2, s3);
-    test_vector_push_default!(BytesOptVec, s1, s2, s3);
+    test_vector_push_default!(ByteOptVec, ByteOpt, s1, s2, s3);
+    test_vector_push_default!(WordOptVec, WordOpt, s1, s2, s3);
+    test_vector_push_default!(WordsOptVec, WordsOpt, s1, s2, s3);
+    test_vector_push_default!(BytesOptVec, BytesOpt, s1, s2, s3);
 }

@@ -13,6 +13,7 @@ Another serialization system: minimalist and canonicalization.
 - [Encoding Spec](docs/encoding_spec.md)
 - [Schema Language](docs/schema_language.md)
 - [Real-World Examples](docs/real_world_examples.md)
+- [API](docs/molecule_api.md)
 
 ## Features
 * `default` — Default features: `std`, utilizes `faster-hex` for hexadecimal operations and enables [bytes] standard features.

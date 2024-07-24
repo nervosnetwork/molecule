@@ -15,17 +15,14 @@ fn display_test_data() {
     let f0: types::Byte = 0x12u8.into();
     let f2 = types::Byte3::new_builder().nth1(f0).build();
     let f29 = types::StructB::new_builder()
-        .f2(0x34u8.into())
+        .f2(0x34u8)
         .f4(f2.clone())
         .build();
     let f41 = {
-        let mut f41_builder = types::Bytes::new_builder()
-            .push(0x12.into())
-            .push(0x12.into())
-            .push(0x13.into());
-        assert_eq!(f41_builder.replace(1, 0x34.into()), Some(0x12.into()));
-        assert_eq!(f41_builder.replace(2, 0x56.into()), Some(0x13.into()));
-        assert_eq!(f41_builder.replace(3, 0x56.into()), None);
+        let mut f41_builder = types::Bytes::new_builder().push(0x12).push(0x12).push(0x13);
+        assert_eq!(f41_builder.replace(1, 0x34), Some(0x12.into()));
+        assert_eq!(f41_builder.replace(2, 0x56), Some(0x13.into()));
+        assert_eq!(f41_builder.replace(3, 0x56), None);
         f41_builder.build()
     };
     let f43 = types::Byte3Vec::new_builder()

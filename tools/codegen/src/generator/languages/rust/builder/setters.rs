@@ -12,8 +12,11 @@ impl ImplSetters for ast::Option_ {
     fn impl_setters(&self) -> m4::TokenStream {
         let inner = entity_name(self.item().typ().name());
         quote!(
-            pub fn set(mut self, v: Option<#inner>) -> Self {
-                self.0 = v;
+            pub fn set<T>(mut self, v: T) -> Self
+            where
+                T: ::core::convert::Into<Option<#inner>>
+            {
+                self.0 = v.into();
                 self
             }
         )
@@ -40,8 +43,11 @@ impl ImplSetters for ast::Array {
         let inner = entity_name(self.item().typ().name());
         let item_count = usize_lit(self.item_count());
         let entire_setter = quote!(
-            pub fn set(mut self, v: [#inner; #item_count]) -> Self {
-                self.0 = v;
+            pub fn set<T>(mut self, v: T) -> Self
+            where
+                T: ::core::convert::Into<[#inner; #item_count]>
+            {
+                self.0 = v.into();
                 self
             }
         );
@@ -50,8 +56,11 @@ impl ImplSetters for ast::Array {
                 let index = usize_lit(idx);
                 let func = func_name(&format!("nth{}", idx));
                 quote!(
-                    pub fn #func(mut self, v: #inner) -> Self {
-                        self.0[#index] = v;
+                    pub fn #func<T>(mut self, v: T) -> Self
+                    where
+                        T: ::core::convert::Into<#inner>
+                    {
+                        self.0[#index] = v.into();
                         self
                     }
                 )
@@ -95,8 +104,11 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
             let field_name = field_name(f.name());
             let field_type = entity_name(f.typ().name());
             quote!(
-                pub fn #field_name(mut self, v: #field_type) -> Self {
-                    self.#field_name = v;
+                pub fn #field_name<T>(mut self, v: T) -> Self
+                where
+                    T: ::core::convert::Into<#field_type>
+                {
+                    self.#field_name = v.into();
                     self
                 }
             )
@@ -110,22 +122,27 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
 fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
     let inner = entity_name(inner_name);
     quote!(
-        pub fn set(mut self, v: Vec<#inner>) -> Self {
+        pub fn set(mut self, v: Vec<#inner>) -> Self
+        {
             self.0 = v;
             self
         }
-        pub fn push(mut self, v: #inner) -> Self {
-            self.0.push(v);
+        pub fn push<T>(mut self, v: T) -> Self
+        where
+            T: ::core::convert::Into<#inner>
+        {
+            self.0.push(v.into());
             self
         }
         pub fn extend<T: ::core::iter::IntoIterator<Item=#inner>>(mut self, iter: T) -> Self {
-            for elem in iter {
-                self.0.push(elem);
-            }
+            self.0.extend(iter);
             self
         }
-        pub fn replace(&mut self, index: usize, v: #inner) -> Option<#inner> {
-            self.0.get_mut(index).map(|item| ::core::mem::replace(item, v))
+        pub fn replace<T>(&mut self, index: usize, v: T) -> Option<#inner>
+        where
+            T: ::core::convert::Into<#inner>
+        {
+            self.0.get_mut(index).map(|item| ::core::mem::replace(item, v.into()))
         }
     )
 }
