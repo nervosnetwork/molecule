@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "molecule"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "cfg-if",
@@ -160,10 +160,10 @@ dependencies = [
 
 [[package]]
 name = "molecule-codegen"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "case",
- "molecule 0.8.0",
+ "molecule 0.9.0",
  "pest",
  "pest_derive",
  "proc-macro2",
@@ -367,11 +367,11 @@ dependencies = [
 
 [[package]]
 name = "tests"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
- "molecule 0.8.0",
+ "molecule 0.9.0",
  "molecule-codegen 0.7.3",
- "molecule-codegen 0.8.0",
+ "molecule-codegen 0.9.0",
 ]
 
 [[package]]
