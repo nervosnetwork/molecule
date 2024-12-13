@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [ master, develop, staging, trying ]
+    branches: [master, develop, staging, trying]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 defaults:
   run:
     shell: bash
@@ -38,19 +38,19 @@ jobs:
         run: make clippy
   test-msrv:
     name: Tests / Build (MSRV)
-    needs: [ rustfmt, clippy ]
+    needs: [rustfmt, clippy]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.56.1 # MSRV
+          toolchain: 1.75.0 # MSRV
       - name: Run
         run: make ci-msrv
   test-crates:
     name: Tests / Build & Test
-    needs: [ rustfmt, clippy ]
+    needs: [rustfmt, clippy]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
         run: make ci-crates
   test-examples:
     name: Tests / Run Examples
-    needs: [ rustfmt, clippy ]
+    needs: [rustfmt, clippy]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
   success:
     name: Success
     if: ${{ success() }}
-    needs: [ test-crates, test-examples ]
+    needs: [test-crates, test-examples]
     runs-on: ubuntu-latest
     steps:
       - name: Succeed

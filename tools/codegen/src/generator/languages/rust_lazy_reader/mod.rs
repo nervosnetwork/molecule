@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::ast::HasName;
-use proc_macro2::Ident;
+use crate::generator::ident_name;
 use quote::quote;
 use std::io;
 
@@ -39,31 +39,9 @@ impl super::LanguageGenerator for Generator {
     }
 }
 
-fn ident_new(name: &str) -> Ident {
-    Ident::new(name, proc_macro2::Span::call_site())
-}
-
-fn ident_new_camel(name: &str) -> Ident {
-    let mut camel_case = String::new();
-    let mut capitalize_next = true;
-
-    for c in name.chars() {
-        if c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            camel_case.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else {
-            camel_case.push(c);
-        }
-    }
-
-    ident_new(&camel_case)
-}
-
 pub trait LazyReaderGenerator: HasName {
     fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        let name = ident_new(self.name());
+        let name = ident_name(self.name(), "");
         let q = quote! {
             pub struct #name { pub cursor : Cursor }
 

@@ -3,7 +3,7 @@ use std::{convert::TryFrom, fmt, io};
 use crate::ast;
 
 mod c;
-mod rust;
+pub(crate) mod rust;
 mod rust_lazy_reader;
 
 #[derive(Debug, Clone, Copy)]

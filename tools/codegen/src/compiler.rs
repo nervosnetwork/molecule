@@ -102,17 +102,17 @@ impl Compiler {
         let output = output.as_mut().ok_or("output is not set")?;
 
         #[cfg(not(feature = "compiler-plugin"))]
-        let file_name;
+        let mut file_name = Default::default();
         #[cfg(feature = "compiler-plugin")]
         let mut file_name = None;
 
         let ast = match input {
             Input::SchemaFile(ref file_path) => {
-                file_name = file_path
+                file_path
                     .as_path()
                     .file_name()
                     .and_then(ffi::OsStr::to_str)
-                    .to_owned();
+                    .clone_into(&mut file_name);
                 parser::Parser::parse(file_path)
             }
             #[cfg(feature = "compiler-plugin")]
