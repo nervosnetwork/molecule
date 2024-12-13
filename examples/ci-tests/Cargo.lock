@@ -209,7 +209,7 @@ checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
 
 [[package]]
 name = "molecule"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bytes",
  "cfg-if",
@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "molecule-ci-tests"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "cc",
  "molecule",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "molecule-codegen"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "case",
  "molecule",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "molecule-tests-loader"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "faster-hex 0.4.1",
  "molecule-codegen",
@@ -258,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "molecule-tests-utils-rust"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "molecule-codegen",
  "molecule-tests-loader",
