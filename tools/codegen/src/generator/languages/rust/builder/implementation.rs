@@ -278,6 +278,12 @@ fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
                     Self::new_builder().extend(iter.into_iter().map(Into::into)).build()
                 }
             }
+
+            impl From<Vec<u8>> for #entity {
+                fn from(v: Vec<u8>) -> Self {
+                    Self::new_builder().set(v.into_iter().map(Into::into).collect()).build()
+                }
+            }
         )
     } else {
         quote!()
@@ -287,6 +293,13 @@ fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
         impl ::core::iter::FromIterator<#item_name> for #entity {
             fn from_iter<T: IntoIterator<Item = #item_name>>(iter: T) -> Self {
                 Self::new_builder().extend(iter).build()
+            }
+        }
+
+        impl From<Vec<#item_name>> for #entity
+        {
+            fn from(v: Vec<#item_name>) -> Self {
+                Self::new_builder().set(v).build()
             }
         }
 

@@ -52,7 +52,7 @@ fn arbitrary_table0() -> impl Strategy<Value = types::Table0> {
 }
 
 fn arbitrary_table1() -> impl Strategy<Value = types::Table1> {
-    any::<u8>().prop_map(|data| types::Table1::new_builder().f1(data.into()).build())
+    any::<u8>().prop_map(|data| types::Table1::new_builder().f1(data).build())
 }
 
 fn arbitrary_table5() -> impl Strategy<Value = types::Table5> {
