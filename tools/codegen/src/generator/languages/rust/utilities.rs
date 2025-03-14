@@ -67,6 +67,8 @@ fn rust_keyword() -> &'static HashSet<&'static str> {
             "macro_rules",
             "union",
             "'static",
+            // 2024+
+            "gen",
         ])
         .collect()
     })
