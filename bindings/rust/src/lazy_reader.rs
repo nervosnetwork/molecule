@@ -21,16 +21,7 @@
 //!    load_func: F,
 //!    buf: &mut [u8],
 //!    offset: usize,
-//!    total_size: usize,
 //!) -> Result<usize, Error> {
-//!    if offset >= total_size {
-//!        return Err(Error::OutOfBound(offset, total_size));
-//!    }
-//!    let remaining_len = total_size - offset;
-//!    let min_len = min(remaining_len, buf.len());
-//!    if (offset + min_len) > total_size {
-//!        return Err(Error::OutOfBound(offset + min_len, total_size));
-//!    }
 //!    let actual_len = match load_func(buf, offset) {
 //!        Ok(l) => l,
 //!        Err(err) => match err {
@@ -52,12 +43,12 @@
 //!    }
 //!}
 //!pub struct TransactionReader {
-//!    pub total_size: usize,
+//!    pub size: usize,
 //!}
 //!impl TransactionReader {
 //!    pub fn new() -> Self {
-//!        let total_size = read_size(|buf| syscalls::load_transaction(buf, 0)).unwrap();
-//!        Self { total_size }
+//!        let size = read_size(|buf| syscalls::load_transaction(buf, 0)).unwrap();
+//!        Self { size }
 //!    }
 //!}
 //!impl Read for TransactionReader {
@@ -65,14 +56,13 @@
 //!        read_data(
 //!            |buf, offset| syscalls::load_transaction(buf, offset),
 //!            buf,
-//!            offset,
-//!            self.total_size,
+//!            offset
 //!        )
 //!    }
 //!}
 //!impl From<TransactionReader> for Cursor {
 //!    fn from(data: TransactionReader) -> Self {
-//!        Cursor::new(data.total_size, Box::new(data))
+//!        Cursor::new(data.size, Box::new(data))
 //!    }
 //!}
 //!pub fn new_transaction() -> blockchain::Transaction {
@@ -133,7 +123,6 @@ pub const NUMBER_SIZE: usize = 4;
 ///
 pub struct DataSource {
     reader: Box<dyn Read>,
-    total_size: usize,
     cache_start_point: usize,
     // cache actual size may be smaller than cache.len()
     cache_actual_size: usize,
@@ -142,12 +131,11 @@ pub struct DataSource {
 
 impl DataSource {
     ///
-    /// Create a data source from `reader` and corresponding `total_size`
+    /// Create a data source from `reader`
     ///
-    pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
+    pub fn new(reader: Box<dyn Read>) -> Self {
         DataSource {
             reader,
-            total_size,
             cache_start_point: 0,
             cache_actual_size: 0,
             cache: vec![0u8; MAX_CACHE_SIZE],
@@ -208,13 +196,13 @@ pub struct Union {
 
 impl Cursor {
     ///
-    /// Create a cursor from `reader` and its corresponding total size
+    /// Create a cursor from `reader` and its corresponding size
     ///
-    pub fn new(total_size: usize, reader: Box<dyn Read>) -> Self {
-        let data_source = DataSource::new(total_size, reader);
+    pub fn new(size: usize, reader: Box<dyn Read>) -> Self {
+        let data_source = DataSource::new(reader);
         Cursor {
             offset: 0,
-            size: total_size,
+            size,
             data_source: Rc::new(RefCell::new(data_source)),
         }
     }
@@ -241,22 +229,6 @@ impl Cursor {
         self.size = self.size.checked_sub(shrink_size).ok_or(Error::Overflow)?;
         Ok(())
     }
-
-    ///
-    /// Validate a cursor to ensure that size and offset are not out of bounds.
-    ///
-    pub fn validate(&self) -> Result<(), Error> {
-        if let Some(size) = self.offset.checked_add(self.size) {
-            if size > self.data_source.borrow().total_size {
-                Err(Error::TotalSize(size, self.data_source.borrow().total_size))
-            } else {
-                Ok(())
-            }
-        } else {
-            Err(Error::Overflow)
-        }
-    }
-
     ///
     /// Read the first 4 bytes and unpack them into a u32 in little endian format.
     ///
@@ -283,7 +255,7 @@ impl Cursor {
     /// Verify that a cursor is a valid molecule `table` with
     /// `expected_field_count` fields. if `compatible` is true, actual fields
     /// count can be larger than `expected_field_count`.
-    ///  
+    ///
     pub fn verify_table(&self, expected_field_count: usize, compatible: bool) -> Result<(), Error> {
         self.verify_dynvec()?;
         let mut cur = self.clone();
@@ -379,10 +351,7 @@ impl Cursor {
         if self.size == NUMBER_SIZE {
             Ok(0)
         } else {
-            let mut cur2 = self.clone();
-            cur2.add_offset(NUMBER_SIZE)?;
-            cur2.sub_size(NUMBER_SIZE)?;
-            cur2.validate()?;
+            let cur2 = self.slice_by_start(NUMBER_SIZE)?;
             cur2.get_item_count()
         }
     }
@@ -419,14 +388,16 @@ impl Cursor {
 
     ///
     /// Create a new cursor by adding an `offset` and setting the `size` to that
-    /// of the original cursor.    
+    /// of the original cursor.
     ///
     pub fn slice_by_offset(&self, offset: usize, size: usize) -> Result<Cursor, Error> {
-        let mut cur2 = self.clone();
-        cur2.add_offset(offset)?;
-        cur2.size = size;
-        cur2.validate()?;
-        Ok(cur2)
+        if (offset + size) > self.size {
+            return Err(Error::TotalSize(offset, size));
+        }
+        let mut cur = self.clone();
+        cur.add_offset(offset)?;
+        cur.size = size;
+        Ok(cur)
     }
     ///
     /// Create a new cursor by adding an offset and shrinking the size to that
@@ -436,7 +407,6 @@ impl Cursor {
         let mut cur2 = self.clone();
         cur2.add_offset(delta)?;
         cur2.sub_size(delta)?;
-        cur2.validate()?;
         Ok(cur2)
     }
 
@@ -449,16 +419,12 @@ impl Cursor {
         item_size: usize,
         item_index: usize,
     ) -> Result<Cursor, Error> {
-        let mut cur2 = self.clone();
         let item_count = self.unpack_number()?;
         if item_index >= item_count {
             Err(Error::OutOfBound(item_index, item_count))
         } else {
             let offset = calculate_offset(item_size, item_index, NUMBER_SIZE)?;
-            cur2.add_offset(offset)?;
-            cur2.size = item_size;
-            cur2.validate()?;
-            Ok(cur2)
+            Ok(self.slice_by_offset(offset, item_size)?)
         }
     }
     ///
@@ -493,7 +459,6 @@ impl Cursor {
             res.size = item_end;
             res.sub_size(item_start)?;
         }
-        res.validate()?;
         Ok(res)
     }
 
@@ -504,11 +469,7 @@ impl Cursor {
 
     /// Assuming a cursor is `fixvec`, return raw data without header.
     pub fn fixvec_slice_raw_bytes(&self) -> Result<Cursor, Error> {
-        let mut res = self.clone();
-        res.add_offset(NUMBER_SIZE)?;
-        res.size = self.unpack_number()?;
-        res.validate()?;
-        Ok(res)
+        Ok(self.slice_by_offset(NUMBER_SIZE, self.unpack_number()?)?)
     }
 
     /// helper function for generated code
@@ -523,10 +484,7 @@ impl Cursor {
     /// Assuming a cursor is `union`. Return a `union`.
     pub fn union_unpack(&self) -> Result<Union, Error> {
         let item_id = self.unpack_number()?;
-        let mut cursor = self.clone();
-        cursor.add_offset(NUMBER_SIZE)?;
-        cursor.sub_size(NUMBER_SIZE)?;
-        cursor.validate()?;
+        let cursor = self.slice_by_start(NUMBER_SIZE)?;
         Ok(Union { item_id, cursor })
     }
 }
