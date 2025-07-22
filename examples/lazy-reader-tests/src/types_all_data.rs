@@ -1140,3 +1140,43 @@ fn test_struct_verify() {
     .verify(false)
     .expect_err("");
 }
+
+#[test]
+fn test_verify_table() {
+    // table with 2 fields
+    let data = vec![14, 0, 0, 0, 12, 0, 0, 0, 13, 0, 0, 0, 100, 200];
+    types_api2::Table1 {
+        cursor: new_cursor(&data),
+    }
+    .verify(false)
+    .expect_err("");
+    types_api2::Table1 {
+        cursor: new_cursor(&data),
+    }
+    .verify(true)
+    .expect("");
+    // table with 0 field
+    let data = vec![4, 0, 0, 0];
+    types_api2::Table1 {
+        cursor: new_cursor(&data),
+    }
+    .verify(false)
+    .expect_err("");
+    types_api2::Table1 {
+        cursor: new_cursor(&data),
+    }
+    .verify(true)
+    .expect_err("");
+
+    // empty table can accept it
+    types_api2::Table0 {
+        cursor: new_cursor(&data),
+    }
+    .verify(true)
+    .expect("");
+    types_api2::Table0 {
+        cursor: new_cursor(&data),
+    }
+    .verify(false)
+    .expect("");
+}

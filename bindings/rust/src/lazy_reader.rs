@@ -258,12 +258,19 @@ impl Cursor {
     ///
     pub fn verify_table(&self, expected_field_count: usize, compatible: bool) -> Result<(), Error> {
         self.verify_dynvec()?;
+        let total_size = self.unpack_number()?;
+        // Handle empty table case
+        if total_size == NUMBER_SIZE {
+            // An empty table (only header) can only be valid if expected_field_count is 0
+            // This applies regardless of the compatible flag
+            if expected_field_count == 0 {
+                return Ok(());
+            } else {
+                return Err(Error::Verify);
+            }
+        }
         let mut cur = self.clone();
         cur.add_offset(NUMBER_SIZE)?;
-        if self.size == cur.size {
-            // empty table
-            return Ok(());
-        }
         let first_offset = cur.unpack_number()?;
         let field_count = first_offset / NUMBER_SIZE - 1;
         if field_count < expected_field_count || !compatible && field_count > expected_field_count {
