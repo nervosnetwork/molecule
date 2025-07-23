@@ -158,7 +158,7 @@ impl LazyReaderGenerator for ast::Union {
         writeln!(output, "{}", q)?;
 
         // generate verify
-        let verify_items = self.items().iter().enumerate().map(|(_i, item)| {
+        let verify_items = self.items().iter().map(|item| {
             let item_name = ident_name(item.typ().name(), "");
             match item.typ().as_ref() {
                 TopDecl::Primitive(_) => {
@@ -263,11 +263,7 @@ impl LazyReaderGenerator for ast::Struct {
         let name = ident_name(self.name(), "");
         let total_size: usize = self.field_sizes().iter().sum();
 
-        let verify_fields = self
-            .fields()
-            .iter()
-            .enumerate()
-            .map(|(_i, f)| verify_filed(f));
+        let verify_fields = self.fields().iter().map(verify_filed);
 
         let q = quote! {
             impl #name {
@@ -363,11 +359,7 @@ impl LazyReaderGenerator for ast::Table {
         let field_count = self.fields().len();
         let name = ident_name(self.name(), "");
 
-        let verify_fields = self
-            .fields()
-            .iter()
-            .enumerate()
-            .map(|(_i, f)| verify_filed(f));
+        let verify_fields = self.fields().iter().map(verify_filed);
 
         let q = quote! {
             impl #name {

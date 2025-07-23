@@ -16,7 +16,7 @@ impl fmt::Debug for Byte {
     }
 }
 
-impl<'r> fmt::Debug for ByteReader<'r> {
+impl fmt::Debug for ByteReader<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}(0x{:02x})", Self::NAME, self.0[0])
@@ -30,7 +30,7 @@ impl fmt::Display for Byte {
     }
 }
 
-impl<'r> fmt::Display for ByteReader<'r> {
+impl fmt::Display for ByteReader<'_> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}(0x{:02x})", Self::NAME, self.0[0])

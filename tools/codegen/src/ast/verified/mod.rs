@@ -164,7 +164,7 @@ impl TopDecl {
 
     fn imported_depth(&self) -> usize {
         match self {
-            Self::Primitive(_) => usize::max_value(),
+            Self::Primitive(_) => usize::MAX,
             Self::Option_(inner) => inner.imported_depth,
             Self::Union(inner) => inner.imported_depth,
             Self::Array(inner) => inner.imported_depth,

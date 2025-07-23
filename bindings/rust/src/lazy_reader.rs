@@ -476,7 +476,7 @@ impl Cursor {
 
     /// Assuming a cursor is `fixvec`, return raw data without header.
     pub fn fixvec_slice_raw_bytes(&self) -> Result<Cursor, Error> {
-        Ok(self.slice_by_offset(NUMBER_SIZE, self.unpack_number()?)?)
+        self.slice_by_offset(NUMBER_SIZE, self.unpack_number()?)
     }
 
     /// helper function for generated code

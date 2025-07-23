@@ -12,7 +12,7 @@ use crate::{
     utils::{self, PairsUtils as _},
 };
 
-impl<'i> utils::PairsUtils for Pairs<'i, parser::Rule> {
+impl utils::PairsUtils for Pairs<'_, parser::Rule> {
     fn next_string(&mut self) -> String {
         self.next().unwrap().as_str().to_owned()
     }
