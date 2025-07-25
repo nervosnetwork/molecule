@@ -1,0 +1,31 @@
+name: release
+
+on:
+  release:
+    types: [created]
+
+# Copied from https://crates.io/docs/trusted-publishing
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # Required for OIDC token exchange
+    steps:
+    - uses: actions/checkout@v4
+    - uses: rust-lang/crates-io-auth-action@v1
+      id: auth
+    - name: Publish bindings/rust
+      run: cargo publish
+      working-directory: bindings/rust
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    - name: Publish tools/codegen
+      run: cargo publish
+      working-directory: tools/codegen
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    - name: Publish tools/compiler
+      run: cargo publish
+      working-directory: tools/compiler
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}

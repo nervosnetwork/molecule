@@ -1,6 +1,6 @@
 [package]
 name = "moleculec"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Nervos Core Dev <dev@nervos.org>"]
 edition = "2018"
 description = "Schema compiler for molecule."
@@ -34,7 +34,7 @@ path = "src/compiler-rust-lazy-reader.rs"
 [dependencies]
 clap = { version = "4", features = ["cargo", "string"] }
 which = "6"
-molecule-codegen = { version = "=0.9.0", path = "../codegen", features = [
+molecule-codegen = { version = "=0.9.1", path = "../codegen", features = [
     "compiler-plugin",
 ] }
 
