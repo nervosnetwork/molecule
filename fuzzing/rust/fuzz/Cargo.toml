@@ -13,6 +13,9 @@ libfuzzer-sys = "0.4"
 [dependencies.molecule-fuzzing]
 path = ".."
 
+# Prevent this from interfering with workspaces.
+[workspace]
+
 [[bin]]
 name = "data"
 path = "fuzz_targets/data.rs"

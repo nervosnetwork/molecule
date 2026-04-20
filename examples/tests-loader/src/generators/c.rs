@@ -46,10 +46,7 @@ mod utils {
     }
 
     pub(crate) fn stmts_end() -> Vec<String> {
-        let mut stmts = Vec::new();
-        stmts.push("free(res.seg.ptr);".to_owned());
-        stmts.push("return 0;".to_owned());
-        stmts
+        vec!["free(res.seg.ptr);".to_owned(), "return 0;".to_owned()]
     }
 }
 
@@ -248,14 +245,14 @@ impl GenTest for types::StructOrTable {
         stmts.append(&mut utils::stmts_start(name, self.expected()));
         for (field_name, data) in self.data().iter() {
             let field_type = field_type_dict.get(&field_name.as_str()).unwrap();
-            let stmt = if utils::is_byte(&field_type) {
-                stmts.push(data.c_byte(&field_name));
+            let stmt = if utils::is_byte(field_type) {
+                stmts.push(data.c_byte(field_name));
                 format!(
                     "MolBuilder_{}_set_{}(&b, {});",
                     name, field_name, field_name
                 )
             } else {
-                stmts.push(data.c_array(&field_name));
+                stmts.push(data.c_array(field_name));
                 if is_struct {
                     format!(
                         "MolBuilder_{}_set_{}(&b, {});",
@@ -289,7 +286,7 @@ impl GenTest for types::StructOrTable {
                 seg_name
             );
             stmts.append(&mut utils::stmts_if(name, cond, errmsg));
-            let cond = &if utils::is_byte(&field_type) {
+            let cond = &if utils::is_byte(field_type) {
                 format!("*{}.ptr != {}", seg_name, field_name)
             } else {
                 format!(
