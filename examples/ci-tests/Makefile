@@ -1,8 +1,8 @@
-MOLC_DIR = ../../tools/compiler/target/release
+MOLC_DIR = ../../target/release
 MOLC = ${MOLC_DIR}/moleculec
 MOLINC = ../../bindings/c/include
 SCRIPT_GEN_C = scripts/generate-c
-BIN_GEN_C_TESTS = ../tests-utils-c/target/release/molecule-tests-utils-c
+BIN_GEN_C_TESTS = ../../target/release/molecule-tests-utils-c
 
 SCHEMA = types
 SCHEMA_FILE = ../../test/schemas/${SCHEMA}.mol

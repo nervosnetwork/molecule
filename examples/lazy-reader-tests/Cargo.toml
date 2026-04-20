@@ -1,15 +1,19 @@
 [package]
 name = "lazy-reader-tests"
-version = "0.9.2"
+version.workspace = true
+authors.workspace = true
 edition = "2021"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-molecule = { path = "../../bindings/rust", default-features = false }
-lazy_static = "1.4.0"
-rand = "0.8.5"
+molecule.workspace = true
+lazy_static.workspace = true
+rand.workspace = true
 
 [build-dependencies]
-codegen = { package = "molecule-codegen", path = "../../tools/codegen" }
-cc = "1.0.66"
+codegen.workspace = true
+cc.workspace = true

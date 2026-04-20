@@ -1,10 +1,13 @@
 [package]
 name = "molecule-tests-utils-c"
-version = "0.9.2"
-authors = ["Nervos Core Dev <dev@nervos.org>"]
+version.workspace = true
+authors.workspace = true
 edition = "2018"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
-codegen = { package = "molecule-codegen", path = "../../tools/codegen" }
-tests-loader = { package = "molecule-tests-loader", path = "../tests-loader" }
-serde_yaml = "0.9"
+codegen.workspace = true
+tests-loader.workspace = true
+serde_yaml.workspace = true

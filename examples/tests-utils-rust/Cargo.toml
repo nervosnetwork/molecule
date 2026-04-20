@@ -1,16 +1,19 @@
 [package]
 name = "molecule-tests-utils-rust"
-version = "0.9.2"
-authors = ["Nervos Core Dev <dev@nervos.org>"]
+version.workspace = true
+authors.workspace = true
 edition = "2018"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [lib]
 proc-macro = true
 
 [dependencies]
-codegen = { package = "molecule-codegen", path = "../../tools/codegen" }
-tests-loader = { package = "molecule-tests-loader", path = "../tests-loader" }
-syn = "1.0.58"
-quote = "1.0.8"
-proc-macro2 = "1.0.24"
-serde_yaml = "0.9"
+codegen.workspace = true
+tests-loader.workspace = true
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+serde_yaml.workspace = true

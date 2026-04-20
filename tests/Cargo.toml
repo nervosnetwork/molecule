@@ -1,26 +1,22 @@
 [package]
 name = "tests"
-version = "0.9.2"
+version.workspace = true
+authors.workspace = true
 edition = "2021"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 
 [dev-dependencies]
-codegen-0_7_3 = { package = "molecule-codegen", version = "=0.7.3", features = [
-    "compiler-plugin",
-] }
-codegen-dev = { package = "molecule-codegen", path = "../tools/codegen", features = [
-    "compiler-plugin",
-] }
-molecule = { package = "molecule", path = "../bindings/rust" }
+codegen-0_7_3.workspace = true
+codegen_dev.workspace = true
+molecule = { workspace = true, features = ["std"] }
 
 [build-dependencies]
-codegen-0_7_3 = { package = "molecule-codegen", version = "=0.7.3", features = [
-    "compiler-plugin",
-] }
-codegen-dev = { package = "molecule-codegen", path = "../tools/codegen", features = [
-    "compiler-plugin",
-] }
-molecule = { package = "molecule", path = "../bindings/rust" }
+codegen-0_7_3.workspace = true
+codegen_dev.workspace = true
+molecule = { workspace = true, features = ["std"] }

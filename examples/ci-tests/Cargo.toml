@@ -1,24 +1,27 @@
 [package]
 name = "molecule-ci-tests"
-version = "0.9.2"
-authors = ["Nervos Core Dev <dev@nervos.org>"]
+version.workspace = true
+authors.workspace = true
 edition = "2018"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "simple-example"
 path = "src/simple-example.rs"
 
 [dependencies]
-molecule = { path = "../../bindings/rust", default-features = false }
+molecule.workspace = true
 
 [build-dependencies]
-codegen = { package = "molecule-codegen", path = "../../tools/codegen" }
-cc = "1.0.83"
+codegen.workspace = true
+cc.workspace = true
 
 [dev-dependencies]
-molecule-tests-utils-rust = { path = "../tests-utils-rust" }
-slices = "0.1.1"
-proptest = "0.10.1"
+molecule-tests-utils-rust.workspace = true
+slices.workspace = true
+proptest.workspace = true
 
 [features]
 default = ["std"]

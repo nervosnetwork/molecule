@@ -1,9 +1,13 @@
 [package]
 name = "molecule-fuzzing"
-version = "0.9.2"
+version.workspace = true
+authors.workspace = true
 edition = "2021"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-molecule = { path = "../../bindings/rust" }
+molecule = { workspace = true, features = ["std"] }

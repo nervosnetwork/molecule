@@ -1,3 +1,5 @@
+RUST_PROD_PKGS = molecule molecule-codegen moleculec
+
 ci:
 	@set -eu; \
 	export RUSTFLAGS='-D warnings'; \
@@ -6,79 +8,35 @@ ci:
 	make cargo-test ci-examples ci-crates; \
 	echo "Success!"
 
-RUST_DEV_PROJS = examples/ci-tests tests
-RUST_PROD_PROJS = bindings/rust tools/codegen tools/compiler
-RUST_PROJS = ${RUST_DEV_PROJS} ${RUST_PROD_PROJS}
-C_PROJS = examples/ci-tests
-
 clean:
-	@set -eu; \
-	for dir in ${RUST_PROJS}; do \
-		cd "$${dir}"; \
-		cargo clean; \
-		cd - > /dev/null; \
-	done; \
-	for dir in ${C_PROJS}; do \
-		cd "$${dir}"; \
-		make clean; \
-		cd - > /dev/null; \
-	done
+	@cargo clean
+	@$(MAKE) -C examples/ci-tests clean
 
 fmt:
-	@set -eu; \
-	for dir in ${RUST_PROJS}; do \
-		cd "$${dir}"; \
-		cargo fmt --all -- --check; \
-		cd - > /dev/null; \
-	done
+	@cargo fmt --all -- --check
 
 clippy:
-	@set -eu; \
-	for dir in ${RUST_PROJS}; do \
-		cd "$${dir}"; \
-		cargo clippy --all --all-targets --all-features; \
-		cd - > /dev/null; \
-	done
+	@cargo clippy --all-targets --all-features
 
 cargo-test:
-	@set -eu; \
-	for dir in ${RUST_PROJS}; do \
-		cd "$${dir}"; \
-		cargo test; \
-		cd - > /dev/null; \
-	done
+	@cargo test
 
 
 ci-msrv:
 	@set -eu; \
-	for dir in ${RUST_PROD_PROJS}; do \
-		cd "$${dir}"; \
-		cargo clean; \
-		cargo build --all --verbose; \
-		cd - > /dev/null; \
-	done; \
-	git diff --exit-code tools/compiler/Cargo.lock
+	cargo clean; \
+	cargo build --package molecule --package molecule-codegen --package moleculec --verbose; \
+	git diff --exit-code Cargo.lock
 
 ci-crates:
 	@set -eu; \
-	for dir in ${RUST_PROJS}; do \
-		cd "$${dir}"; \
-		cargo clean; \
-		cargo test --all --verbose; \
-		cd - > /dev/null; \
-	done; \
-	git diff --exit-code tools/compiler/Cargo.lock
+	cargo clean; \
+	cargo test --verbose; \
+	git diff --exit-code Cargo.lock
 
 ci-examples:
-	@set -eu; \
-	cd examples/ci-tests; \
-	make clean test; \
-	cd - > /dev/null; \
+	@$(MAKE) -C examples/ci-tests clean test
 
 ci-lazy-reader:
-	@set -eu; \
-	cd examples/lazy-reader-tests; \
-	make test; \
-	cd - > /dev/null; \
-
+	@$(MAKE) -C examples/lazy-reader-tests test
 
