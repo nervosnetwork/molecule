@@ -16,7 +16,7 @@ fmt:
 	@cargo fmt --all -- --check
 
 clippy:
-	@cargo clippy --all-targets --all-features
+	@cargo clippy --all-targets --all-features -- -D warnings
 
 cargo-test:
 	@cargo test
@@ -39,4 +39,3 @@ ci-examples:
 
 ci-lazy-reader:
 	@$(MAKE) -C examples/lazy-reader-tests test
-
