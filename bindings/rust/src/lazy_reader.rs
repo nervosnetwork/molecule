@@ -313,6 +313,9 @@ impl Cursor {
             last_offset = Some(offset);
             cur.add_offset(NUMBER_SIZE)?;
         }
+        if last_offset.is_some() && last_offset.unwrap() > total_size {
+            return Err(Error::Verify);
+        }
         Ok(())
     }
     ///

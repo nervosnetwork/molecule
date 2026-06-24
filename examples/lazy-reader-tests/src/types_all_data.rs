@@ -1180,3 +1180,17 @@ fn test_verify_table() {
     .verify(false)
     .expect("");
 }
+
+#[test]
+fn test_verify_dynvec_rejects_item_offset_past_total_size() {
+    let data = vec![
+        16, 0, 0, 0, // total size
+        12, 0, 0, 0, // first item offset
+        100, 0, 0, 0, // second item offset, past total size
+        0, 0, 0, 0, // payload bytes
+    ];
+
+    new_cursor(&data)
+        .verify_dynvec()
+        .expect_err("dynvec item offset past total size");
+}
