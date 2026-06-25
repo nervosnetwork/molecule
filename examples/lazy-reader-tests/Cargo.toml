@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 molecule = { path = "../../bindings/rust", default-features = false }
 lazy_static = "1.4.0"
-rand = "0.8.5"
+rand = "0.8.6"
 
 [build-dependencies]
 codegen = { package = "molecule-codegen", path = "../../tools/codegen" }
