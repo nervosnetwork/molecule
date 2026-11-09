@@ -156,7 +156,7 @@ impl DataSource {
             return Ok(0);
         }
         if read_len > self.cache.len() {
-            return self.reader.read(buf, offset);
+            return self.reader.read(&mut buf[..read_len], offset);
         }
         // Check if the requested data is in cache
         if offset >= self.cache_start_point
@@ -167,6 +167,8 @@ impl DataSource {
             return Ok(read_len);
         }
         // Cache miss, read from reader and update cache
+        // A failed read may modify the buffer, invalidating the previous cache.
+        self.cache_actual_size = 0;
         let read_actual_size = self.reader.read(&mut self.cache[..], offset)?;
         self.cache_start_point = offset;
         self.cache_actual_size = read_actual_size;
@@ -401,7 +403,8 @@ impl Cursor {
     /// of the original cursor.
     ///
     pub fn slice_by_offset(&self, offset: usize, size: usize) -> Result<Cursor, Error> {
-        if (offset + size) > self.size {
+        let end = offset.checked_add(size).ok_or(Error::Overflow)?;
+        if end > self.size {
             return Err(Error::TotalSize(offset, size));
         }
         let mut cur = self.clone();
@@ -444,8 +447,7 @@ impl Cursor {
         let mut res = self.clone();
         let mut temp = self.clone();
         let total_size = self.unpack_number()?;
-        temp.add_offset(NUMBER_SIZE)?;
-        let item_count = temp.get_item_count()?;
+        let item_count = self.dynvec_length()?;
         if item_index >= item_count {
             return Err(Error::OutOfBound(item_index, item_count));
         }
@@ -587,5 +589,111 @@ impl From<Vec<u8>> for Cursor {
 impl<const N: usize> From<[u8; N]> for Cursor {
     fn from(mem: [u8; N]) -> Self {
         Cursor::new(mem.len(), Box::new(mem.to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_at_respects_cursor_bounds_across_cache_threshold() {
+        let root = Cursor::from(vec![7u8; MAX_CACHE_SIZE * 2 + 16]);
+        for size in [0, MAX_CACHE_SIZE - 1, MAX_CACHE_SIZE, MAX_CACHE_SIZE + 1] {
+            let cursor = root.slice_by_offset(8, size).unwrap();
+            let mut buf = vec![0u8; MAX_CACHE_SIZE * 2];
+            assert_eq!(cursor.read_at(&mut buf).unwrap(), size);
+            assert!(buf[..size].iter().all(|&byte| byte == 7));
+            assert!(buf[size..].iter().all(|&byte| byte == 0));
+        }
+    }
+
+    #[test]
+    fn empty_dynvec_rejects_index_with_or_without_neighboring_data() {
+        let bytes: Vec<u8> = [4u32, 12, 16, 0xaabbccdd]
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect();
+        let root = Cursor::from(bytes);
+        for cursor in [
+            Cursor::from(4u32.to_le_bytes()),
+            root.slice_by_offset(0, NUMBER_SIZE).unwrap(),
+        ] {
+            cursor.verify_dynvec().unwrap();
+            assert_eq!(cursor.dynvec_length().unwrap(), 0);
+            for index in [0, 1, usize::MAX] {
+                assert!(matches!(
+                    cursor.dynvec_slice_by_index(index),
+                    Err(Error::OutOfBound(actual, 0)) if actual == index
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn dynvec_slices_empty_and_nonempty_items() {
+        let bytes: Vec<u8> = [24u32, 16, 16, 20, 42, 99]
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect();
+        let mut backing = vec![0u8; 8];
+        backing.extend_from_slice(&bytes);
+        let cursor = Cursor::from(backing)
+            .slice_by_offset(8, bytes.len())
+            .unwrap();
+        cursor.verify_dynvec().unwrap();
+        assert_eq!(cursor.dynvec_slice_by_index(0).unwrap().size, 0);
+        assert_eq!(
+            u32::try_from(cursor.dynvec_slice_by_index(1).unwrap()).unwrap(),
+            42
+        );
+        assert_eq!(
+            u32::try_from(cursor.dynvec_slice_by_index(2).unwrap()).unwrap(),
+            99
+        );
+        assert!(matches!(
+            cursor.dynvec_slice_by_index(3),
+            Err(Error::OutOfBound(3, 3))
+        ));
+    }
+
+    struct FailingReader;
+
+    impl Read for FailingReader {
+        fn read(&self, buf: &mut [u8], offset: usize) -> Result<usize, Error> {
+            if offset == 0 {
+                buf.fill(1);
+                Ok(buf.len())
+            } else {
+                // A failed read may still have overwritten part of the buffer.
+                buf[0] = 99;
+                Err(Error::Data)
+            }
+        }
+    }
+
+    #[test]
+    fn failed_cache_refill_does_not_corrupt_previous_reads() {
+        let root = Cursor::new(MAX_CACHE_SIZE * 2, Box::new(FailingReader));
+        let first = root.slice_by_offset(0, 1).unwrap();
+        assert_eq!(u8::try_from(first.clone()).unwrap(), 1);
+        let other = root.slice_by_offset(MAX_CACHE_SIZE + 1, 1).unwrap();
+        assert!(matches!(u8::try_from(other), Err(Error::Data)));
+        assert_eq!(u8::try_from(first).unwrap(), 1);
+    }
+
+    #[test]
+    fn slice_by_offset_rejects_overflow_and_out_of_bounds() {
+        let cursor = Cursor::from([0u8; 16]);
+        assert!(matches!(
+            cursor.slice_by_offset(8, usize::MAX),
+            Err(Error::Overflow)
+        ));
+        assert!(matches!(
+            cursor.slice_by_offset(8, 9),
+            Err(Error::TotalSize(8, 9))
+        ));
+        assert_eq!(cursor.slice_by_offset(8, 8).unwrap().size, 8);
+        assert_eq!(cursor.slice_by_offset(16, 0).unwrap().size, 0);
     }
 }
