@@ -45,7 +45,32 @@ void test_build_default() {
     }
 }
 
+void test_fixvec_size_overflow() {
+    uint8_t data[8] = {0};
+    mol_seg_t seg = {data, sizeof(data)};
+    mol_num_t count = 2;
+    mol_pack_number(data, &count);
+    assert(mol_fixvec_verify(&seg, 2) == MOL_OK);
+
+    // The item payload size wraps to four bytes in 32-bit arithmetic.
+    count = UINT32_C(0x80000002);
+    mol_pack_number(data, &count);
+    assert(mol_fixvec_verify(&seg, 2) == MOL_ERR_TOTAL_SIZE);
+
+    // The largest item size and count must not wrap to a small valid size.
+    count = UINT32_MAX;
+    mol_pack_number(data, &count);
+    seg.size = 5;
+    assert(mol_fixvec_verify(&seg, UINT32_MAX) == MOL_ERR_TOTAL_SIZE);
+
+    count = 0;
+    mol_pack_number(data, &count);
+    seg.size = 4;
+    assert(mol_fixvec_verify(&seg, 4) == MOL_OK);
+}
+
 int main(int argc, char *argv[]) {
     test_build_default();
+    test_fixvec_size_overflow();
     return 0;
 }
