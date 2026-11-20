@@ -510,7 +510,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
             }
         }
         impl #name {
-            pub fn iter(&self) -> #iterator_ref_name {
+            pub fn iter(&self) -> #iterator_ref_name<'_> {
                 let len = self.len().unwrap();
                 #iterator_ref_name {
                     cur: &self,

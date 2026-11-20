@@ -144,17 +144,21 @@ impl DataSource {
 
     /// Pull some bytes from this source into the specified buffer with `offset`
     /// and `read_len`, returning how many bytes were read. If the requested
-    /// range is out of bound, an `Error::Read` will be returned.
+    /// range is out of bound or `buf` is shorter than `read_len`, an
+    /// `Error::Read` will be returned.
     pub fn read_at(
         &mut self,
         buf: &mut [u8],
         offset: usize,
         read_len: usize,
     ) -> Result<usize, Error> {
-        // Read directly if the requested length is larger than maximum cache size
+        if read_len > buf.len() {
+            return Err(Error::Read(buf.len(), read_len));
+        }
         if read_len == 0 {
             return Ok(0);
         }
+        // Read directly if the requested length is larger than maximum cache size
         if read_len > self.cache.len() {
             return self.reader.read(&mut buf[..read_len], offset);
         }
@@ -595,6 +599,18 @@ impl<const N: usize> From<[u8; N]> for Cursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn data_source_rejects_short_destination() {
+        let mut source = DataSource::new(Box::new(vec![0u8; MAX_CACHE_SIZE + 1]));
+        for read_len in [MAX_CACHE_SIZE, MAX_CACHE_SIZE + 1] {
+            let mut buf = vec![0u8; read_len - 1];
+            assert!(matches!(
+                source.read_at(&mut buf, 0, read_len),
+                Err(Error::Read(available, requested)) if available == buf.len() && requested == read_len
+            ));
+        }
+    }
 
     #[test]
     fn read_at_respects_cursor_bounds_across_cache_threshold() {

@@ -71,7 +71,7 @@ jobs:
         with:
           toolchain: 1.95.0
       - name: Run
-        run: make ci-examples
+        run: make ci-examples ci-lazy-reader
   success:
     name: Success
     if: ${{ success() }}
