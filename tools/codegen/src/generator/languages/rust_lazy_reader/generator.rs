@@ -97,13 +97,13 @@ impl LazyReaderGenerator for ast::Union {
                 },
                 TopDecl::Option_(o) => {
                     let item_name = ident_name(o.item().typ().name(), "");
-                    quote! {{
+                    quote! {
                         if cur.option_is_none() {
                             None
                         } else {
                             Some(#item_name::from(cur))
                         }
-                    }}
+                    }
                 }
                 TopDecl::FixVec(v) => {
                     if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
@@ -246,7 +246,7 @@ impl LazyReaderGenerator for ast::Array {
             impl #name {
                 pub fn verify(&self, #val_compatible: bool) -> Result<(), Error> {
                     self.cursor.verify_fixed_size(#total_size)?;
-                    #verify_sub;
+                    #verify_sub
                     Ok(())
                 }
             }
@@ -343,7 +343,7 @@ impl LazyReaderGenerator for ast::DynVec {
             impl #name {
                 pub fn verify(&self, #val_compatible: bool) -> Result<(), Error> {
                     self.cursor.verify_dynvec()?;
-                    #verify_sub;
+                    #verify_sub
                     Ok(())
                 }
             }
