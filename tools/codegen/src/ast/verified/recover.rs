@@ -230,6 +230,8 @@ impl super::Ast {
             namespace,
             imports,
             decls,
+            integers: Default::default(),
+            source_graph: None,
         }
     }
 }

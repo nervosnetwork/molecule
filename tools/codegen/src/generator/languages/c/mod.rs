@@ -10,6 +10,7 @@ mod utilities;
 mod import;
 
 mod builder;
+mod integers;
 mod reader;
 
 use self::{builder::GenBuilder, import::GenImport, reader::GenReader};
@@ -79,6 +80,9 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer)?;
         writeln!(writer, r#"#include "molecule_reader.h""#)?;
         writeln!(writer, r#"#include "molecule_builder.h""#)?;
+        if !ast.integers().is_empty() {
+            writeln!(writer, r#"#include "molecule_integer.inc""#)?;
+        }
         writeln!(writer)?;
         Self::ifndef(writer, ast.namespace())?;
         let imports = ast.imports();
@@ -117,6 +121,7 @@ impl super::LanguageGenerator for Generator {
         for decl in ast.major_decls() {
             decl.gen_builder_functions(writer)?;
         }
+        integers::generate(writer, ast)?;
         Self::endif(writer, ast.namespace())?;
         Ok(())
     }

@@ -82,6 +82,10 @@ use core::cell::RefCell;
 use core::cmp::min;
 use core::convert::{From, TryFrom};
 
+mod access;
+pub use access::AccessError;
+mod full;
+
 #[derive(Debug)]
 pub enum Error {
     Common,

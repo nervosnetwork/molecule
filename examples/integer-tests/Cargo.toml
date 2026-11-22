@@ -1,0 +1,23 @@
+[package]
+name = "molecule-integer-tests"
+version = "0.9.2"
+edition = "2021"
+publish = false
+
+[dependencies]
+molecule = { path = "../../bindings/rust", default-features = false }
+
+[dev-dependencies]
+serde_json = "=1.0.118"
+blake2b-ref = "=0.3.1"
+
+[build-dependencies]
+codegen = { package = "molecule-codegen", path = "../../tools/codegen", features = ["compiler-plugin"] }
+legacy-codegen = { package = "molecule-codegen", version = "=0.9.2" }
+serde_json = "=1.0.118"
+cc = "=1.0.83"
+
+[features]
+default = ["std"]
+std = ["molecule/std"]
+bytes_vec = ["molecule/bytes_vec"]

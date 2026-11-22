@@ -2,6 +2,7 @@
 
 use std::{convert::TryFrom, fmt, io, str};
 
+use super::ToIntermediate;
 use crate::ast;
 
 #[derive(Debug, Clone, Copy)]
@@ -78,6 +79,38 @@ impl Format {
     }
 
     pub fn recover(self, bytes: &[u8]) -> Result<ast::Ast, String> {
-        self.deserialize(bytes).map(ast::Ast::recover)
+        match self.deserialize(bytes) {
+            Ok(ir) => ir.recover(false),
+            Err(legacy_error) => {
+                let envelope: super::Envelope = match self {
+                    Self::JSON => serde_json::from_slice(bytes)
+                        .map_err(|error| format!("{legacy_error}; invalid v2 JSON: {error}"))?,
+                    Self::YAML => serde_yaml::from_slice(bytes)
+                        .map_err(|error| format!("{legacy_error}; invalid v2 YAML: {error}"))?,
+                };
+                envelope.recover()
+            }
+        }
+    }
+
+    /// Export v1 for plain layouts and v2 whenever explicit source semantics are present.
+    pub fn serialize_ast(self, ast: &ast::Ast) -> Result<Vec<u8>, String> {
+        if ast.source_graph().is_none() {
+            return self.serialize(&ast.to_ir());
+        }
+        let envelope = super::Envelope::from_ast(ast)?;
+        let mut output = match self {
+            Self::JSON => {
+                serde_json::to_string_pretty(&envelope).map_err(|error| error.to_string())?
+            }
+            Self::YAML => serde_yaml::to_string(&envelope).map_err(|error| error.to_string())?,
+        };
+        output.push('\n');
+        Ok(output.into_bytes())
+    }
+
+    /// Explicitly discard extensions and export only the legacy wire layout.
+    pub fn serialize_wire(self, ast: &ast::Ast) -> Result<Vec<u8>, String> {
+        self.serialize(&ast.to_ir())
     }
 }

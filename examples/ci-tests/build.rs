@@ -27,5 +27,5 @@ fn main() {
         .include(&out_dir)
         .include("../../bindings/c/include")
         .warnings(false)
-        .compile("c-api.o");
+        .compile("c-api");
 }

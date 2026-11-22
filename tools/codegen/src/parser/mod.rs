@@ -1,16 +1,27 @@
 use std::path::Path;
 
-use crate::{ast, utils::ParserUtils as _};
+use crate::ast;
 
 mod inner;
 pub(crate) use inner::{Parser as InnerParser, Rule};
+
+pub(crate) type ParseError = Box<pest::error::Error<Rule>>;
 
 pub struct Parser;
 
 impl Parser {
     pub fn parse<P: AsRef<Path>>(path: &P) -> ast::Ast {
-        let ast_raw = Self::preprocess(path).unwrap();
-        ast::Ast::complete(ast_raw)
+        Self::parse_file(path.as_ref()).unwrap()
+    }
+
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn parse_file(path: &Path) -> Result<ast::Ast, String> {
+        crate::schema::LoadedGraph::read(path, false)?.parse_ast()
+    }
+
+    #[cfg(not(feature = "schema-extensions"))]
+    pub(crate) fn parse_file(path: &Path) -> Result<ast::Ast, String> {
+        ast::Ast::complete(&Self::preprocess(path)?)
     }
 }
 
@@ -19,6 +30,18 @@ mod tests {
     use crate::ast::{HasName, TopDecl};
     use crate::*;
     use std::io::Write;
+
+    #[test]
+    fn native_integer_is_available_through_the_public_parser() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"integer Balance = i128be;").unwrap();
+        let parsed = Parser::parse(&file.path());
+        let spec = parsed.integer("Balance").unwrap();
+        assert_eq!(
+            (spec.bits, spec.signed, spec.byte_order),
+            (128, true, integer::ByteOrder::Big)
+        );
+    }
 
     #[test]
     fn test_parse_custom_union_id() {

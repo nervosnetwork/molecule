@@ -1,261 +1,203 @@
+#[cfg(feature = "schema-extensions")]
+use super::HasName;
+use super::{
+    super::raw, Array, Ast, Deps, DynVec, FieldDecl, FixVec, ImportStmt, ItemDecl, Option_, Struct,
+    Table, TopDecl, Union, UnionItemDecl,
+};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashSet, VecDeque},
     rc::Rc,
 };
 
-use super::super::raw;
-
-trait CompleteRawDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl>;
-}
-
-impl CompleteRawDecl for raw::OptionDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            super::Option_ {
-                name,
-                item,
-                imported_depth: self.imported_depth(),
-            }
-            .into()
-        })
-    }
-}
-
-impl CompleteRawDecl for raw::UnionDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        if self.items().is_empty() {
-            panic!("the union ({}) is empty", self.name());
-        }
-        self.items()
-            .iter()
-            .map(|raw_item| {
-                deps.get(raw_item.typ())
-                    .map(|typ| super::UnionItemDecl::new(typ, raw_item.id()))
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|items| {
-                let name = self.name().to_owned();
-                super::Union {
-                    name,
-                    items,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
-            })
-    }
-}
-
-impl CompleteRawDecl for raw::ArrayDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let item_size = dep.total_size().unwrap_or_else(|| {
-                panic!(
-                    "the item type ({}) of array ({}) doesn't have fixed size",
-                    self.item().typ(),
-                    self.name(),
-                );
-            });
-            if item_size == 0 {
-                panic!("the array ({}) has no size", self.name());
-            }
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            let item_count = self.item_count();
-            super::Array {
-                name,
-                item,
-                item_count,
-                imported_depth: self.imported_depth(),
-                item_size,
-            }
-            .into()
-        })
-    }
-}
-
-impl CompleteRawDecl for raw::StructDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        let mut fields = Vec::with_capacity(self.fields().len());
-        let mut field_sizes = Vec::with_capacity(self.fields().len());
-        for raw_field in self.fields() {
-            let field_name = raw_field.name();
-            if let Some(dep) = deps.get(raw_field.typ()) {
-                if let Some(field_size) = dep.total_size() {
-                    field_sizes.push(field_size);
-                } else {
-                    panic!(
-                        "the filed type ({}) in struct ({}) doesn't have fixed size",
-                        field_name,
-                        self.name(),
-                    );
-                }
-                let field = super::FieldDecl::new(field_name, dep);
-                fields.push(field);
-            } else {
-                break;
-            }
-        }
-        if fields.len() != self.fields().len() {
-            return None;
-        }
-        if field_sizes.iter().sum::<usize>() == 0 {
-            panic!("the struct ({}) has no size", self.name());
-        }
-        let name = self.name().to_owned();
-        Some(
-            super::Struct {
-                name,
-                fields,
-                imported_depth: self.imported_depth(),
-                field_sizes,
-            }
-            .into(),
-        )
-    }
-}
-
-impl CompleteRawDecl for raw::VectorDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            if let Some(item_size) = dep.total_size() {
-                super::FixVec {
-                    name,
-                    item,
-                    imported_depth: self.imported_depth(),
-                    item_size,
-                }
-                .into()
-            } else {
-                super::DynVec {
-                    name,
-                    item,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
-            }
-        })
-    }
-}
-
-impl CompleteRawDecl for raw::TableDecl {
-    fn complete(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        self.fields()
-            .iter()
-            .map(|raw_field| {
-                let field_name = raw_field.name();
-                deps.get(raw_field.typ())
-                    .map(|dep| super::FieldDecl::new(field_name, dep))
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|fields| {
-                let name = self.name().to_owned();
-                super::Table {
-                    name,
-                    fields,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
-            })
-    }
-}
-
-impl super::Ast {
-    pub(crate) fn complete(raw: raw::Ast) -> Self {
-        let mut decls_idx = HashMap::new();
-        let mut decls_keys = HashSet::new();
+impl Ast {
+    pub(crate) fn complete(raw: &raw::Ast) -> Result<Self, String> {
+        let mut names = HashSet::from(["byte".to_owned()]);
         for decl in raw.decls() {
-            let name = decl.name();
-            if super::TopDecl::new_primitive(name.to_lowercase().as_str()).is_some() {
-                panic!("the name `{}` is reserved", name);
+            if !names.insert(decl.name().to_ascii_lowercase()) {
+                return Err(format!("E_SYMBOL_COLLISION: {}", decl.name()));
             }
-            if decls_idx.insert(name, decl).is_some() || !decls_keys.insert(name) {
-                panic!("the name `{}` is used more than once", name);
-            };
+        }
 
-            let decls_keys_clone = decls_keys
+        let mut deps = Deps::from([("byte", Rc::new(TopDecl::new_primitive("byte").unwrap()))]);
+        let mut pending: VecDeque<_> = raw.decls().iter().collect();
+        let mut deferred = 0;
+        while let Some(decl) = pending.pop_front() {
+            match TopDecl::complete(decl, &deps) {
+                Ok(completed) => {
+                    deps.insert(decl.name(), Rc::new(completed));
+                    deferred = 0;
+                }
+                Err(LayoutError::Unresolved(reference)) => {
+                    pending.push_back(decl);
+                    deferred += 1;
+                    // One full pass without resolving a declaration cannot make progress.
+                    if deferred == pending.len() {
+                        return Err(format!(
+                            "E_SCHEMA_DEPENDENCY: {} cannot resolve {reference} (missing or cyclic type)",
+                            decl.name()
+                        ));
+                    }
+                }
+                Err(LayoutError::InvalidSize) => {
+                    return Err(format!(
+                        "E_SCHEMA_LAYOUT: invalid fixed size in {}",
+                        decl.name()
+                    ));
+                }
+            }
+        }
+
+        Ok(Self {
+            syntax_version: raw.syntax_version().cloned().unwrap_or_default(),
+            namespace: raw.namespace().to_owned(),
+            imports: raw
+                .imports()
                 .iter()
-                .cloned()
-                .map(str::to_lowercase)
-                .collect::<HashSet<String>>();
-            if decls_keys_clone.len() != decls_keys.len() {
-                panic!("the name `{}` is used more than once, It seems that only the capitalization is inconsistent", name);
-            }
+                .filter(|i| i.imported_depth() == 0)
+                .map(|i| ImportStmt {
+                    name: i.name().to_owned(),
+                    paths: i.paths().to_owned(),
+                    path_supers: i.path_supers(),
+                })
+                .collect(),
+            decls: raw
+                .decls()
+                .iter()
+                .map(|decl| Rc::clone(&deps[decl.name()]))
+                .collect(),
+            integers: raw.integers().clone(),
+            #[cfg(feature = "schema-extensions")]
+            source_graph: None,
+        })
+    }
+
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn validate_extensions(&self) -> Result<(), String> {
+        if u32::try_from(self.syntax_version.version()).is_err() {
+            return Err("E_SCHEMA_NUMBER: syntax version exceeds u32".into());
         }
-        let mut decls_result = HashMap::new();
-        decls_result.insert(
-            "byte",
-            Rc::new(super::TopDecl::new_primitive("byte").unwrap()),
-        );
-        loop {
-            if decls_keys.is_empty() {
-                break;
-            }
-            let incompleted = decls_keys.len();
-            decls_keys.retain(|&name| {
-                let decl_raw = decls_idx.get(name).unwrap();
-                if let Some(decl) = super::TopDecl::complete(decl_raw, &decls_result) {
-                    decls_result.insert(name, Rc::new(decl));
-                    false
-                } else {
-                    true
+        for decl in &self.decls {
+            let fields = match decl.as_ref() {
+                TopDecl::Union(union)
+                    if union.items.iter().any(|i| u32::try_from(i.id).is_err()) =>
+                {
+                    return Err(format!("E_SCHEMA_UNION: ID exceeds u32 in {}", union.name));
                 }
-            });
-            if decls_keys.len() == incompleted {
-                panic!(
-                    "there are {} types which are unable to be completed: {:?}",
-                    incompleted, decls_keys
-                );
+                TopDecl::Array(array) if u32::try_from(array.item_count).is_err() => {
+                    return Err(format!(
+                        "E_SCHEMA_NUMBER: item count exceeds u32 in {}",
+                        array.name
+                    ));
+                }
+                _ if decl
+                    .total_size()
+                    .is_some_and(|size| u32::try_from(size).is_err()) =>
+                {
+                    return Err(format!(
+                        "E_SCHEMA_LAYOUT: invalid fixed size in {}",
+                        decl.name()
+                    ));
+                }
+                TopDecl::Struct(record) => &record.fields,
+                TopDecl::Table(table) => &table.fields,
+                _ => continue,
+            };
+            let mut names = HashSet::new();
+            for f in fields {
+                if !names.insert(f.name.to_ascii_lowercase()) {
+                    return Err(format!(
+                        "E_SCHEMA_FIELD: duplicate {}.{}",
+                        decl.name(),
+                        f.name
+                    ));
+                }
             }
         }
-        let namespace = raw.namespace().to_owned();
-        let imports = raw
-            .imports()
-            .iter()
-            .filter(|r| r.imported_depth() == 0)
-            .map(super::ImportStmt::complete)
-            .collect();
-        // remove the primitive types and keep the order
-        let mut decls = Vec::with_capacity(raw.decls().len());
-        for decl in raw.decls() {
-            let result = decls_result.get(decl.name()).unwrap();
-            decls.push(Rc::clone(result));
-        }
-
-        let syntax_version = raw.syntax_version().unwrap().to_owned();
-
-        Self {
-            syntax_version,
-            namespace,
-            imports,
-            decls,
-        }
+        Ok(())
     }
 }
 
-impl super::ImportStmt {
-    fn complete(raw: &raw::ImportStmt) -> Self {
-        Self {
-            name: raw.name().to_owned(),
-            paths: raw.paths().to_owned(),
-            path_supers: raw.path_supers(),
-        }
-    }
+enum LayoutError<'a> {
+    Unresolved(&'a str),
+    InvalidSize,
 }
 
-impl super::TopDecl {
-    fn complete(raw: &raw::TopDecl, deps: &super::Deps) -> Option<Self> {
-        match raw {
-            raw::TopDecl::Option_(inner) => inner.complete(deps),
-            raw::TopDecl::Union(inner) => inner.complete(deps),
-            raw::TopDecl::Array(inner) => inner.complete(deps),
-            raw::TopDecl::Struct(inner) => inner.complete(deps),
-            raw::TopDecl::Vector(inner) => inner.complete(deps),
-            raw::TopDecl::Table(inner) => inner.complete(deps),
-        }
+impl TopDecl {
+    fn complete<'a>(decl: &'a raw::TopDecl, deps: &Deps) -> Result<Self, LayoutError<'a>> {
+        use LayoutError::{InvalidSize, Unresolved};
+        let lookup = |name: &'a str| deps.get(name).ok_or(Unresolved(name));
+        let field = |f: &'a raw::FieldDecl| Ok(FieldDecl::new(f.name(), lookup(f.typ())?));
+        Ok(match decl {
+            raw::TopDecl::Option_(value) => Self::Option_(Option_ {
+                name: value.name().to_owned(),
+                item: ItemDecl::new(lookup(value.item().typ())?),
+                imported_depth: value.imported_depth(),
+            }),
+            raw::TopDecl::Union(value) => Self::Union(Union {
+                name: value.name().to_owned(),
+                items: value
+                    .items()
+                    .iter()
+                    .map(|i| Ok(UnionItemDecl::new(lookup(i.typ())?, i.id())))
+                    .collect::<Result<_, _>>()?,
+                imported_depth: value.imported_depth(),
+            }),
+            raw::TopDecl::Array(value) => {
+                let typ = lookup(value.item().typ())?;
+                let item_size = typ.total_size().ok_or(InvalidSize)?;
+                item_size
+                    .checked_mul(value.item_count())
+                    .ok_or(InvalidSize)?;
+                Self::Array(Array {
+                    name: value.name().to_owned(),
+                    item: ItemDecl::new(typ),
+                    item_count: value.item_count(),
+                    imported_depth: value.imported_depth(),
+                    item_size,
+                })
+            }
+            raw::TopDecl::Struct(value) => {
+                let fields: Vec<_> = value.fields().iter().map(field).collect::<Result<_, _>>()?;
+                let field_sizes: Vec<_> = fields
+                    .iter()
+                    .map(|f| f.typ().total_size().ok_or(InvalidSize))
+                    .collect::<Result<_, _>>()?;
+                field_sizes
+                    .iter()
+                    .copied()
+                    .try_fold(0usize, usize::checked_add)
+                    .ok_or(InvalidSize)?;
+                Self::Struct(Struct {
+                    name: value.name().to_owned(),
+                    fields,
+                    imported_depth: value.imported_depth(),
+                    field_sizes,
+                })
+            }
+            raw::TopDecl::Vector(value) => {
+                let typ = lookup(value.item().typ())?;
+                let name = value.name().to_owned();
+                let item = ItemDecl::new(typ);
+                let imported_depth = value.imported_depth();
+                match typ.total_size() {
+                    Some(item_size) => Self::FixVec(FixVec {
+                        name,
+                        item,
+                        imported_depth,
+                        item_size,
+                    }),
+                    None => Self::DynVec(DynVec {
+                        name,
+                        item,
+                        imported_depth,
+                    }),
+                }
+            }
+            raw::TopDecl::Table(value) => Self::Table(Table {
+                name: value.name().to_owned(),
+                fields: value.fields().iter().map(field).collect::<Result<_, _>>()?,
+                imported_depth: value.imported_depth(),
+            }),
+        })
     }
 }

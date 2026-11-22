@@ -53,6 +53,9 @@ impl super::LanguageGenerator for Generator {
             }
         }
         writeln!(writer)?;
+        if !ast.integers().is_empty() {
+            writeln!(writer, "{}", super::integers::rust(ast, false)?)?;
+        }
         for decl in ast.major_decls() {
             match decl.as_ref() {
                 ast::TopDecl::Option_(ref i) => i.generate(writer)?,

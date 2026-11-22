@@ -12,6 +12,7 @@ pub(crate) struct Ast {
     syntax_version: Option<SyntaxVersion>,
     namespace: String,
     imports: Vec<ImportStmt>,
+    integers: std::collections::BTreeMap<String, crate::integer::IntegerSpec>,
     decls: Vec<TopDecl>,
 }
 
@@ -112,6 +113,17 @@ pub(crate) struct FieldDecl {
 }
 
 impl Ast {
+    pub(crate) fn for_file(path: &std::path::Path) -> Result<Self, String> {
+        let namespace = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or("E_SCHEMA_SOURCE: invalid file name")?;
+        Ok(Self {
+            namespace: namespace.to_owned(),
+            ..Default::default()
+        })
+    }
+
     pub(crate) fn add_import(&mut self, stmt: ImportStmt) {
         self.imports.push(stmt);
     }

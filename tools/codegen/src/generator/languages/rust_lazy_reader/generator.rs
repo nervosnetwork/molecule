@@ -1,6 +1,7 @@
-use super::LazyReaderGenerator;
+use super::{super::integers, LazyReaderGenerator};
 use crate::ast::{self, HasName, *};
 use crate::generator::{field_name, ident_name, ident_new};
+use crate::integer::{ByteOrder, IntegerSpec};
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 use std::io;
@@ -55,7 +56,7 @@ impl ast::Union {
 }
 
 impl LazyReaderGenerator for ast::Union {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, _ast: &ast::Ast) -> io::Result<()> {
         let name = ident_name(self.name(), "");
 
         // generate enum:
@@ -142,6 +143,7 @@ impl LazyReaderGenerator for ast::Union {
             impl TryFrom<Cursor> for #name {
                 type Error = Error;
                 fn try_from(cur: Cursor) -> Result<Self, Self::Error> {
+                    use molecule::lazy_reader::NUMBER_SIZE;
                     let item = cur.union_unpack()?;
 
                     let mut cur = cur;
@@ -212,8 +214,8 @@ impl LazyReaderGenerator for ast::Union {
 }
 
 impl LazyReaderGenerator for ast::Array {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        let (transformed_name, tc) = get_rust_type_category(self.item().typ());
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast);
         generate_rust_common_array(
             output,
             self.name(),
@@ -258,18 +260,29 @@ impl LazyReaderGenerator for ast::Array {
 impl LazyReaderGenerator for ast::Option_ {}
 
 impl LazyReaderGenerator for ast::Struct {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        generate_rust_common_table(output, self.name(), self.fields(), Some(self.field_sizes()))?;
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        generate_rust_common_table(
+            output,
+            ast,
+            self.name(),
+            self.fields(),
+            Some(self.field_sizes()),
+        )?;
         let name = ident_name(self.name(), "");
         let total_size: usize = self.field_sizes().iter().sum();
 
-        let verify_fields = self.fields().iter().map(verify_filed);
+        let verify_fields: TokenStream = self.fields().iter().map(verify_field).collect();
+        let compatible = if verify_fields.is_empty() {
+            quote!(_)
+        } else {
+            quote!(compatible)
+        };
 
         let q = quote! {
             impl #name {
-                pub fn verify(&self, compatible: bool) -> Result<(), Error> {
+                pub fn verify(&self, #compatible: bool) -> Result<(), Error> {
                     self.cursor.verify_fixed_size(#total_size)?;
-                    #( #verify_fields )*
+                    #verify_fields
                     Ok(())
                 }
             }
@@ -281,8 +294,8 @@ impl LazyReaderGenerator for ast::Struct {
 
 // in FixVec, all item size is same and known already, the count is unknown.
 impl LazyReaderGenerator for ast::FixVec {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        let (transformed_name, tc) = get_rust_type_category(self.item().typ());
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast);
         generate_rust_common_array(
             output,
             self.name(),
@@ -310,8 +323,8 @@ impl LazyReaderGenerator for ast::FixVec {
 }
 
 impl LazyReaderGenerator for ast::DynVec {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        let (transformed_name, tc) = get_rust_type_category(self.item().typ());
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast);
         generate_rust_common_array(
             output,
             self.name(),
@@ -354,12 +367,12 @@ impl LazyReaderGenerator for ast::DynVec {
 }
 
 impl LazyReaderGenerator for ast::Table {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
-        generate_rust_common_table(output, self.name(), self.fields(), None)?;
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        generate_rust_common_table(output, ast, self.name(), self.fields(), None)?;
         let field_count = self.fields().len();
         let name = ident_name(self.name(), "");
 
-        let verify_fields = self.fields().iter().map(verify_filed);
+        let verify_fields = self.fields().iter().map(verify_field);
 
         let q = quote! {
             impl #name {
@@ -379,7 +392,7 @@ fn generate_rust_common_array<W: io::Write>(
     output: &mut W,
     plain_name: &str,
     type_name: TokenStream,
-    tc: TypeCategory,
+    tc: CursorValue,
     array: Option<&ast::Array>,
     fixvec: Option<&ast::FixVec>,
     _dynvec: Option<&ast::DynVec>,
@@ -432,7 +445,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
     output: &mut W,
     plain_name: &str,
     item_name: TokenStream,
-    tc: TypeCategory,
+    tc: CursorValue,
     array: Option<&Array>,
     fixvec: Option<&FixVec>,
 ) -> io::Result<()> {
@@ -445,7 +458,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
     } else {
         quote! { dynvec_slice_by_index(index) }
     };
-    let convert_code = tc.gen_convert_code();
+    let value = tc.expression();
     let name = ident_name(plain_name, "");
     let iterator_name = ident_name(plain_name, "Iterator");
     let iterator_ref_name = ident_name(plain_name, "IteratorRef");
@@ -453,7 +466,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
         impl #name {
             pub fn get(&self, index: usize) -> Result<#item_name, Error> {
                 let cur = self.cursor.#slice_by?;
-                #convert_code
+                Ok(#value)
             }
         }
     };
@@ -526,6 +539,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
 
 fn generate_rust_common_table<W: io::Write>(
     output: &mut W,
+    ast: &ast::Ast,
     plain_name: &str,
     fields: &[FieldDecl],
     field_sizes: Option<&[usize]>,
@@ -545,28 +559,29 @@ fn generate_rust_common_table<W: io::Write>(
     };
     writeln!(output, "{}", q)?;
     for (index, field) in fields.iter().enumerate() {
-        generate_rust_common_table_impl(output, plain_name, field, index, field_sizes)?;
+        generate_rust_common_table_impl(output, ast, plain_name, field, index, field_sizes)?;
     }
     Ok(())
 }
 
 fn generate_rust_common_table_impl<W: io::Write>(
     output: &mut W,
+    ast: &ast::Ast,
     plain_name: &str,
     field: &FieldDecl,
     index: usize,
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
-    let (transformed_name, tc) = get_rust_type_category(field.typ());
+    let (transformed_name, tc) = cursor_type(field.typ(), ast);
     let slice_by = generate_rust_slice_by(index, &field_sizes);
-    let convert_code = tc.gen_convert_code();
+    let value = tc.expression();
     let name = ident_name(plain_name, "");
     let field_name = field_name(field.name());
     let q = quote! {
         impl #name {
             pub fn #field_name(&self) -> Result<#transformed_name, Error> {
                 let cur = self.cursor.#slice_by?;
-                #convert_code
+                Ok(#value)
              }
          }
     };
@@ -574,178 +589,106 @@ fn generate_rust_common_table_impl<W: io::Write>(
     Ok(())
 }
 
-// 1. category 1, primitive
-// uint8, int8
-// uint16, int16
-// uint32, int32
-// uint64, int64
-
-// 2. category 2, array/fixvec
-// <byte>
-// array
-
-// 3. category 3, normal type
-
-// 4. category 4, Option
-enum TypeCategory {
-    Primitive,
-    Array,
-    FixVec,
-    Type,
-    // 1st: nested level
-    // 2nd: is nested type is FixVec or not
-    // 3rd: has From<T>
-    Option(u32, bool, bool),
-    Union,
+// The legacy lazy API recognizes these array names even in an unannotated schema.
+fn legacy_integer(name: &str) -> Option<IntegerSpec> {
+    let name = name.to_ascii_lowercase();
+    let (signed, width) = if let Some(width) = name.strip_prefix("uint") {
+        (false, width)
+    } else {
+        (true, name.strip_prefix("int")?)
+    };
+    let bits = match width {
+        "8" => 8,
+        "16" => 16,
+        "32" => 32,
+        "64" => 64,
+        _ => return None,
+    };
+    Some(IntegerSpec {
+        bits,
+        signed,
+        byte_order: ByteOrder::Little,
+    })
 }
 
-impl TypeCategory {
-    pub fn is_fixvec(&self) -> bool {
-        matches!(self, Self::FixVec)
+pub(super) fn check_legacy_integer_types(ast: &Ast) -> io::Result<()> {
+    for (name, declared) in ast.integers() {
+        let Some(legacy) = legacy_integer(name) else {
+            continue;
+        };
+        if declared.bits != legacy.bits || declared.signed != legacy.signed {
+            let expected = integers::native(legacy);
+            let actual = integers::native(*declared);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("E_INT_LAZY_TYPE: {name} has an existing lazy getter type {expected}; choose a different name for {actual}"),
+            ));
+        }
     }
-    pub fn has_from(&self) -> bool {
-        matches!(self, Self::Type | Self::Array)
-    }
-    pub fn gen_convert_code(&self) -> TokenStream {
+    Ok(())
+}
+
+enum CursorValue {
+    Into,
+    TryInto,
+    Bytes,
+    Integer(IntegerSpec),
+    Optional(Box<Self>),
+}
+
+impl CursorValue {
+    fn expression(&self) -> TokenStream {
         match self {
-            &TypeCategory::Option(level, flag, _has_from) => {
-                if level == 1 {
-                    if flag {
-                        quote! {
-                            if cur.option_is_none() {
-                                Ok(None)
-                            } else {
-                                let cur = cur.convert_to_rawbytes()?;
-                                Ok(Some(cur.into()))
-                            }
-                        }
-                    // Here is a warning: this `if` has identical blocks
-                    // } else if has_from {
-                    //     quote! {
-                    //         if cur.option_is_none() {
-                    //             Ok(None)
-                    //         } else {
-                    //             Ok(Some(cur.try_into()?))
-                    //         }
-                    //     }
-                    } else {
-                        quote! {
-                            if cur.option_is_none() {
-                                Ok(None)
-                            } else {
-                                Ok(Some(cur.try_into()?))
-                            }
-                        }
-                    }
-                } else if level == 2 {
-                    if flag {
-                        quote! {
-                            if cur.option_is_none() {
-                                Ok(None)
-                            } else {
-                                let cur = cur.convert_to_rawbytes()?;
-                                Ok(Some(Some(cur.try_into())))
-                           }
-                        }
-                    } else {
-                        quote! {
-                            if cur.option_is_none() {
-                                Ok(None)
-                            } else {
-                                Ok(Some(Some(cur.into())))
-                            }
-                        }
-                    }
-                } else {
-                    panic!("can't support")
-                }
+            Self::Into => quote!(cur.into()),
+            Self::TryInto => quote!(cur.try_into()?),
+            Self::Bytes => quote!(cur.convert_to_rawbytes()?),
+            Self::Integer(spec) => {
+                let width = spec.byte_width();
+                let value = integers::decode(*spec, quote!(cur.try_into()?));
+                quote!({
+                    cur.verify_fixed_size(#width)?;
+                    #value
+                })
             }
-            TypeCategory::Type => quote! { Ok(cur.into()) },
-            TypeCategory::Primitive => quote! { cur.try_into() },
-            TypeCategory::Array => quote! { cur.try_into() },
-            TypeCategory::FixVec => {
-                quote! {
-                    cur.convert_to_rawbytes()
-                }
-            }
-            TypeCategory::Union => {
-                quote!(cur.try_into())
+            Self::Optional(inner) => {
+                let value = inner.expression();
+                quote!(if cur.option_is_none() { None } else { Some(#value) })
             }
         }
     }
 }
 
-// see TypeCategory
-fn get_rust_type_category(typ: &TopDecl) -> (TokenStream, TypeCategory) {
-    let name = typ.name();
-    let mut tc = TypeCategory::Primitive;
-    let token_name = ident_name(name, "");
-    let mut transformed_name = quote! { #token_name };
+fn cursor_type(typ: &TopDecl, ast: &Ast) -> (TokenStream, CursorValue) {
+    let name = ident_name(typ.name(), "");
     match typ {
-        // if the field type is array and the field type name is "uint8", "int8" ...
-        // then it's primitive
-        TopDecl::Array(a) => {
-            let field_type_name = name.to_lowercase();
-            let new_name = match field_type_name.as_ref() {
-                // see https://github.com/XuJiandong/moleculec-c2#extra-support-for-known-types
-                "uint8" => quote! { u8 },
-                "int8" => quote! { i8 },
-                "uint16" => quote! { u16 },
-                "int16" => quote! { i16 },
-                "uint32" => quote! { u32 },
-                "int32" => quote! { i32 },
-                "uint64" => quote! { u64 },
-                "int64" => quote! { i64 },
-                _ => {
-                    if let TopDecl::Primitive(_) = a.item().typ().as_ref() {
-                        // array of byte
-                        tc = TypeCategory::Array;
-                        let len = a.item_count();
-                        quote! { [u8; #len] }
-                    } else {
-                        // array of Types
-                        tc = TypeCategory::Type;
-                        transformed_name
-                    }
-                }
-            };
-            transformed_name = new_name;
-        }
-        TopDecl::Primitive(_) => {
-            transformed_name = quote! { u8 };
-        }
-        TopDecl::FixVec(v) => {
-            // FixVec is different than Array: it has a header.
-            if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
-                // array of byte
-                transformed_name = quote! { Cursor };
-                tc = TypeCategory::FixVec;
+        TopDecl::Array(array) => {
+            if let Some(legacy) = legacy_integer(typ.name()) {
+                let value = ast
+                    .integer(typ.name())
+                    .copied()
+                    .map_or(CursorValue::TryInto, CursorValue::Integer);
+                (integers::native(legacy), value)
+            } else if array.item().typ().is_byte() {
+                let width = array.item_count();
+                (quote!([u8; #width]), CursorValue::TryInto)
             } else {
-                tc = TypeCategory::Type;
+                (quote!(#name), CursorValue::Into)
             }
         }
-        TopDecl::Option_(o) => {
-            // Option<Script>, etc
-            let (inner_name, inner_tc) = get_rust_type_category(o.item().typ());
-            match inner_tc {
-                TypeCategory::Option(level, flag, has_from) => {
-                    tc = TypeCategory::Option(level + 1, flag, has_from);
-                    transformed_name = quote! { Option<#inner_name> };
-                }
-                _ => {
-                    tc = TypeCategory::Option(1, inner_tc.is_fixvec(), inner_tc.has_from());
-                    transformed_name = quote! { Option<#inner_name> };
-                }
-            }
+        TopDecl::Primitive(_) => (quote!(u8), CursorValue::TryInto),
+        TopDecl::FixVec(vector) if vector.item().typ().is_byte() => {
+            (quote!(Cursor), CursorValue::Bytes)
         }
-        TopDecl::Union(_) => {
-            tc = TypeCategory::Union;
+        TopDecl::Option_(option) => {
+            let (native, value) = cursor_type(option.item().typ(), ast);
+            (
+                quote!(Option<#native>),
+                CursorValue::Optional(Box::new(value)),
+            )
         }
-        _ => {
-            tc = TypeCategory::Type;
-        }
+        TopDecl::Union(_) => (quote!(#name), CursorValue::TryInto),
+        _ => (quote!(#name), CursorValue::Into),
     }
-    (transformed_name, tc)
 }
 
 fn generate_rust_slice_by(index: usize, fields_sizes: &Option<&[usize]>) -> TokenStream {
@@ -792,23 +735,13 @@ fn verify_typ(typ: &TopDecl, q_val: TokenStream) -> TokenStream {
                 #q_val.verify(compatible)?;
             )
         }
-        TopDecl::Array(sub_typ) => {
-            let type_name_lower = typ.name().to_lowercase();
-            match type_name_lower.as_ref() {
-                "uint8" | "int8" | "uint16" | "int16" | "uint32" | "int32" | "uint64" | "int64" => {
-                    quote!()
-                }
-                _ => {
-                    if let TopDecl::Primitive(_) = sub_typ.item().typ().as_ref() {
-                        quote!(
-                            #type_name::from(Cursor::try_from(#q_val)?).verify(compatible)?;
-                        )
-                    } else {
-                        quote!(
-                            #type_name::from(#q_val).verify(compatible)?;
-                        )
-                    }
-                }
+        TopDecl::Array(array) => {
+            if legacy_integer(typ.name()).is_some() {
+                quote!()
+            } else if array.item().typ().is_byte() {
+                quote!(#type_name::from(Cursor::try_from(#q_val)?).verify(compatible)?;)
+            } else {
+                quote!(#type_name::from(#q_val).verify(compatible)?;)
             }
         }
         TopDecl::Struct(_) => {
@@ -832,7 +765,7 @@ fn verify_typ(typ: &TopDecl, q_val: TokenStream) -> TokenStream {
     }
 }
 
-fn verify_filed(f: &FieldDecl) -> TokenStream {
+fn verify_field(f: &FieldDecl) -> TokenStream {
     let field = field_name(f.name());
     let typ = f.typ();
     verify_typ(typ.as_ref(), quote!(self.#field()?))

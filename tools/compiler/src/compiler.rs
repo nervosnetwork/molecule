@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, process, str};
+use std::{convert::TryFrom, io::Write, path::Path, process, str, time::Duration};
 
 use molecule_codegen::{Compiler, IntermediateFormat};
 
@@ -15,6 +15,10 @@ pub(crate) mod config {
     pub(crate) struct AppConfig {
         pub(crate) schema_file: PathBuf,
         pub(crate) output_config: OutputConfig,
+        pub(crate) type_metadata: Vec<PathBuf>,
+        pub(crate) wire_only: bool,
+        pub(crate) integer_contract: Option<PathBuf>,
+        pub(crate) plugin_timeout: u64,
     }
 
     pub(crate) fn build_commandline() -> AppConfig {
@@ -46,6 +50,32 @@ pub(crate) mod config {
                     .value_parser(["json", "yaml"])
                     .action(clap::ArgAction::Set),
             )
+            .arg(
+                clap::Arg::new("type-metadata")
+                    .long("type-metadata")
+                    .help("Explicit integer metadata sidecar; repeat for imported schemas.")
+                    .action(clap::ArgAction::Append),
+            )
+            .arg(
+                clap::Arg::new("check-integer-contract")
+                    .long("check-integer-contract")
+                    .value_name("PUBLISHED_V2_JSON")
+                    .help("Require the published integer names, owners and numeric specifications before generation.")
+                    .value_parser(clap::value_parser!(PathBuf)),
+            )
+            .arg(
+                clap::Arg::new("wire-only")
+                    .long("wire-only")
+                    .help("Export only legacy wire IR, intentionally omitting semantic extensions.")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("plugin-timeout")
+                    .long("plugin-timeout")
+                    .help("Timeout in seconds for plugin generation with semantic extensions.")
+                    .default_value("60")
+                    .value_parser(clap::value_parser!(u64).range(1..)),
+            )
             .get_matches();
         AppConfig::from(matches)
     }
@@ -57,6 +87,18 @@ pub(crate) mod config {
                 PathBuf::from(path)
             };
             let language = matches.get_one::<String>("language").unwrap();
+            let wire_only = matches.get_flag("wire-only");
+            if wire_only && language != "-" {
+                eprintln!("Error: --wire-only requires --language -");
+                process::exit(1);
+            }
+            let type_metadata = matches
+                .get_many::<String>("type-metadata")
+                .into_iter()
+                .flatten()
+                .map(PathBuf::from)
+                .collect();
+            let plugin_timeout = *matches.get_one::<u64>("plugin-timeout").unwrap();
             if !schema_file.as_path().is_file() {
                 eprintln!(
                     "Error: schema-file [{}] should be a file",
@@ -92,47 +134,92 @@ pub(crate) mod config {
             Self {
                 schema_file,
                 output_config,
+                type_metadata,
+                wire_only,
+                integer_contract: matches
+                    .get_one::<PathBuf>("check-integer-contract")
+                    .cloned(),
+                plugin_timeout,
             }
         }
     }
 }
 
 fn main() {
-    let config = config::build_commandline();
-    let default_format = IntermediateFormat::JSON;
+    if let Err(error) = compile(config::build_commandline()) {
+        eprintln!("Error: {error}");
+        process::exit(1);
+    }
+}
+
+fn compile(config: config::AppConfig) -> Result<(), String> {
     let mut compiler = Compiler::new();
-    match config.output_config {
-        config::OutputConfig::Plugin(ref plugin_file) => {
-            let output = process::Command::new(plugin_file.as_path())
-                .arg("--format")
-                .output()
-                .expect("Error: failed to execute plugin process");
-            let format = if output.status.success() {
-                str::from_utf8(&output.stdout[..])
-                    .ok()
-                    .and_then(|s| IntermediateFormat::try_from(s).ok())
-                    .unwrap_or(default_format)
+    compiler.input_schema_file(&config.schema_file);
+    for path in &config.type_metadata {
+        compiler.type_metadata_file(path);
+    }
+    if let Some(path) = config.integer_contract {
+        compiler.integer_contract_file(path);
+    }
+    let ast = compiler.parse_ast()?;
+    let bytes = match &config.output_config {
+        config::OutputConfig::Output(format) => {
+            if config.wire_only {
+                eprintln!("Wire-only export: logical type semantics are intentionally omitted.");
+                format.serialize_wire(&ast)?
             } else {
-                default_format
-            };
-            if let Ok(child) = process::Command::new(plugin_file.as_path())
-                .stdin(process::Stdio::piped())
-                .spawn()
-            {
-                compiler
-                    .generate_intermediate(format)
-                    .output_plugin_process(child);
-            } else {
-                eprintln!("Error: failed to spawn plugin process");
-                process::exit(1);
+                format.serialize_ast(&ast)?
             }
         }
-        config::OutputConfig::Output(format) => {
-            compiler.generate_intermediate(format);
+        config::OutputConfig::Plugin(plugin) if ast.source_graph().is_none() => {
+            return legacy_plugin(plugin, &ast);
+        }
+        config::OutputConfig::Plugin(plugin) => {
+            let format = moleculec::plugin::negotiate(plugin, &ast, Duration::from_secs(5))?;
+            let input = format.serialize_ast(&ast)?;
+            let (bytes, diagnostics) = moleculec::plugin::execute(
+                plugin,
+                input,
+                Duration::from_secs(config.plugin_timeout),
+            )?;
+            std::io::stderr()
+                .lock()
+                .write_all(&diagnostics)
+                .map_err(|error| format!("cannot write plugin diagnostics: {error}"))?;
+            bytes
         }
     };
-    compiler
-        .input_schema_file(config.schema_file.as_path())
-        .run()
-        .unwrap()
+    std::io::stdout()
+        .lock()
+        .write_all(&bytes)
+        .map_err(|error| format!("cannot write compiler output: {error}"))
+}
+
+/// V1 plugins negotiate only a format and stream their output directly to the caller.
+fn legacy_plugin(path: &Path, ast: &molecule_codegen::ast::Ast) -> Result<(), String> {
+    let reply = process::Command::new(path)
+        .arg("--format")
+        .output()
+        .map_err(|err| err.to_string())?;
+    let format = str::from_utf8(&reply.stdout)
+        .ok()
+        .filter(|_| reply.status.success())
+        .and_then(|value| IntermediateFormat::try_from(value).ok())
+        .unwrap_or(IntermediateFormat::JSON);
+    let input = format.serialize_ast(ast)?;
+    let mut child = process::Command::new(path)
+        .stdin(process::Stdio::piped())
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    let written = child
+        .stdin
+        .take()
+        .expect("piped plugin stdin")
+        .write_all(&input);
+    let status = child.wait().map_err(|err| err.to_string())?;
+    written.map_err(|err| err.to_string())?;
+    if !status.success() {
+        return Err(format!("plugin exited with {status}"));
+    }
+    Ok(())
 }

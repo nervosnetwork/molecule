@@ -113,13 +113,10 @@ impl ImplReader for ast::FixVec {
                     return ve!(Self, HeaderIsBroken, molecule::NUMBER_SIZE, slice_len);
                 }
                 let item_count = molecule::unpack_number(slice) as usize;
-                if item_count == 0 {
-                    if slice_len != molecule::NUMBER_SIZE {
-                        return ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE, slice_len);
-                    }
-                    return Ok(());
-                }
-                let total_size = molecule::NUMBER_SIZE + Self::ITEM_SIZE * item_count;
+                // Saturation cannot match a real slice length.
+                let total_size = Self::ITEM_SIZE
+                    .saturating_mul(item_count)
+                    .saturating_add(molecule::NUMBER_SIZE);
                 if slice_len != total_size {
                     return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                 }

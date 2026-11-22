@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
 use property::Property;
 
@@ -23,6 +26,9 @@ pub struct Ast {
     namespace: String,
     imports: Vec<ImportStmt>,
     decls: Vec<Rc<TopDecl>>,
+    integers: BTreeMap<String, crate::integer::IntegerSpec>,
+    #[cfg(feature = "schema-extensions")]
+    source_graph: Option<crate::schema::SchemaGraph>,
 }
 
 #[derive(Debug, Clone, Property)]
@@ -133,6 +139,20 @@ pub struct FieldDecl {
 }
 
 impl Ast {
+    pub fn integer(&self, name: &str) -> Option<&crate::integer::IntegerSpec> {
+        self.integers.get(name)
+    }
+
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn set_extensions(
+        &mut self,
+        graph: crate::schema::SchemaGraph,
+        integers: BTreeMap<String, crate::integer::IntegerSpec>,
+    ) {
+        self.source_graph = Some(graph);
+        self.integers = integers;
+    }
+
     pub fn major_decls(&self) -> Vec<Rc<TopDecl>> {
         self.decls
             .iter()

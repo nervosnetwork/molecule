@@ -1,0 +1,7 @@
+integer Uint64 = u64be;
+array Pair [Uint64; 2];
+vector Values <Uint64>;
+option Maybe (Uint64);
+option Nested (Maybe);
+struct Fixed { amount: Uint64, }
+table Invoice { amount: Uint64, port: Nested, }
