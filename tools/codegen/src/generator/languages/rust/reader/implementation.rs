@@ -1,7 +1,7 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use super::super::utilities::{entity_name, reader_name, usize_lit};
+use super::super::utilities::{entity_name, reader_name, reader_verify, usize_lit};
 use crate::ast::{self as ast, HasName};
 
 pub(in super::super) trait ImplReader: HasName {
@@ -17,7 +17,7 @@ pub(in super::super) trait ImplReader: HasName {
                 type Entity = #entity;
                 const NAME: &'static str = #reader_string;
                 fn to_entity(&self) -> Self::Entity {
-                    Self::Entity::new_unchecked(self.as_slice().to_owned().into())
+                    <Self::Entity as molecule::prelude::Entity>::new_unchecked(molecule::prelude::Vec::from(self.0).into())
                 }
                 fn new_unchecked(slice: &'r [u8]) -> Self {
                     #reader(slice)
@@ -33,13 +33,13 @@ pub(in super::super) trait ImplReader: HasName {
 
 impl ImplReader for ast::Option_ {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let inner = reader_name(self.item().typ().name());
+        let verify_inner = reader_verify(self.item().typ(), quote!(&slice[..]));
         quote!(
             fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                 if !slice.is_empty() {
-                    #inner::verify(&slice[..], compatible)?;
+                    #verify_inner?;
                 }
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -49,9 +49,9 @@ impl ImplReader for ast::Union {
     fn impl_reader_internal(&self) -> m4::TokenStream {
         let verify_inners = self.items().iter().map(|item| {
             let item_id = usize_lit(item.id());
-            let inner = reader_name(item.typ().name());
+            let verify_inner = reader_verify(item.typ(), quote!(inner_slice));
             quote!(
-                #item_id => #inner::verify(inner_slice, compatible),
+                #item_id => #verify_inner,
             )
         });
         quote!(
@@ -67,7 +67,7 @@ impl ImplReader for ast::Union {
                     #( #verify_inners )*
                     _ => ve!(Self, UnknownItem, Self::ITEMS_COUNT, item_id),
                 }?;
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -82,7 +82,7 @@ impl ImplReader for ast::Array {
                 if slice_len != Self::TOTAL_SIZE {
                     return ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len);
                 }
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -97,7 +97,7 @@ impl ImplReader for ast::Struct {
                 if slice_len != Self::TOTAL_SIZE {
                     return ve!(Self, TotalSizeNotMatch, Self::TOTAL_SIZE, slice_len);
                 }
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -120,7 +120,7 @@ impl ImplReader for ast::FixVec {
                 if slice_len != total_size {
                     return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                 }
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -128,7 +128,7 @@ impl ImplReader for ast::FixVec {
 
 impl ImplReader for ast::DynVec {
     fn impl_reader_internal(&self) -> m4::TokenStream {
-        let inner = reader_name(self.item().typ().name());
+        let verify_inner = reader_verify(self.item().typ(), quote!(&slice[start..end]));
         quote!(
             fn verify(slice: &[u8], compatible: bool) -> molecule::error::VerificationResult<()> {
                 use molecule::verification_error as ve;
@@ -141,7 +141,7 @@ impl ImplReader for ast::DynVec {
                     return ve!(Self, TotalSizeNotMatch, total_size, slice_len);
                 }
                 if slice_len == molecule::NUMBER_SIZE {
-                    return Ok(());
+                    return ::core::result::Result::Ok(());
                 }
                 if slice_len < molecule::NUMBER_SIZE * 2 {
                     return ve!(Self, TotalSizeNotMatch, molecule::NUMBER_SIZE * 2, slice_len);
@@ -153,7 +153,7 @@ impl ImplReader for ast::DynVec {
                 if slice_len < offset_first {
                     return ve!(Self, HeaderIsBroken, offset_first, slice_len);
                 }
-                let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
+                let mut offsets: molecule::prelude::Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
                     .chunks_exact(molecule::NUMBER_SIZE)
                     .map(|x| molecule::unpack_number(x) as usize)
                     .collect();
@@ -164,9 +164,9 @@ impl ImplReader for ast::DynVec {
                 for pair in offsets.windows(2) {
                     let start = pair[0];
                     let end =  pair[1];
-                    #inner::verify(&slice[start..end], compatible)?;
+                    #verify_inner?;
                 }
-                Ok(())
+                ::core::result::Result::Ok(())
             }
         )
     }
@@ -192,16 +192,17 @@ impl ImplReader for ast::Table {
                     if slice_len > molecule::NUMBER_SIZE && !compatible {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, !0);
                     }
-                    Ok(())
+                    ::core::result::Result::Ok(())
                 }
             )
         } else {
             let verify_fields = self.fields().iter().enumerate().map(|(i, f)| {
-                let field = reader_name(f.typ().name());
                 let start = usize_lit(i);
                 let end = usize_lit(i + 1);
+                let verify_field =
+                    reader_verify(f.typ(), quote!(&slice[offsets[#start]..offsets[#end]]));
                 quote!(
-                    #field::verify(&slice[offsets[#start]..offsets[#end]], compatible)?;
+                    #verify_field?;
                 )
             });
             quote!(
@@ -231,7 +232,7 @@ impl ImplReader for ast::Table {
                     } else if !compatible && field_count > Self::FIELD_COUNT {
                         return ve!(Self, FieldCountNotMatch, Self::FIELD_COUNT, field_count);
                     };
-                    let mut offsets: Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
+                    let mut offsets: molecule::prelude::Vec<usize> = slice[molecule::NUMBER_SIZE..offset_first]
                         .chunks_exact(molecule::NUMBER_SIZE)
                         .map(|x| molecule::unpack_number(x) as usize)
                         .collect();
@@ -240,7 +241,7 @@ impl ImplReader for ast::Table {
                         return ve!(Self, OffsetsNotMatch);
                     }
                     #( #verify_fields )*
-                    Ok(())
+                    ::core::result::Result::Ok(())
                 }
             )
         }

@@ -94,6 +94,7 @@ extern "C" {
     ) -> i32;
     fn narrow_i8_c(value: i64, out: *mut u8) -> i32;
     fn narrow_u8_c(value: u64, out: *mut u8) -> i32;
+    fn check_c_imports_and_case_fields() -> i32;
 }
 
 macro_rules! check_scalar {
@@ -252,6 +253,7 @@ fn signed_and_unsigned_c_range_errors_leave_output_untouched() {
         assert_ne!(unsafe { narrow_u8_c(unsigned, &mut output) }, 0);
         assert_eq!(output, 0xa5);
     }
+    assert_eq!(unsafe { check_c_imports_and_case_fields() }, 0);
 }
 
 #[test]

@@ -12,3 +12,4 @@ array AmountPair [Amount; 2];
 vector Amounts <Amount>;
 option AmountOpt (Amount);
 table Order { amount: Amount, tip: AmountOpt, }
+table VecHolder { amounts: Amounts, }

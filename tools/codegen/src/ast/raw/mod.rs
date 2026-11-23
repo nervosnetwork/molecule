@@ -12,6 +12,9 @@ pub(crate) struct Ast {
     imports: Vec<ImportStmt>,
     integers: std::collections::BTreeMap<String, crate::integer::IntegerSpec>,
     decls: Vec<TopDecl>,
+    #[property(skip)]
+    pub(crate) decl_origins:
+        std::collections::BTreeMap<String, (crate::ast::verified::ModulePath, bool)>,
 }
 
 impl Default for SyntaxVersion {

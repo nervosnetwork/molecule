@@ -165,6 +165,8 @@ impl parser::Parser {
         }
         let mut ast = ast::Ast::for_file(path)?;
         let mut nodes = vec![path.to_path_buf()];
+        let mut node_paths = vec![crate::ast::verified::ModulePath::root()];
+        let mut node_depths = vec![0usize];
         let mut parent_dirs = vec![vec![canonical_parent(path)?]];
         let mut alias_queue = VecDeque::<(usize, std::path::PathBuf)>::new();
         let mut edges = Vec::<Vec<(std::path::PathBuf, usize)>>::new();
@@ -174,7 +176,16 @@ impl parser::Parser {
             let current = nodes[idx].clone();
             let current_dir = canonical_parent(&current)?;
             let start = ast.imports.len();
+            let decl_start = ast.decls.len();
             Self::preprocess_single(&mut ast, &current, usize::from(idx != 0))?;
+            if idx > 0 {
+                let origin = (node_paths[idx].clone(), node_depths[idx] == 1);
+                for decl in &ast.decls[decl_start..] {
+                    ast.decl_origins
+                        .entry(decl.name().to_owned())
+                        .or_insert_with(|| origin.clone());
+                }
+            }
             let stmts: Vec<_> = ast.imports.drain(start..).collect();
             let mut outgoing = Vec::new();
             for stmt in stmts {
@@ -199,7 +210,14 @@ impl parser::Parser {
                     None => {
                         let target_parent = canonical_parent(&target)?;
                         let i = nodes.len();
+                        let edge = crate::ast::verified::ModulePath::new(
+                            stmt.name().to_owned(),
+                            stmt.paths().to_owned(),
+                            stmt.path_supers(),
+                        );
                         nodes.push(target);
+                        node_paths.push(node_paths[idx].resolve_edge(&edge));
+                        node_depths.push(node_depths[idx] + 1);
                         parent_dirs.push(vec![target_parent]);
                         i
                     }

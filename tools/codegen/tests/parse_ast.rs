@@ -48,7 +48,7 @@ fn invalid_layouts_return_diagnostics_with_and_without_integers() {
                 &["Record"],
             ),
             ("struct Dup { a: byte, a: byte, }", &["Dup", "a"]),
-            ("table DupTable { x: byte, X: byte, }", &["DupTable", "X"]),
+            ("table DupTable { x: byte, x: byte, }", &["DupTable", "x"]),
         ] {
             fs::write(&root, format!("{prefix} {schema}")).unwrap();
             let err = Compiler::new()
@@ -123,6 +123,26 @@ fn legacy_ir_keeps_explicit_vector_kinds_and_reports_unresolved_types() {
         .parse_ast()
         .unwrap();
     assert!(matches!(ast.decls()[2].as_ref(), TopDecl::Union(u) if u.items().len() == 2));
+
+    // Legacy v1 IR and schemas with distinct case-variant field names (`feeRate` / `feerate`) are accepted.
+    let case_fields_ir = br#"{"namespace":"sample","imports":[],"declarations":[{"type":"struct","name":"Rates","fields":[{"name":"feeRate","type":"byte"},{"name":"feerate","type":"byte"}]}]}"#;
+    let ast = Compiler::new()
+        .input_intermediate(JSON, case_fields_ir.to_vec())
+        .parse_ast()
+        .unwrap();
+    assert_eq!(ast.decls().len(), 1);
+    for lang in [
+        molecule_codegen::Language::Rust,
+        molecule_codegen::Language::RustLazyReader,
+        molecule_codegen::Language::C,
+    ] {
+        Compiler::new()
+            .generate_code(lang)
+            .input_intermediate(JSON, case_fields_ir.to_vec())
+            .output_dir(out_dir.path())
+            .run()
+            .unwrap();
+    }
 
     // Crafted legacy v1 IR rejects invalid identifiers, duplicate/oversized union IDs, duplicate union items, and huge path_supers.
     for malformed in [
@@ -292,7 +312,36 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
         .unwrap_err()
         .contains("syntax version"));
 
-    // C include guards sanitize punctuation in schema stems and detect macro collisions.
+    // Distinct case-variant fields (`feeRate` / `feerate`) succeed in schema, Rust, lazy Rust, and C;
+    // case-only duplicates (`x` / `X`) fail in Rust/lazy Rust while remaining distinct in C.
+    fs::write(&root, "struct Rates { feeRate: byte, feerate: byte, }").unwrap();
+    for lang in [Language::Rust, Language::RustLazyReader, Language::C] {
+        Compiler::new()
+            .generate_code(lang)
+            .input_schema_file(&root)
+            .output_dir(out.path())
+            .run()
+            .unwrap();
+    }
+    fs::write(&root, "table CaseOnly { x: byte, X: byte, }").unwrap();
+    for lang in [Language::Rust, Language::RustLazyReader] {
+        assert!(Compiler::new()
+            .generate_code(lang)
+            .input_schema_file(&root)
+            .output_dir(out.path())
+            .run()
+            .unwrap_err()
+            .contains("E_RUST_FIELD_COLLISION"));
+    }
+    Compiler::new()
+        .generate_code(Language::C)
+        .input_schema_file(&root)
+        .output_dir(out.path())
+        .run()
+        .unwrap();
+
+    // C include guards sanitize punctuation, include a content hash so `a/base.h` and `b/base.h`
+    // get distinct guards, and detect macro collisions.
     let dashed = dir.path().join("types-v2.mol");
     fs::write(&dashed, "integer Amount = u64be;").unwrap();
     Compiler::new()
@@ -302,8 +351,40 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
         .run()
         .unwrap();
     let header = fs::read_to_string(out.path().join("types-v2.h")).unwrap();
-    assert!(header.contains("#ifndef TYPES_V2_H"), "{header}");
-    assert!(!header.contains("#ifndef TYPES-V2_H"), "{header}");
+    assert!(header.contains("#ifndef TYPES_V2_"), "{header}");
+    assert!(!header.contains("#ifndef TYPES-V2_"), "{header}");
+
+    let c_a = dir.path().join("ca");
+    let c_b = dir.path().join("cb");
+    fs::create_dir_all(&c_a).unwrap();
+    fs::create_dir_all(&c_b).unwrap();
+    fs::write(c_a.join("base.mol"), "integer AInt = u32le;").unwrap();
+    fs::write(c_b.join("base.mol"), "integer BInt = u64be;").unwrap();
+    let out_a = out.path().join("ca");
+    let out_b = out.path().join("cb");
+    fs::create_dir_all(&out_a).unwrap();
+    fs::create_dir_all(&out_b).unwrap();
+    Compiler::new()
+        .generate_code(Language::C)
+        .input_schema_file(c_a.join("base.mol"))
+        .output_dir(&out_a)
+        .run()
+        .unwrap();
+    Compiler::new()
+        .generate_code(Language::C)
+        .input_schema_file(c_b.join("base.mol"))
+        .output_dir(&out_b)
+        .run()
+        .unwrap();
+    let guard_line = |s: &str| {
+        s.lines()
+            .find(|l| l.starts_with("#ifndef BASE_"))
+            .unwrap()
+            .to_owned()
+    };
+    let h_a = fs::read_to_string(out_a.join("base.h")).unwrap();
+    let h_b = fs::read_to_string(out_b.join("base.h")).unwrap();
+    assert_ne!(guard_line(&h_a), guard_line(&h_b));
 
     fs::write(
         &root,
@@ -417,12 +498,11 @@ fn cross_directory_aliases_allow_unambiguous_imports_and_reject_conflicting_ones
         }
     }
 
-    // Overwriting an existing plain output file preserves inode (ACLs/xattrs) and 0600 mode,
-    // and extended atomic writes also preserve 0600 mode.
-    use std::os::unix::fs::MetadataExt;
-    for (name, schema, same_inode) in [
-        ("plain", "array Word [byte; 2];", true),
-        ("extended", "integer Word = u16le;", false),
+    // Overwriting an existing output file (plain, native integer, or sidecar) preserves
+    // 0600 permissions on Unix as well as macOS ACLs and extended attributes.
+    for (name, schema) in [
+        ("plain", "array Word [byte; 2];"),
+        ("extended", "integer Word = u16le;"),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let schema_path = dir.path().join(format!("{name}.mol"));
@@ -430,7 +510,23 @@ fn cross_directory_aliases_allow_unambiguous_imports_and_reject_conflicting_ones
         let out_file = dir.path().join(format!("{name}.rs"));
         fs::write(&out_file, b"// old").unwrap();
         fs::set_permissions(&out_file, fs::Permissions::from_mode(0o600)).unwrap();
-        let old_ino = fs::metadata(&out_file).unwrap().ino();
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            assert!(Command::new("xattr")
+                .args(["-w", "user.molecule_test", "preserved"])
+                .arg(&out_file)
+                .status()
+                .unwrap()
+                .success());
+            let acl_ok = Command::new("chmod")
+                .args(["+a", "everyone allow readattr"])
+                .arg(&out_file)
+                .status()
+                .unwrap()
+                .success();
+            assert!(acl_ok, "chmod +a failed on macOS tempdir");
+        }
         Compiler::new()
             .generate_code(molecule_codegen::Language::Rust)
             .input_schema_file(&schema_path)
@@ -440,14 +536,142 @@ fn cross_directory_aliases_allow_unambiguous_imports_and_reject_conflicting_ones
         let meta = fs::metadata(&out_file).unwrap();
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "{name}: expected 0600 mode, got {mode:o}");
-        if same_inode {
-            assert_eq!(
-                meta.ino(),
-                old_ino,
-                "{name}: plain overwrite replaced inode"
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            let xattr_out = Command::new("xattr")
+                .args(["-p", "user.molecule_test"])
+                .arg(&out_file)
+                .output()
+                .unwrap();
+            assert!(
+                xattr_out.status.success()
+                    && String::from_utf8_lossy(&xattr_out.stdout).trim() == "preserved",
+                "{name}: xattr lost after overwrite: {:?}",
+                xattr_out
+            );
+            let ls_out = Command::new("ls")
+                .args(["-le"])
+                .arg(&out_file)
+                .output()
+                .unwrap();
+            let ls_text = String::from_utf8_lossy(&ls_out.stdout);
+            assert!(
+                ls_text.contains("everyone allow readattr"),
+                "{name}: ACL lost after overwrite:\n{ls_text}"
             );
         }
     }
+
+    #[cfg(all(target_os = "macos", feature = "schema-extensions"))]
+    {
+        use std::process::Command;
+        let dir = tempfile::tempdir().unwrap();
+        let schema_path = dir.path().join("sidecar.mol");
+        let source = "array Word [byte; 2];";
+        fs::write(&schema_path, source).unwrap();
+        let meta_path = dir.path().join("sidecar.json");
+        let digest = molecule_codegen::schema::source_digest(source.as_bytes());
+        fs::write(
+            &meta_path,
+            format!(
+                r#"{{"metadata_version":1,"schema":"sidecar.mol","schema_sha256":"{digest}","integers":[{{"type":"Word","bits":16,"signed":false,"byte_order":"little"}}]}}"#
+            ),
+        )
+        .unwrap();
+        let out_file = dir.path().join("sidecar.rs");
+        fs::write(&out_file, b"// old").unwrap();
+        fs::set_permissions(&out_file, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(Command::new("xattr")
+            .args(["-w", "user.molecule_sidecar", "kept"])
+            .arg(&out_file)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("chmod")
+            .args(["+a", "everyone allow readattr"])
+            .arg(&out_file)
+            .status()
+            .unwrap()
+            .success());
+        Compiler::new()
+            .input_schema_file(&schema_path)
+            .type_metadata_file(&meta_path)
+            .generate_code(molecule_codegen::Language::Rust)
+            .output_dir(dir.path())
+            .run()
+            .unwrap();
+        let mode = fs::metadata(&out_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let xattr_out = Command::new("xattr")
+            .args(["-p", "user.molecule_sidecar"])
+            .arg(&out_file)
+            .output()
+            .unwrap();
+        assert!(
+            xattr_out.status.success()
+                && String::from_utf8_lossy(&xattr_out.stdout).trim() == "kept"
+        );
+        let ls_out = Command::new("ls")
+            .args(["-le"])
+            .arg(&out_file)
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&ls_out.stdout).contains("everyone allow readattr"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn plain_overwrite_preserves_existing_file_on_write_failure() {
+    use std::process::Command;
+    if std::env::var_os("MOLECULE_TEST_RLIMIT_FSIZE_CHILD").is_some() {
+        let dir = std::path::PathBuf::from(std::env::var_os("MOLECULE_TEST_RLIMIT_DIR").unwrap());
+        let schema_path = dir.join("plain.mol");
+        let out_file = dir.join("plain.rs");
+        let err = Compiler::new()
+            .generate_code(molecule_codegen::Language::Rust)
+            .input_schema_file(&schema_path)
+            .output_dir(&dir)
+            .run()
+            .unwrap_err();
+        assert!(err.contains("E_OUTPUT"), "{err}");
+        assert_eq!(fs::read(&out_file).unwrap(), b"// original intact content");
+        let entries: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            !entries.iter().any(|n| n.starts_with(".molecule-")),
+            "leaked temporary files: {entries:?}"
+        );
+        return;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("plain.mol"), "array Word [byte; 2];").unwrap();
+    fs::write(dir.path().join("plain.rs"), b"// original intact content").unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let status = Command::new("python3")
+        .args([
+            "-c",
+            "import os, resource, signal, sys; signal.signal(signal.SIGXFSZ, signal.SIG_IGN); resource.setrlimit(resource.RLIMIT_FSIZE, (1024, 1024)); os.execv(sys.argv[1], sys.argv[1:])",
+        ])
+        .arg(&exe)
+        .args([
+            "--exact",
+            "plain_overwrite_preserves_existing_file_on_write_failure",
+            "--nocapture",
+        ])
+        .env("MOLECULE_TEST_RLIMIT_FSIZE_CHILD", "1")
+        .env("MOLECULE_TEST_RLIMIT_DIR", dir.path())
+        .status()
+        .unwrap();
+    assert!(status.success(), "rlimit child failed: {status}");
+    assert_eq!(
+        fs::read(dir.path().join("plain.rs")).unwrap(),
+        b"// original intact content"
+    );
 }
 
 #[cfg(all(unix, feature = "compiler-plugin"))]

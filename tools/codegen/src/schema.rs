@@ -165,7 +165,12 @@ impl LoadedGraph {
             .ok_or("E_SCHEMA_SOURCE: root has no parent directory")?;
         let root_id = relative_id(base, &root)?;
         let canonical_base = canonical(base)?;
-        let mut pending = VecDeque::from([(root_id.clone(), root.clone())]);
+        let mut pending = VecDeque::from([(
+            root_id.clone(),
+            root.clone(),
+            crate::ast::verified::ModulePath::root(),
+            0usize,
+        )]);
         let mut paths = FileIndex::default();
         paths.insert(canonical(&root)?, root_id.clone())?;
         let mut parent_dirs = BTreeMap::from([(root_id.clone(), vec![canonical_base.clone()])]);
@@ -173,7 +178,7 @@ impl LoadedGraph {
         let mut modules = Vec::new();
         let mut hardlink_names = BTreeMap::new();
         let mut layout = crate::ast::raw::Ast::for_file(&root);
-        while let Some((id, path)) = pending.pop_front() {
+        while let Some((id, path, mod_path, depth)) = pending.pop_front() {
             let current_dir = parent_dir(&path)?;
             let source = fs::read_to_string(&path)
                 .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", path.display()))?;
@@ -224,8 +229,18 @@ impl LoadedGraph {
                             }
                             known.clone()
                         } else {
+                            let edge_path = crate::ast::verified::ModulePath::from_import_str(
+                                imported.as_str(),
+                            )
+                            .ok_or_else(|| {
+                                format!(
+                                    "E_SCHEMA_SYNTAX: invalid import path {}",
+                                    imported.as_str()
+                                )
+                            })?;
+                            let child_mod_path = mod_path.resolve_edge(&edge_path);
                             parent_dirs.insert(name.clone(), vec![target_parent]);
-                            pending.push_back((name.clone(), target));
+                            pending.push_back((name.clone(), target, child_mod_path, depth + 1));
                             name
                         };
                         paths.insert(key, target_id.clone())?;
@@ -260,8 +275,21 @@ impl LoadedGraph {
             // Ownership and layout consume the same tokens. Keep layout errors for
             // parse_ast so callers can inspect source provenance independently.
             layout = layout.and_then(|mut raw| {
+                let decl_start = raw.decls().len();
                 crate::Parser::append_declarations(&mut raw, usize::from(id != root_id), parsed)
                     .map_err(|error| error.with_path(&path.display().to_string()).to_string())?;
+                if depth > 0 {
+                    let origin = (mod_path.clone(), depth == 1);
+                    let added: Vec<String> = raw.decls()[decl_start..]
+                        .iter()
+                        .map(|d| d.name().to_owned())
+                        .collect();
+                    for name in added {
+                        raw.decl_origins
+                            .entry(name)
+                            .or_insert_with(|| origin.clone());
+                    }
+                }
                 if id == root_id {
                     raw.retain_root_imports(&module.imports);
                 }

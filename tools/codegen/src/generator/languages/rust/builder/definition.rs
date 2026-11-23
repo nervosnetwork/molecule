@@ -101,6 +101,6 @@ fn def_builder_for_vector(self_name: &str, inner_name: &str) -> m4::TokenStream 
     let inner = entity_name(inner_name);
     quote!(
         #[derive(Clone, Debug, Default)]
-        pub struct #builder (pub(crate) Vec<#inner>);
+        pub struct #builder (pub(crate) molecule::prelude::Vec<#inner>);
     )
 }

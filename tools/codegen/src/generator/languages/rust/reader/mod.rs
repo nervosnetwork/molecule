@@ -36,7 +36,7 @@ where
                     if f.alternate() {
                         write!(f, "0x")?;
                     }
-                    write!(f, "{}", hex_string(self.as_slice()))
+                    write!(f, "{}", hex_string(self.0))
                 }
             }
 

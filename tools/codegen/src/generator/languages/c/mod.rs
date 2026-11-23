@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Write as _};
 
 use case::CaseExt;
 
@@ -25,7 +25,7 @@ impl Generator {
         writeln!(writer)
     }
 
-    fn guard_name(name: &str) -> String {
+    fn guard_name(name: &str, body: &[u8]) -> String {
         let mut sanitized: String = name
             .to_snake()
             .to_uppercase()
@@ -41,40 +41,73 @@ impl Generator {
         if sanitized.as_bytes().first().is_some_and(u8::is_ascii_digit) {
             sanitized.insert(0, '_');
         }
-        sanitized
+        // Hash the rendered header body so distinct schemas sharing a filename
+        // (e.g. `a/base.mol` and `b/base.mol`) never collide on one guard macro.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for &byte in body {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{sanitized}_{hash:016X}")
     }
 
-    fn ifndef<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = Self::guard_name(name);
+    fn ifndef<W: io::Write>(o: &mut W, guard: &str) -> io::Result<()> {
         let api_decorator = utilities::API_DECORATOR;
-        w!(o, "#ifndef {}_H                                        ", n);
-        w!(o, "#define {}_H                                        ", n);
+        w!(
+            o,
+            "#ifndef {}_H                                        ",
+            guard
+        );
+        w!(
+            o,
+            "#define {}_H                                        ",
+            guard
+        );
         w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
         w!(o, "extern \"C\" {{                                        ");
         w!(o, "#endif /* __cplusplus */                               ");
         w!(o, "                                                       ");
         w!(o, "#ifndef {}                              ", api_decorator);
-        w!(o, "#define __DEFINE_MOLECULE_API_DECORATOR_{}          ", n);
+        w!(
+            o,
+            "#define __DEFINE_MOLECULE_API_DECORATOR_{}          ",
+            guard
+        );
         w!(o, "#define {}                              ", api_decorator);
         w!(o, "#endif /* {} */                         ", api_decorator);
         Ok(())
     }
 
-    fn endif<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = Self::guard_name(name);
+    fn endif<W: io::Write>(o: &mut W, guard: &str) -> io::Result<()> {
         let api_decorator = utilities::API_DECORATOR;
         w!(o, "                                                       ");
-        w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
+        w!(
+            o,
+            "#ifdef __DEFINE_MOLECULE_API_DECORATOR_{}           ",
+            guard
+        );
         w!(o, "#undef {}                               ", api_decorator);
-        w!(o, "#undef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
-        w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR_{} */     ", n);
+        w!(
+            o,
+            "#undef __DEFINE_MOLECULE_API_DECORATOR_{}           ",
+            guard
+        );
+        w!(
+            o,
+            "#endif /* __DEFINE_MOLECULE_API_DECORATOR_{} */     ",
+            guard
+        );
         w!(o, "                                                       ");
         w!(o, "#ifdef __cplusplus                                     ");
         w!(o, "}}                                                     ");
         w!(o, "#endif /* __cplusplus */                               ");
         w!(o, "                                                       ");
-        w!(o, "#endif /* {}_H */                                   ", n);
+        w!(
+            o,
+            "#endif /* {}_H */                                   ",
+            guard
+        );
         Ok(())
     }
 
@@ -103,47 +136,51 @@ impl super::LanguageGenerator for Generator {
             writeln!(writer, r#"#include "molecule_integer.inc""#)?;
         }
         writeln!(writer)?;
-        Self::ifndef(writer, ast.namespace())?;
+        let mut body = Vec::new();
         let imports = ast.imports();
         if !imports.is_empty() {
-            writeln!(writer)?;
+            writeln!(&mut body)?;
             for import in imports {
-                import.gen_import(writer)?;
+                import.gen_import(&mut body)?;
             }
         }
-        writeln!(writer)?;
-        Self::title(writer, "Reader APIs")?;
+        writeln!(&mut body)?;
+        Self::title(&mut body, "Reader APIs")?;
         for decl in ast.major_decls() {
-            decl.gen_reader_interfaces(writer)?;
+            decl.gen_reader_interfaces(&mut body)?;
         }
-        integers::generate_reader_interfaces(writer, ast)?;
-        writeln!(writer)?;
-        Self::title(writer, "Builder APIs")?;
+        integers::generate_reader_interfaces(&mut body, ast)?;
+        writeln!(&mut body)?;
+        Self::title(&mut body, "Builder APIs")?;
         for decl in ast.major_decls() {
-            decl.gen_builder_interfaces(writer)?;
+            decl.gen_builder_interfaces(&mut body)?;
         }
-        integers::generate_builder_interfaces(writer, ast)?;
-        writeln!(writer)?;
-        Self::title(writer, "Default Value")?;
-        writeln!(writer, r#"#define ____ 0x00"#)?;
-        writeln!(writer)?;
+        integers::generate_builder_interfaces(&mut body, ast)?;
+        writeln!(&mut body)?;
+        Self::title(&mut body, "Default Value")?;
+        writeln!(&mut body, r#"#define ____ 0x00"#)?;
+        writeln!(&mut body)?;
         for decl in ast.major_decls() {
-            decl.gen_default(writer)?;
+            decl.gen_default(&mut body)?;
         }
-        writeln!(writer)?;
-        writeln!(writer, r#"#undef ____"#)?;
-        writeln!(writer)?;
-        Self::title(writer, "Reader Functions")?;
+        writeln!(&mut body)?;
+        writeln!(&mut body, r#"#undef ____"#)?;
+        writeln!(&mut body)?;
+        Self::title(&mut body, "Reader Functions")?;
         for decl in ast.major_decls() {
-            decl.gen_reader_functions(writer)?;
+            decl.gen_reader_functions(&mut body)?;
         }
-        writeln!(writer)?;
-        Self::title(writer, "Builder Functions")?;
+        writeln!(&mut body)?;
+        Self::title(&mut body, "Builder Functions")?;
         for decl in ast.major_decls() {
-            decl.gen_builder_functions(writer)?;
+            decl.gen_builder_functions(&mut body)?;
         }
-        integers::generate(writer, ast)?;
-        Self::endif(writer, ast.namespace())?;
+        integers::generate(&mut body, ast)?;
+
+        let guard = Self::guard_name(ast.namespace(), &body);
+        Self::ifndef(writer, &guard)?;
+        writer.write_all(&body)?;
+        Self::endif(writer, &guard)?;
         Ok(())
     }
 }

@@ -19,6 +19,69 @@ use crate::ast::SyntaxVersion;
 
 type Deps<'a> = HashMap<&'a str, Rc<super::TopDecl>>;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct ModulePath {
+    pub(crate) name: String,
+    pub(crate) paths: Vec<String>,
+    pub(crate) path_supers: usize,
+}
+
+impl ModulePath {
+    pub(crate) fn root() -> Self {
+        Self {
+            name: String::new(),
+            paths: Vec::new(),
+            path_supers: 0,
+        }
+    }
+
+    pub(crate) fn new(name: String, paths: Vec<String>, path_supers: usize) -> Self {
+        Self {
+            name,
+            paths,
+            path_supers,
+        }
+    }
+
+    /// Parse a Molecule `import` path string (e.g. `../common/defs`).
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn from_import_str(raw: &str) -> Option<Self> {
+        let mut path_supers = 0;
+        let mut rest = raw;
+        while let Some(stripped) = rest.strip_prefix("../") {
+            path_supers += 1;
+            rest = stripped;
+        }
+        let mut parts: Vec<String> = rest.split('/').map(str::to_owned).collect();
+        let name = parts.pop()?;
+        if name.is_empty() || parts.iter().any(String::is_empty) {
+            return None;
+        }
+        Some(Self {
+            name,
+            paths: parts,
+            path_supers,
+        })
+    }
+
+    /// Resolve an import edge written inside the module at `self` into a path relative to root.
+    pub(crate) fn resolve_edge(&self, edge: &Self) -> Self {
+        let mut path_supers = self.path_supers;
+        let mut paths = self.paths.clone();
+        for _ in 0..edge.path_supers {
+            if paths.pop().is_none() {
+                path_supers += 1;
+            }
+        }
+        paths.extend(edge.paths.iter().cloned());
+        Self {
+            name: edge.name.clone(),
+            paths,
+            path_supers,
+        }
+    }
+}
+
 #[derive(Debug, Property)]
 #[property(get(public))]
 pub struct Ast {
@@ -29,6 +92,8 @@ pub struct Ast {
     integers: BTreeMap<String, crate::integer::IntegerSpec>,
     #[cfg(feature = "schema-extensions")]
     source_graph: Option<crate::schema::SchemaGraph>,
+    #[property(skip)]
+    decl_origins: Option<BTreeMap<String, (ModulePath, bool)>>,
 }
 
 #[derive(Debug, Clone, Property)]
@@ -159,6 +224,22 @@ impl Ast {
             .filter(|d| d.imported_depth() == 0)
             .map(Rc::clone)
             .collect()
+    }
+
+    pub(crate) fn has_decl_origins(&self) -> bool {
+        self.decl_origins.is_some()
+    }
+
+    pub(crate) fn decl_origin(&self, name: &str) -> Option<(&ModulePath, bool)> {
+        self.decl_origins
+            .as_ref()
+            .and_then(|map| map.get(name))
+            .map(|(path, direct)| (path, *direct))
+    }
+
+    #[cfg(feature = "compiler-plugin")]
+    pub(crate) fn set_decl_origins(&mut self, origins: BTreeMap<String, (ModulePath, bool)>) {
+        self.decl_origins = Some(origins);
     }
 }
 

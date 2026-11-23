@@ -160,8 +160,6 @@ impl Compiler {
             .ok_or("target is not set: generate code or intermediate data")?;
         let ast = self.parse_ast()?;
         let namespace = ast.namespace().to_owned();
-        #[cfg(feature = "schema-extensions")]
-        let extended = ast.source_graph().is_some();
         let generator = generator::Generator::new(ast);
 
         let mut output_data = Vec::<u8>::new();
@@ -175,12 +173,7 @@ impl Compiler {
                     return Err(format!("E_OUTPUT: invalid output namespace {namespace:?}"));
                 }
                 let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
-                #[cfg(feature = "schema-extensions")]
-                if extended {
-                    write_atomic(&out_file, &output_data)?;
-                    return Ok(());
-                }
-                write_in_place(&out_file, &output_data)?;
+                write_atomic(&out_file, &output_data)?;
             }
             Output::Stdout => {
                 let stdout = io::stdout();
@@ -219,19 +212,64 @@ impl Compiler {
     }
 }
 
-fn write_in_place(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(destination)
-        .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
-    file.write_all(bytes)
-        .and_then(|_| file.flush())
-        .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))
+#[cfg(target_os = "macos")]
+const COPYFILE_ACL: u32 = 1 << 0;
+#[cfg(target_os = "macos")]
+const COPYFILE_XATTR: u32 = 1 << 2;
+
+#[cfg(target_os = "macos")]
+fn copy_macos_metadata(
+    src: &fs::File,
+    dst: &fs::File,
+    flags: u32,
+    destination: &path::Path,
+) -> Result<(), String> {
+    use std::os::unix::io::AsRawFd;
+    const COPYFILE_CHECK: u32 = 1 << 16;
+    const ENOTSUP: i32 = 45;
+    extern "C" {
+        fn fcopyfile(
+            from: std::ffi::c_int,
+            to: std::ffi::c_int,
+            state: *mut std::ffi::c_void,
+            flags: u32,
+        ) -> std::ffi::c_int;
+    }
+    // SAFETY: Both descriptors are live open files and `state` is NULL per copyfile(3).
+    let needed = unsafe {
+        fcopyfile(
+            src.as_raw_fd(),
+            dst.as_raw_fd(),
+            std::ptr::null_mut(),
+            COPYFILE_CHECK | flags,
+        )
+    };
+    if needed < 0 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(ENOTSUP) {
+            return Ok(());
+        }
+        return Err(format!("E_OUTPUT: {}: {err}", destination.display()));
+    }
+    let copy_flags = (needed as u32) & flags;
+    if copy_flags != 0 {
+        // SAFETY: Both descriptors are live open files and `state` is NULL per copyfile(3).
+        let rc = unsafe {
+            fcopyfile(
+                src.as_raw_fd(),
+                dst.as_raw_fd(),
+                std::ptr::null_mut(),
+                copy_flags,
+            )
+        };
+        if rc < 0 {
+            let err = io::Error::last_os_error();
+            return Err(format!("E_OUTPUT: {}: {err}", destination.display()));
+        }
+    }
+    Ok(())
 }
 
-#[cfg(feature = "schema-extensions")]
 fn write_atomic(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -246,7 +284,15 @@ fn write_atomic(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
     let directory = destination
         .parent()
         .ok_or("E_OUTPUT: destination has no parent")?;
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
+    let existing_file = fs::File::open(destination).ok();
+    #[cfg(all(unix, target_os = "macos"))]
+    let existing_perms = existing_file
+        .as_ref()
+        .and_then(|f| f.metadata().ok())
+        .or_else(|| fs::metadata(destination).ok())
+        .map(|m| m.permissions());
+    #[cfg(all(unix, not(target_os = "macos")))]
     let existing_perms = fs::metadata(destination).ok().map(|m| m.permissions());
     loop {
         let path = directory.join(format!(
@@ -272,12 +318,22 @@ fn write_atomic(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
         file.write_all(bytes)
             .and_then(|_| file.flush())
             .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
+        #[cfg(target_os = "macos")]
+        if let Some(ref src) = existing_file {
+            copy_macos_metadata(src, &file, COPYFILE_XATTR, destination)?;
+        }
         #[cfg(unix)]
         if let Some(perms) = existing_perms.as_ref() {
             file.set_permissions(perms.clone())
                 .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
         }
+        #[cfg(target_os = "macos")]
+        if let Some(ref src) = existing_file {
+            copy_macos_metadata(src, &file, COPYFILE_ACL, destination)?;
+        }
         drop(file);
+        #[cfg(target_os = "macos")]
+        drop(existing_file);
         let temp_path = temporary.0.as_ref().expect("active temporary path");
         fs::rename(temp_path, destination)
             .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;

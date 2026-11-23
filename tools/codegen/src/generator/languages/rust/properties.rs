@@ -25,7 +25,7 @@ impl DefProperties for ast::Union {
     fn def_properties(&self) -> m4::TokenStream {
         quote!(
             pub fn item_id(&self) -> molecule::Number {
-                molecule::unpack_number(self.as_slice())
+                molecule::unpack_number(&self.0[..])
             }
         )
     }
@@ -50,7 +50,7 @@ impl DefProperties for ast::FixVec {
                 molecule::NUMBER_SIZE + Self::ITEM_SIZE * self.item_count()
             }
             pub fn item_count(&self) -> usize {
-                molecule::unpack_number(self.as_slice()) as usize
+                molecule::unpack_number(&self.0[..]) as usize
             }
 
             pub fn len(&self) -> usize {
@@ -67,15 +67,13 @@ impl DefProperties for ast::DynVec {
     fn def_properties(&self) -> m4::TokenStream {
         quote!(
             pub fn total_size(&self) -> usize {
-                molecule::unpack_number(self.as_slice()) as usize
+                molecule::unpack_number(&self.0[..]) as usize
             }
             pub fn item_count(&self) -> usize {
                 if self.total_size() == molecule::NUMBER_SIZE {
                     0
                 } else {
-                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize
-                        / 4)
-                        - 1
+                    (molecule::unpack_number(&self.0[molecule::NUMBER_SIZE..]) as usize / 4) - 1
                 }
             }
 
@@ -93,15 +91,13 @@ impl DefProperties for ast::Table {
     fn def_properties(&self) -> m4::TokenStream {
         quote!(
             pub fn total_size(&self) -> usize {
-                molecule::unpack_number(self.as_slice()) as usize
+                molecule::unpack_number(&self.0[..]) as usize
             }
             pub fn field_count(&self) -> usize {
                 if self.total_size() == molecule::NUMBER_SIZE {
                     0
                 } else {
-                    (molecule::unpack_number(&self.as_slice()[molecule::NUMBER_SIZE..]) as usize
-                        / 4)
-                        - 1
+                    (molecule::unpack_number(&self.0[molecule::NUMBER_SIZE..]) as usize / 4) - 1
                 }
             }
 

@@ -74,6 +74,7 @@ impl Ast {
             integers: raw.integers().clone(),
             #[cfg(feature = "schema-extensions")]
             source_graph: None,
+            decl_origins: Some(raw.decl_origins.clone()),
         };
         ast.validate_layout_limits()?;
         Ok(ast)
@@ -122,7 +123,7 @@ impl Ast {
             };
             let mut names = HashSet::new();
             for f in fields {
-                if !names.insert(f.name.to_ascii_lowercase()) {
+                if !names.insert(f.name.as_str()) {
                     return Err(format!(
                         "E_SCHEMA_FIELD: duplicate {}.{}",
                         decl.name(),

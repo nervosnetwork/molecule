@@ -186,6 +186,7 @@ impl super::Ast {
             decls,
             integers: Default::default(),
             source_graph: None,
+            decl_origins: None,
         })
     }
 }

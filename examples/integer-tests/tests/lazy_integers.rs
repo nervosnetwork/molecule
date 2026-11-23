@@ -100,3 +100,189 @@ fn custom_named_integer_containers_provide_checked_lazy_access() {
         None
     );
 }
+
+#[test]
+fn lazy_table_verify_rejects_short_integer_fields_and_headerless_fixvecs() {
+    // 1. Table with 1-byte Uint64 field (instead of 8 bytes) must fail verify(false) and verify(true).
+    let truncated_invoice = [13u32, 12, 13]
+        .map(u32::to_le_bytes)
+        .concat()
+        .into_iter()
+        .chain([0x01u8])
+        .collect::<Vec<_>>();
+    let invoice = schema::Invoice::from(Cursor::from(truncated_invoice));
+    assert!(invoice.verify(false).is_err());
+    assert!(invoice.verify(true).is_err());
+
+    // 2. Table with 1-byte optional Uint64 (invalid non-empty payload) must fail verify.
+    let bad_opt_invoice = [21u32, 12, 20]
+        .map(u32::to_le_bytes)
+        .concat()
+        .into_iter()
+        .chain(256u64.to_be_bytes())
+        .chain([0x42u8])
+        .collect::<Vec<_>>();
+    let invoice = schema::Invoice::from(Cursor::from(bad_opt_invoice));
+    assert!(invoice.verify(false).is_err());
+
+    // 3. Table with headerless 0-byte FixVec<Amount> must fail verify(false).
+    let headerless_vec_table = [8u32, 8].map(u32::to_le_bytes).concat();
+    let holder = schema::VecHolder::from(Cursor::from(headerless_vec_table));
+    assert!(holder.verify(false).is_err());
+
+    // Valid empty FixVec<Amount> (4-byte zero count header) passes verify(false).
+    let valid_vec_table = [12u32, 8, 0].map(u32::to_le_bytes).concat();
+    let holder = schema::VecHolder::from(Cursor::from(valid_vec_table));
+    holder.verify(false).unwrap();
+}
+
+#[allow(clippy::all, dead_code, unused_imports)]
+mod reg_packed {
+    pub mod common {
+        pub mod defs {
+            include!(concat!(env!("OUT_DIR"), "/reg_packed/common/defs.rs"));
+        }
+    }
+    pub mod leaf {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/leaf.rs"));
+    }
+    pub mod mid {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/mid.rs"));
+    }
+    pub mod mod_a {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/mod_a.rs"));
+    }
+    pub mod mod_b {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/mod_b.rs"));
+    }
+    pub mod imp_row {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/imp_row.rs"));
+    }
+    pub mod consumer {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/consumer.rs"));
+    }
+}
+
+#[allow(clippy::all, dead_code, unused_imports)]
+mod reg_lazy {
+    pub mod common {
+        pub mod defs {
+            include!(concat!(env!("OUT_DIR"), "/reg_lazy/common/defs.rs"));
+        }
+    }
+    pub mod leaf {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/leaf.rs"));
+    }
+    pub mod mid {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/mid.rs"));
+    }
+    pub mod mod_a {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/mod_a.rs"));
+    }
+    pub mod mod_b {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/mod_b.rs"));
+    }
+    pub mod imp_row {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/imp_row.rs"));
+    }
+    pub mod consumer {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/consumer.rs"));
+    }
+}
+
+#[test]
+fn multi_module_imports_shadowing_and_case_variant_fields_compile_and_agree() {
+    use molecule::prelude::{Builder as _, Entity as _};
+
+    let imp_row = reg_packed::imp_row::FeeRow::new_builder()
+        .v(reg_packed::imp_row::RowLe::from_u16(1))
+        .build();
+    let local_row = reg_packed::consumer::FeeRow::new_builder()
+        .v(reg_packed::consumer::RowBe::from_u16(256))
+        .build();
+    // Both rows have identical wire bytes `[0x01, 0x00]`, but opposite endianness!
+    assert_eq!(imp_row.as_slice(), &[0x01, 0x00]);
+    assert_eq!(local_row.as_slice(), &[0x01, 0x00]);
+
+    let combined = reg_packed::consumer::Combined::new_builder()
+        .def(reg_packed::common::defs::DefVal::from_u32(0x1122_3344))
+        .leaf(reg_packed::leaf::LeafAmt::from_u64(0x0102_0304_0506_0708))
+        .rate(reg_packed::mod_a::FeeRate::from_u32(77))
+        .opt_row(
+            reg_packed::imp_row::OptFeeRow::new_builder()
+                .set(Some(imp_row))
+                .build(),
+        )
+        .local_row(local_row)
+        .cases(
+            reg_packed::consumer::CaseFields::new_builder()
+                .fee_rate(4u8)
+                .feerate(9u8)
+                .build(),
+        )
+        .build();
+
+    // Ordinary Rust checks
+    let verified_packed = reg_packed::consumer::Combined::from_slice(combined.as_slice()).unwrap();
+    assert_eq!(verified_packed.def().try_to_u32().unwrap(), 0x1122_3344);
+    assert_eq!(
+        verified_packed.leaf().try_to_u64().unwrap(),
+        0x0102_0304_0506_0708
+    );
+    assert_eq!(verified_packed.rate().try_to_u32().unwrap(), 77);
+    assert_eq!(
+        verified_packed
+            .opt_row()
+            .to_opt()
+            .unwrap()
+            .v()
+            .try_to_u16()
+            .unwrap(),
+        1
+    );
+    assert_eq!(verified_packed.local_row().v().try_to_u16().unwrap(), 256);
+    assert_eq!(u8::from(verified_packed.cases().fee_rate()), 4);
+    assert_eq!(u8::from(verified_packed.cases().feerate()), 9);
+
+    // Lazy Rust checks: must agree 100% (especially `opt_row` reading 1, NOT 256!)
+    let lazy_combined =
+        reg_lazy::consumer::Combined::from(Cursor::from(combined.as_slice().to_vec()));
+    lazy_combined.verify(false).unwrap();
+    assert_eq!(lazy_combined.def_value().unwrap(), 0x1122_3344);
+    assert_eq!(lazy_combined.leaf_value().unwrap(), 0x0102_0304_0506_0708);
+    assert_eq!(lazy_combined.rate_value().unwrap(), 77);
+    assert_eq!(
+        lazy_combined.opt_row().unwrap().unwrap().v_value().unwrap(),
+        1
+    );
+    assert_eq!(lazy_combined.local_row().unwrap().v_value().unwrap(), 256);
+    assert_eq!(lazy_combined.cases().unwrap().fee_rate().unwrap(), 4);
+    assert_eq!(lazy_combined.cases().unwrap().feerate().unwrap(), 9);
+
+    // Shadowing types (`Ok`, `Err`, `Option`, `Result`, `Cursor`, `Error`, `Vec`, `From`) and
+    // shadowing field names (`as_slice`, `build`) work in both ordinary and lazy Rust.
+    let shadow_s = reg_packed::consumer::ShadowS::new_builder()
+        .as_slice(11u8)
+        .build(22u8);
+    let shadow_s =
+        <reg_packed::consumer::ShadowSBuilder as molecule::prelude::Builder>::build(&shadow_s);
+    assert_eq!(u8::from(shadow_s.as_slice()), 11);
+    assert_eq!(u8::from(shadow_s.build()), 22);
+    assert_eq!(
+        <reg_packed::consumer::ShadowS as molecule::prelude::Entity>::as_slice(&shadow_s),
+        &[11, 22]
+    );
+
+    let shadow_t = reg_packed::consumer::ShadowT::new_builder()
+        .as_slice(33u8)
+        .build();
+    let shadow_t_bytes =
+        <reg_packed::consumer::ShadowT as molecule::prelude::Entity>::as_slice(&shadow_t);
+    let shadow_t_roundtrip = reg_packed::consumer::ShadowT::from_slice(shadow_t_bytes).unwrap();
+    assert_eq!(u8::from(shadow_t_roundtrip.as_slice()), 33);
+    assert_eq!(u8::from(shadow_t_roundtrip.as_reader().as_slice()), 33);
+
+    let lazy_shadow_t = reg_lazy::consumer::ShadowT::from(Cursor::from(shadow_t_bytes.to_vec()));
+    lazy_shadow_t.verify(false).unwrap();
+    assert_eq!(lazy_shadow_t.as_slice().unwrap(), 33);
+}

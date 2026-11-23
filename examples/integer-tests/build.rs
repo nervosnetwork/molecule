@@ -19,7 +19,18 @@ fn metadata(schema: &Path, integers: serde_json::Value, path: &Path) -> Result<(
 
 fn main() -> Result<(), Box<dyn Error>> {
     let out = PathBuf::from(env::var_os("OUT_DIR").ok_or("OUT_DIR missing")?);
-    for dir in ["packed", "lazy", "c", "legacy", "recovered"] {
+    for dir in [
+        "packed",
+        "lazy",
+        "c",
+        "legacy",
+        "recovered",
+        "reg_mol/common",
+        "reg_packed/common",
+        "reg_lazy/common",
+        "c/a",
+        "c/b",
+    ] {
         fs::create_dir_all(out.join(dir))?;
     }
     let mut schema = String::new();
@@ -176,19 +187,83 @@ fn main() -> Result<(), Box<dyn Error>> {
         .output_dir(out.join("legacy"))
         .run()?;
 
+    let reg_schemas: &[(&str, &str)] = &[
+        ("common/defs", "integer DefVal = u32le;"),
+        ("leaf", "integer LeafAmt = u64le;"),
+        ("mid", "import leaf; table Mid { a: LeafAmt, }"),
+        ("mod_a", "integer FeeRate = u32le;"),
+        ("mod_b", "integer fee_rate = u64be;"),
+        (
+            "imp_row",
+            "integer RowLe = u16le; struct FeeRow { v: RowLe, } option OptFeeRow (FeeRow);",
+        ),
+        (
+            "consumer",
+            concat!(
+                "import common/defs;\n",
+                "import mid;\n",
+                "import mod_a;\n",
+                "import mod_b;\n",
+                "import imp_row;\n",
+                "integer RowBe = u16be;\n",
+                "struct fee_row { v: RowBe, }\n",
+                "struct CaseFields { feeRate: byte, feerate: byte, }\n",
+                "table Ok {}\n",
+                "table Err {}\n",
+                "table Option {}\n",
+                "table Result {}\n",
+                "table Cursor {}\n",
+                "table Error {}\n",
+                "table Vec {}\n",
+                "table From {}\n",
+                "struct ShadowS { as_slice: byte, build: byte, }\n",
+                "table ShadowT { as_slice: byte, ok: Ok, err: Err, cur: Cursor, }\n",
+                "table Combined { def: DefVal, leaf: LeafAmt, rate: FeeRate, opt_row: OptFeeRow, local_row: fee_row, cases: CaseFields, }\n",
+                "union MixedUnion { LeafAmt, FeeRate, OptFeeRow, }\n",
+            ),
+        ),
+    ];
+    for &(rel, src) in reg_schemas {
+        fs::write(out.join("reg_mol").join(format!("{rel}.mol")), src)?;
+    }
+    for &(rel, _) in reg_schemas {
+        let schema_path = out.join("reg_mol").join(format!("{rel}.mol"));
+        let subdir = Path::new(rel).parent().unwrap_or_else(|| Path::new(""));
+        for (root_dir, language) in [
+            ("reg_packed", Language::Rust),
+            ("reg_lazy", Language::RustLazyReader),
+        ] {
+            Compiler::new()
+                .input_schema_file(&schema_path)
+                .generate_code(language)
+                .output_dir(out.join(root_dir).join(subdir))
+                .run()?;
+        }
+    }
+
     for (name, source) in [
         ("molecule_integer", "array Tag [byte; 1];"),
         (
             "invoice",
             "import molecule_integer; integer Uint64 = u64be; struct Charge { tag: Tag, amount: Uint64, }",
         ),
+        ("a/base", "integer ABaseVal = u32le;"),
+        ("b/base", "integer BBaseVal = u64be;"),
+        (
+            "base_root",
+            "import a/base; import b/base; struct CaseFieldsC { feeRate: byte, feerate: byte, } table BasePair { a: ABaseVal, b: BBaseVal, }",
+        ),
     ] {
         let schema = out.join(format!("{name}.mol"));
+        if let Some(parent) = schema.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&schema, source)?;
+        let out_subdir = Path::new(name).parent().unwrap_or_else(|| Path::new(""));
         Compiler::new()
             .input_schema_file(schema)
             .generate_code(Language::C)
-            .output_dir(out.join("c"))
+            .output_dir(out.join("c").join(out_subdir))
             .run()?;
     }
 
@@ -199,6 +274,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             r#"#define MOLECULE_API_DECORATOR static
 #include "c/numbers.h"
 #include "c/invoice.h"
+#include "c/base_root.h"
 int check_c(unsigned int tag, const uint8_t *data, unsigned int len,
             const uint64_t *expected, uint8_t *out, unsigned int capacity) {{
     mol_seg_t input = {{(uint8_t *)data, len}}, output = {{out, capacity}};
@@ -214,6 +290,20 @@ int narrow_i8_c(int64_t value, uint8_t *out) {{
 int narrow_u8_c(uint64_t value, uint8_t *out) {{
     mol_seg_t output = {{out, 1}};
     return MolBuilder_U8Le_write_value(value, &output);
+}}
+int check_c_imports_and_case_fields(void) {{
+    uint8_t a_bytes[4] = {{0x01, 0x02, 0x03, 0x04}};
+    uint8_t b_bytes[8] = {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02}};
+    mol_seg_t a_seg = {{a_bytes, 4}}, b_seg = {{b_bytes, 8}};
+    uint32_t a_val = 0;
+    uint64_t b_val = 0;
+    if (MolReader_ABaseVal_read_value(&a_seg, &a_val) != MOL_OK || a_val != 0x04030201u) return -1;
+    if (MolReader_BBaseVal_read_value(&b_seg, &b_val) != MOL_OK || b_val != 0x0102ull) return -2;
+    uint8_t cf_bytes[2] = {{4, 9}};
+    mol_seg_t cf_seg = {{cf_bytes, 2}};
+    if (*MolReader_CaseFieldsC_get_feeRate(&cf_seg).ptr != 4) return -3;
+    if (*MolReader_CaseFieldsC_get_feerate(&cf_seg).ptr != 9) return -4;
+    return 0;
 }}
 "#
         ),

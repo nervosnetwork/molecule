@@ -43,7 +43,7 @@ where
                     if f.alternate() {
                         write!(f, "0x")?;
                     }
-                    write!(f, "{}", hex_string(self.as_slice()))
+                    write!(f, "{}", hex_string(&self.0[..]))
                 }
             }
 
@@ -62,7 +62,7 @@ where
             impl ::core::default::Default for #entity {
                 fn default() -> Self {
                     let v = molecule::bytes::Bytes::from_static(&Self::DEFAULT_VALUE);
-                    #entity::new_unchecked(v)
+                    <#entity as molecule::prelude::Entity>::new_unchecked(v)
                 }
             }
 
@@ -72,7 +72,7 @@ where
                 #properties
                 #getters
                 pub fn as_reader<'r>(&'r self) -> #reader<'r> {
-                    #reader::new_unchecked(self.as_slice())
+                    <#reader<'r> as molecule::prelude::Reader<'r>>::new_unchecked(&self.0[..])
                 }
             }
 

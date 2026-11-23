@@ -154,9 +154,49 @@ impl Envelope {
             })
             .collect();
         let mut ast = self.wire_ir.recover(true)?;
+        let origins = collect_decl_origins(&self.sources)?;
         integer::bind(&mut ast, self.sources, annotations)?;
+        ast.set_decl_origins(origins);
         Ok(ast)
     }
+}
+
+fn collect_decl_origins(
+    graph: &SchemaGraph,
+) -> Result<std::collections::BTreeMap<String, (ast::verified::ModulePath, bool)>, String> {
+    use std::collections::{BTreeMap, VecDeque};
+    let mut origins = BTreeMap::new();
+    let mut visited = BTreeSet::from([graph.root.as_str()]);
+    let mut queue = VecDeque::from([(
+        graph.root.as_str(),
+        ast::verified::ModulePath::root(),
+        0usize,
+    )]);
+    while let Some((id, mod_path, depth)) = queue.pop_front() {
+        let Some(module) = graph.modules.iter().find(|m| m.id == id) else {
+            continue;
+        };
+        if depth > 0 {
+            let origin = (mod_path.clone(), depth == 1);
+            for decl in &module.declarations {
+                origins
+                    .entry(decl.name.clone())
+                    .or_insert_with(|| origin.clone());
+            }
+        }
+        for edge in &module.imports {
+            if visited.insert(edge.module.as_str()) {
+                let edge_path = ast::verified::ModulePath::from_import_str(&edge.path)
+                    .ok_or_else(|| format!("E_IR_NAME: invalid import path {}", edge.path))?;
+                queue.push_back((
+                    edge.module.as_str(),
+                    mod_path.resolve_edge(&edge_path),
+                    depth + 1,
+                ));
+            }
+        }
+    }
+    Ok(origins)
 }
 
 pub(crate) fn identifier(name: &str) -> bool {
@@ -183,7 +223,15 @@ pub(crate) fn validate_wire(ir: &Ir, canonical: bool) -> Result<(), String> {
     }
     let mut names = BTreeSet::from(["byte".to_owned()]);
     for decl in &ir.decls {
-        if !identifier(decl.name()) || !names.insert(decl.name().to_ascii_lowercase()) {
+        let key = if canonical {
+            decl.name().to_ascii_lowercase()
+        } else {
+            decl.name().to_owned()
+        };
+        if !identifier(decl.name())
+            || decl.name().eq_ignore_ascii_case("byte")
+            || !names.insert(key)
+        {
             return Err(format!(
                 "E_IR_NAME: invalid, reserved or duplicate name {}",
                 decl.name()
@@ -196,7 +244,7 @@ pub(crate) fn validate_wire(ir: &Ir, canonical: bool) -> Result<(), String> {
         };
         let mut field_names = BTreeSet::new();
         for field in fields {
-            if !identifier(&field.name) || !field_names.insert(field.name.to_ascii_lowercase()) {
+            if !identifier(&field.name) || !field_names.insert(field.name.as_str()) {
                 return Err(format!(
                     "E_IR_FIELD: duplicate or invalid field {}.{}",
                     decl.name(),
@@ -217,10 +265,14 @@ pub(crate) fn validate_wire(ir: &Ir, canonical: bool) -> Result<(), String> {
                         .items
                         .windows(2)
                         .any(|items| items[0].id >= items[1].id))
-                || union
-                    .items
-                    .iter()
-                    .any(|item| !item_types.insert(item.typ.to_ascii_lowercase()))
+                || union.items.iter().any(|item| {
+                    let item_key = if canonical {
+                        item.typ.to_ascii_lowercase()
+                    } else {
+                        item.typ.clone()
+                    };
+                    !item_types.insert(item_key)
+                })
             {
                 return Err(format!(
                     "E_IR_UNION: invalid, duplicate or unordered union items in {}",
