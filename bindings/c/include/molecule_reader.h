@@ -119,7 +119,7 @@ MOLECULE_API_DECORATOR mol_errno mol_fixvec_verify(const mol_seg_t *input, mol_n
     if (item_count == 0) {
         return input->size == MOL_NUM_T_SIZE ? MOL_OK : MOL_ERR_TOTAL_SIZE;
     }
-    mol_num_t total_size = MOL_NUM_T_SIZE + item_size * item_count;
+    uint64_t total_size = MOL_NUM_T_SIZE + (uint64_t)item_size * item_count;
     return input->size == total_size ? MOL_OK : MOL_ERR_TOTAL_SIZE;
 }
 
