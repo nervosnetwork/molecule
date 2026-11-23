@@ -37,7 +37,7 @@ requires removing its sidecar entry.
 }
 ```
 
-Paths are relative to the sidecar. Unknown/duplicate fields, unsupported versions,
+Relative paths are resolved from the sidecar's directory. Unknown/duplicate fields, unsupported versions,
 missing properties, stale pins, duplicate annotations, invalid widths and targets
 are errors. An imported type may only be annotated by a sidecar naming its owner
 file; a consumer cannot override its meaning. Repeat `--type-metadata` for imports.
@@ -48,25 +48,29 @@ moleculec --schema-file amount.mol --type-metadata amount.json --language rust
 
 In a build script, enable `molecule-codegen`'s `schema-extensions` feature and call
 `Compiler::type_metadata_file` before `generate_code(...).run()`. `parse_ast()`
-validates inputs without producing output. Extended generation buffers its result
+validates inputs without producing output. Directory output buffers its result
 and atomically replaces a destination file only after successful validation.
 All files are read once into a source snapshot shared by provenance and the AST.
 Imported owners use canonical paths relative to the root schema's directory when
 representable and otherwise keep the import spelling. Hard links share the
 smallest reachable name. Imports resolve from the original spelling's parent
-directory. The graph distinguishes cycles from diamonds.
-Graph traversal keeps a constant number of file handles; new-file identity
-comparisons and dependency completion can take quadratic time in schema count.
+directory; if a file is imported through aliases in multiple directories, every
+relative import must resolve to the exact same target. The graph distinguishes
+cycles from diamonds.
+Graph traversal keeps a constant number of file handles (using inode identity on
+Unix and path comparison elsewhere).
 
 ## Rust and lazy Rust
 
 Generated ordinary Rust adds `Amount::from_u64`, `Amount::try_to_u64`,
 `AmountReader::try_to_u64`, and `AmountReader::try_as_wire_bytes`.
-The borrowed wire view is `&[u8; 8]`, checked for exact length. Numeric decoding
-works at every alignment and on either host byte order. It never casts wire memory
-to a native scalar reference. Existing downstream `From<u64>`/Pack implementations
-remain available because the generator adds named methods, not overlapping traits.
-As before, an owned Entity owns its bytes; its constructor can allocate.
+The borrowed wire view is `&[u8; 8]`, checked for exact length; checked getters
+return `Result<_, IntegerError>` so `new_unchecked` inputs never panic. Numeric
+decoding works at every alignment and on either host byte order. It never casts
+wire memory to a native scalar reference. Existing downstream `From<u64>`/Pack
+implementations remain available because the generator adds named methods, not
+overlapping traits. As before, an owned Entity owns its bytes; its constructor
+can allocate.
 
 An ordinary integer vector accepts native values directly. For example,
 `Uint64Vec::try_from_values(&cycles)?` writes the count and each scalar in its
@@ -76,43 +80,55 @@ For application records such as CKB fees, `Uint64Vec::try_from_values_by(&fees,
 |fee| fee.as_u64())?` selects the native value as it writes each item. The slice
 supplies the count and the schema supplies the byte order.
 
-For an option of an integer, the ordinary reader's `try_value()` returns
-`Result<Option<T>, IntegerError>`. Empty, present zero and malformed payloads
-remain distinguishable. For a vector of integers, `try_values()?` checks the
-header and length once, then yields native values from borrowed fixed-width
-chunks in order. Reading a prefix requires no collection or full payload scan.
+For an option of an integer, `from_value(Option<T>)` constructs the owned Entity
+and `try_value()` on both Entity and Reader returns `Result<Option<T>, IntegerError>`.
+Empty, present zero and malformed payloads remain distinguishable. For a vector
+of integers, `try_values()?` on both Entity and Reader checks the header and
+length once (returning `IntegerError`), then yields native values from borrowed
+fixed-width chunks (`ExactSizeIterator + DoubleEndedIterator`). Reading a prefix
+requires no collection or full payload scan.
 
 Widths through 128 use Rust scalars. `molecule::integer::Uint256` holds 32 bytes,
-has numeric `Ord`, LE/BE byte conversion, and checked narrowing to u128/u64.
-It is a value type, not a native memory layout or arithmetic library.
+has `ZERO`/`MAX` constants, numeric `Ord`, `const fn` LE/BE byte and `u64`/`u128`
+conversions (`From`/`TryFrom`), hex formatting, and checked narrowing to u128/u64.
+It is a value type, not a native memory layout or arithmetic library. Both
+`IntegerError` and `AccessError` are `#[non_exhaustive]`.
 
 The separate lazy backend adds the same `try_to_*` decoding method, using the
-shared bounded Cursor reader. Short reads are retried; a missing byte, excess
-logical length or invalid offset returns an error. Struct/table integer fields
-add `field_value()`. Existing numeric getters keep their Rust return types and
-honor the declared byte order.
+shared bounded Cursor reader (reading only the exact requested header and field
+ranges without speculatively touching trailing fields).
+Short reads are retried; a missing byte, excess logical length or invalid offset
+returns an error, and scalar width mismatches consistently return
+`IntegerError::Size`. Struct/table integer fields (and optional integer table
+fields) add `field_value()`. Integer options add `try_value()`, and integer
+fixed vectors and arrays add `get_value(index)`. Existing numeric getters keep
+their Rust return types and honor the declared byte order.
 Unannotated schemas keep their existing conversions. Lazy generation rejects a
 conflict between a conventional scalar name and an explicitly declared width or
 signedness. Getter collisions are rejected.
-Table numeric access validates the offset header and reads the selected field;
-it does not promise recursive validation of other fields.
+Table numeric access validates the complete offset header in compatible mode
+(allowing extra trailing fields) and reads the selected field; it does not
+promise recursive validation of other fields.
 
 ## C
 
-Generated headers include `molecule_integer.inc` and add
-`MolReader_Amount_read_value` and `MolBuilder_Amount_write_value`. Pass a segment
-whose size equals the declared width and whose buffer covers that many bytes.
+Generated headers include `molecule_integer.inc` and add prototypes and definitions
+for `MolReader_Amount_read_value` and `MolBuilder_Amount_write_value`. Unlike
+heap-based `mol_builder_t` builders, `write_value` writes directly into a
+caller-provided `mol_seg_t` whose size equals the declared width and whose buffer
+covers that many bytes.
 The wire buffer may be unaligned. A reader's result pointer must refer to a
 writable object aligned for its native type. Null pointers, size mismatches
 and out-of-range scalar inputs return an error before changing the destination.
 
 Values through 64 bits use standard C integer types. Wider values use
 `mol_uint128_t`, `mol_int128_t`, and `mol_uint256_t`, with least-significant limbs
-first. Signed 128 uses two's complement limbs. Use the accessors to encode
-these structs in schema byte order. They require no compiler-specific
-`__int128`. The numeric runtime include uses a separate filename extension and
-include guard so generated schema headers can use the name `molecule_integer.h`,
-including through imports.
+first (`mol_uint128_compare`, `mol_int128_compare`, `mol_uint256_compare`,
+`mol_uint256_from_u64`/`u128`, and checked narrowing to u128/u64). Signed 128
+uses two's complement limbs. Use the accessors to encode these structs in schema
+byte order. They require no compiler-specific `__int128`. The numeric runtime
+include uses a separate filename extension and include guard so generated schema
+headers can use the name `molecule_integer.h`, including through imports.
 
 ## IR and plugins
 
@@ -127,9 +143,10 @@ Keep an accepted IR v2 JSON file per schema root. Pass it to
 `--check-integer-contract PUBLISHED_V2_JSON` when generating bindings, or call
 `Compiler::integer_contract_file` with the `compiler-plugin` feature. The check
 compares the root name and every reachable integer's name, owner, signedness,
-width and byte order, before opening output or starting a plugin. It tolerates
-declaration order, source edits and migration between equivalent sidecar and
-native declarations. Compare `wire_ir` separately for general layout changes.
+width and byte order (treating 8-bit `little` and `big` as equivalent), before
+opening output or starting a plugin. It tolerates declaration order, source edits
+and migration between equivalent sidecar and native declarations. Compare
+`wire_ir` separately for general layout changes.
 
 Before sending extended IR, the CLI asks the explicitly selected local plugin for
 `--capabilities`. Protocol 1 advertises `ir_versions`, `formats`, `features`,

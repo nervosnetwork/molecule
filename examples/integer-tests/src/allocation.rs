@@ -51,6 +51,19 @@ fn numeric_vector_construction_allocates_only_its_wire_buffer() {
         assert_eq!(packed.as_slice(), expected.as_slice());
         assert_eq!(allocations, 1);
     }
+
+    use crate::protocols::PortOpt;
+    ALLOCATIONS.with(|n| n.set(Some(0)));
+    let none = PortOpt::from_value(None);
+    let none_allocs = ALLOCATIONS.with(|n| n.replace(None).unwrap());
+    assert!(none.as_slice().is_empty());
+    assert_eq!(none_allocs, 0);
+
+    ALLOCATIONS.with(|n| n.set(Some(0)));
+    let some = PortOpt::from_value(Some(8115));
+    let some_allocs = ALLOCATIONS.with(|n| n.replace(None).unwrap());
+    assert_eq!(some.as_slice(), 8115u16.to_le_bytes());
+    assert_eq!(some_allocs, 1);
 }
 
 #[test]

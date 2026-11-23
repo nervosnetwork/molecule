@@ -37,7 +37,7 @@ impl ast::Union {
             }
             TopDecl::Option_(o) => {
                 let name = Self::get_type_name(o.item().typ());
-                quote!(Option<#name>)
+                quote!(::core::option::Option<#name>)
             }
             TopDecl::FixVec(v) => {
                 if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
@@ -100,9 +100,9 @@ impl LazyReaderGenerator for ast::Union {
                     let item_name = ident_name(o.item().typ().name(), "");
                     quote! {
                         if cur.option_is_none() {
-                            None
+                            ::core::option::Option::None
                         } else {
-                            Some(#item_name::from(cur))
+                            ::core::option::Option::Some(#item_name::from(cur))
                         }
                     }
                 }
@@ -483,13 +483,13 @@ fn generate_rust_common_array_impl<W: io::Write>(
         }
         impl core::iter::Iterator for #iterator_name {
             type Item = #item_name;
-            fn next(&mut self) -> Option<Self::Item> {
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
                 if self.index >= self.len {
-                    None
+                    ::core::option::Option::None
                 } else {
                     let res = self.cur.get(self.index).unwrap();
                     self.index += 1;
-                    Some(res)
+                    ::core::option::Option::Some(res)
                 }
             }
         }
@@ -512,13 +512,13 @@ fn generate_rust_common_array_impl<W: io::Write>(
         }
         impl<'a> core::iter::Iterator for #iterator_ref_name<'a> {
             type Item = #item_name;
-            fn next(&mut self) -> Option<Self::Item> {
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
                 if self.index >= self.len {
-                    None
+                    ::core::option::Option::None
                 } else {
                     let res = self.cur.get(self.index).unwrap();
                     self.index += 1;
-                    Some(res)
+                    ::core::option::Option::Some(res)
                 }
             }
         }
@@ -652,7 +652,7 @@ impl CursorValue {
             }
             Self::Optional(inner) => {
                 let value = inner.expression();
-                quote!(if cur.option_is_none() { None } else { Some(#value) })
+                quote!(if cur.option_is_none() { ::core::option::Option::None } else { ::core::option::Option::Some(#value) })
             }
         }
     }
@@ -662,7 +662,9 @@ fn cursor_type(typ: &TopDecl, ast: &Ast) -> (TokenStream, CursorValue) {
     let name = ident_name(typ.name(), "");
     match typ {
         TopDecl::Array(array) => {
-            if let Some(legacy) = legacy_integer(typ.name()) {
+            if let Some(legacy) = legacy_integer(typ.name()).filter(|legacy| {
+                array.item().typ().is_byte() && array.item_count() == legacy.byte_width()
+            }) {
                 let value = ast
                     .integer(typ.name())
                     .copied()
@@ -682,7 +684,7 @@ fn cursor_type(typ: &TopDecl, ast: &Ast) -> (TokenStream, CursorValue) {
         TopDecl::Option_(option) => {
             let (native, value) = cursor_type(option.item().typ(), ast);
             (
-                quote!(Option<#native>),
+                quote!(::core::option::Option<#native>),
                 CursorValue::Optional(Box::new(value)),
             )
         }
@@ -736,7 +738,9 @@ fn verify_typ(typ: &TopDecl, q_val: TokenStream) -> TokenStream {
             )
         }
         TopDecl::Array(array) => {
-            if legacy_integer(typ.name()).is_some() {
+            if legacy_integer(typ.name()).is_some_and(|legacy| {
+                array.item().typ().is_byte() && array.item_count() == legacy.byte_width()
+            }) {
                 quote!()
             } else if array.item().typ().is_byte() {
                 quote!(#type_name::from(Cursor::try_from(#q_val)?).verify(compatible)?;)

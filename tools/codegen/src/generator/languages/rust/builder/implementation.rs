@@ -35,7 +35,7 @@ impl ast::Option_ {
         quote!(
             impl From<#item_name> for #entity {
                 fn from(value: #item_name) -> Self {
-                    Self::new_builder().set(Some(value)).build()
+                    Self::new_builder().set(::core::option::Option::Some(value)).build()
                 }
             }
         )
@@ -132,8 +132,8 @@ impl ast::Array {
 
                 impl ::core::convert::TryFrom<&[u8]> for #entity {
                     type Error = ::core::array::TryFromSliceError;
-                    fn try_from(value: &[u8]) -> Result<Self, ::core::array::TryFromSliceError> {
-                        Ok(<[u8; #n]>::try_from(value)?.into())
+                    fn try_from(value: &[u8]) -> ::core::result::Result<Self, ::core::array::TryFromSliceError> {
+                        ::core::result::Result::Ok(<[u8; #n]>::try_from(value)?.into())
                     }
                 }
 
@@ -171,9 +171,9 @@ impl ast::Array {
 
             impl ::core::convert::TryFrom<&[#item_name]> for #entity {
                 type Error = ::core::array::TryFromSliceError;
-                fn try_from(value: &[#item_name]) -> Result<Self, ::core::array::TryFromSliceError> {
+                fn try_from(value: &[#item_name]) -> ::core::result::Result<Self, ::core::array::TryFromSliceError> {
                     // Use TryFrom<&[T]> for &[T; n].
-                    Ok(Self::new_builder().set(<&[#item_name; #n]>::try_from(value)?.clone()).build())
+                    ::core::result::Result::Ok(Self::new_builder().set(<&[#item_name; #n]>::try_from(value)?.clone()).build())
                 }
             }
 

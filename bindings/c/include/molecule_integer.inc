@@ -71,12 +71,40 @@ static inline mol_errno mol_integer_write_limbs(const uint64_t *input,
     return MOL_OK;
 }
 
-static inline int mol_uint256_compare(mol_uint256_t left, mol_uint256_t right) {
-    for (unsigned int i = 4; i > 0; i--) {
-        if (left.limbs[i - 1] < right.limbs[i - 1]) return -1;
-        if (left.limbs[i - 1] > right.limbs[i - 1]) return 1;
+static inline int mol_integer_compare_limbs(const uint64_t *left,
+        const uint64_t *right, unsigned int count) {
+    for (unsigned int i = count; i > 0; i--) {
+        if (left[i - 1] < right[i - 1]) return -1;
+        if (left[i - 1] > right[i - 1]) return 1;
     }
     return 0;
+}
+
+static inline int mol_uint128_compare(mol_uint128_t left, mol_uint128_t right) {
+    return mol_integer_compare_limbs(left.limbs, right.limbs, 2);
+}
+
+static inline int mol_int128_compare(mol_int128_t left, mol_int128_t right) {
+    /* Flip the sign bit of the most-significant limb to compare two's-complement
+     * signed 128-bit values using only unsigned arithmetic. */
+    uint64_t sign = (uint64_t)1 << 63;
+    uint64_t l[2] = {left.limbs[0], left.limbs[1] ^ sign};
+    uint64_t r[2] = {right.limbs[0], right.limbs[1] ^ sign};
+    return mol_integer_compare_limbs(l, r, 2);
+}
+
+static inline mol_uint256_t mol_uint256_from_u64(uint64_t value) {
+    mol_uint256_t result = {{value, 0, 0, 0}};
+    return result;
+}
+
+static inline mol_uint256_t mol_uint256_from_u128(mol_uint128_t value) {
+    mol_uint256_t result = {{value.limbs[0], value.limbs[1], 0, 0}};
+    return result;
+}
+
+static inline int mol_uint256_compare(mol_uint256_t left, mol_uint256_t right) {
+    return mol_integer_compare_limbs(left.limbs, right.limbs, 4);
 }
 
 static inline mol_errno mol_uint256_to_u128(mol_uint256_t value, mol_uint128_t *output) {

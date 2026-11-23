@@ -5,7 +5,7 @@ use crate::{
     schema::SchemaGraph,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub const INTEGER_FEATURE: &str = "logical-integer-v1";
 
@@ -85,7 +85,7 @@ impl Envelope {
             return Err("E_IR_FEATURE: integer semantics require logical-integer-v1".into());
         }
         self.sources.validate()?;
-        validate_wire(&self.wire_ir)?;
+        validate_wire(&self.wire_ir, true)?;
         let root = self
             .sources
             .modules
@@ -116,10 +116,11 @@ impl Envelope {
         if expected != actual {
             return Err("E_IR_SOURCE: wire imports differ from source graph".into());
         }
-        if std::path::Path::new(&self.sources.root)
-            .file_stem()
-            .and_then(|name| name.to_str())
-            != Some(self.wire_ir.namespace.as_str())
+        if !crate::utils::valid_namespace(&self.sources.root)
+            || std::path::Path::new(&self.sources.root)
+                .file_stem()
+                .and_then(|name| name.to_str())
+                != Some(self.wire_ir.namespace.as_str())
         {
             return Err("E_IR_SOURCE: namespace differs from root file name".into());
         }
@@ -164,13 +165,12 @@ pub(crate) fn identifier(name: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
-/// Check the names and canonical union IDs published in v2 envelopes.
-fn validate_wire(ir: &Ir) -> Result<(), String> {
-    if ir.namespace.is_empty()
-        || ir.namespace.contains(['/', '\\', '\0'])
-        || ir.namespace == "."
-        || ir.namespace == ".."
-    {
+/// Check names, syntax version, fields, and union invariants on wire IR.
+pub(crate) fn validate_wire(ir: &Ir, canonical: bool) -> Result<(), String> {
+    if u32::try_from(ir.syntax_version.version()).is_err() {
+        return Err("E_IR_NUMBER: syntax version exceeds u32".into());
+    }
+    if !crate::utils::valid_namespace(&ir.namespace) {
         return Err("E_IR_NAME: invalid namespace".into());
     }
     for import in &ir.imports {
@@ -205,18 +205,25 @@ fn validate_wire(ir: &Ir) -> Result<(), String> {
             }
         }
         if let TopDecl::Union(union) = decl {
+            let mut item_ids = BTreeSet::new();
+            let mut item_types = BTreeSet::new();
             if union.items.is_empty()
                 || union
                     .items
                     .iter()
-                    .any(|item| u32::try_from(item.id).is_err())
+                    .any(|item| u32::try_from(item.id).is_err() || !item_ids.insert(item.id))
+                || (canonical
+                    && union
+                        .items
+                        .windows(2)
+                        .any(|items| items[0].id >= items[1].id))
                 || union
                     .items
-                    .windows(2)
-                    .any(|items| items[0].id >= items[1].id)
+                    .iter()
+                    .any(|item| !item_types.insert(item.typ.to_ascii_lowercase()))
             {
                 return Err(format!(
-                    "E_IR_UNION: invalid or unordered union IDs in {}",
+                    "E_IR_UNION: invalid, duplicate or unordered union items in {}",
                     union.name
                 ));
             }
@@ -229,106 +236,8 @@ impl Ir {
     /// Legacy IR carries explicit vector kinds. Only v2 requires the canonical kind
     /// and requires every fixed layout to fit a Molecule word.
     pub(super) fn recover(self, canonical: bool) -> Result<ast::Ast, String> {
-        let mut names = BTreeSet::new();
-        for decl in &self.decls {
-            if decl.name().eq_ignore_ascii_case("byte") || !names.insert(decl.name()) {
-                return Err(format!(
-                    "E_IR_NAME: reserved or duplicate name {}",
-                    decl.name()
-                ));
-            }
-            if matches!(decl, TopDecl::Union(union) if union.items.is_empty()) {
-                return Err(format!("E_IR_UNION: empty union {}", decl.name()));
-            }
-        }
-        validate_layout(&self, &names, canonical)?;
-        Ok(ast::Ast::recover(self))
+        ast::Ast::recover(self, canonical)
     }
-}
-
-fn validate_layout(ir: &Ir, names: &BTreeSet<&str>, canonical: bool) -> Result<(), String> {
-    let mut fixed: BTreeMap<&str, Option<usize>> = BTreeMap::from([("byte", Some(1))]);
-    let mut pending: Vec<_> = ir.decls.iter().collect();
-    while !pending.is_empty() {
-        let mut remaining = Vec::new();
-        for decl in &pending {
-            let dependencies: Vec<&str> = match decl {
-                TopDecl::Option_(value) => vec![&value.item.typ],
-                TopDecl::Array(value) => vec![&value.item.typ],
-                TopDecl::FixVec(value) => vec![&value.item.typ],
-                TopDecl::DynVec(value) => vec![&value.item.typ],
-                TopDecl::Union(value) => value.items.iter().map(|item| item.typ.as_str()).collect(),
-                TopDecl::Struct(value) => value
-                    .fields
-                    .iter()
-                    .map(|field| field.typ.as_str())
-                    .collect(),
-                TopDecl::Table(value) => value
-                    .fields
-                    .iter()
-                    .map(|field| field.typ.as_str())
-                    .collect(),
-            };
-            if let Some(reference) = dependencies.iter().find(|name| !fixed.contains_key(*name)) {
-                if !names.contains(reference) {
-                    return Err(format!(
-                        "E_IR_DEPENDENCY: {} references unknown type {reference}",
-                        decl.name()
-                    ));
-                }
-                remaining.push(*decl);
-                continue;
-            }
-            let invalid = || format!("E_IR_LAYOUT: invalid fixed size in {}", decl.name());
-            let size = match decl {
-                TopDecl::Array(array) => {
-                    let item = fixed[array.item.typ.as_str()]
-                        .filter(|size| *size != 0)
-                        .ok_or_else(invalid)?;
-                    let size = item
-                        .checked_mul(array.item_count)
-                        .filter(|size| !canonical || (*size != 0 && u32::try_from(*size).is_ok()))
-                        .ok_or_else(invalid)?;
-                    Some(size)
-                }
-                TopDecl::Struct(_) => {
-                    let size = dependencies.iter().try_fold(0usize, |size, name| {
-                        size.checked_add(fixed[name].ok_or_else(invalid)?)
-                            .ok_or_else(invalid)
-                    })?;
-                    if size == 0 || (canonical && u32::try_from(size).is_err()) {
-                        return Err(invalid());
-                    }
-                    Some(size)
-                }
-                TopDecl::FixVec(vector) => {
-                    if fixed[vector.item.typ.as_str()].is_none() {
-                        return Err(invalid());
-                    }
-                    None
-                }
-                TopDecl::DynVec(vector) => {
-                    if canonical && fixed[vector.item.typ.as_str()].is_some() {
-                        return Err(format!(
-                            "E_IR_LAYOUT: {} must be a fixed vector",
-                            vector.name
-                        ));
-                    }
-                    None
-                }
-                _ => None,
-            };
-            fixed.insert(decl.name(), size);
-        }
-        if remaining.len() == pending.len() {
-            return Err(format!(
-                "E_IR_DEPENDENCY: missing or cyclic references: {:?}",
-                remaining.iter().map(|decl| decl.name()).collect::<Vec<_>>()
-            ));
-        }
-        pending = remaining;
-    }
-    Ok(())
 }
 
 impl TopDecl {

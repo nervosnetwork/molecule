@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 #[cfg(any(test, not(feature = "schema-extensions")))]
-use std::fs;
-use std::path::Path;
+use std::{fs, path::Path};
 
 #[cfg(any(test, not(feature = "schema-extensions")))]
 use pest::Parser as _;
@@ -104,11 +103,7 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
         ret
     }
 
-    fn next_import<P: AsRef<Path>>(
-        &mut self,
-        imported_base: &P,
-        imported_depth: usize,
-    ) -> ast::ImportStmt {
+    fn next_import(&mut self, imported_depth: usize) -> ast::ImportStmt {
         let mut paths = Vec::new();
         let mut path_supers = 0;
         if let Some(inner) = self.next() {
@@ -134,7 +129,6 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
             name: paths.pop().unwrap(),
             paths,
             path_supers,
-            imported_base: imported_base.as_ref().to_path_buf(),
             imported_depth,
         }
     }
@@ -149,38 +143,115 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
 #[cfg(any(test, not(feature = "schema-extensions")))]
 impl parser::Parser {
     pub(crate) fn preprocess(path: &Path) -> Result<ast::Ast, String> {
+        use std::collections::VecDeque;
+        fn canonical_parent(path: &Path) -> Result<std::path::PathBuf, String> {
+            let parent = match path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => Path::new("."),
+            };
+            parent
+                .canonicalize()
+                .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", path.display()))
+        }
+        fn import_rel_path(stmt: &ast::ImportStmt) -> std::path::PathBuf {
+            let mut rel = std::path::PathBuf::new();
+            for _ in 0..stmt.path_supers() {
+                rel.push("..");
+            }
+            rel.extend(stmt.paths());
+            rel.push(stmt.name());
+            rel.set_extension("mol");
+            rel
+        }
         let mut ast = ast::Ast::for_file(path)?;
-        Self::preprocess_single(&mut ast, path, 0)?;
-        let mut paths = Vec::<std::path::PathBuf>::new();
-        let mut imports = Vec::new();
-        while !ast.imports.is_empty() {
-            'imports: for stmt in std::mem::take(&mut ast.imports) {
-                let mut target = stmt.imported_base().clone();
-                target.pop();
-                for _ in 0..stmt.path_supers() {
-                    target.push("..");
-                }
-                target.extend(stmt.paths());
-                target.push(stmt.name());
-                target.set_extension("mol");
-                let same = |other: &Path| {
-                    is_same_file(other, &target)
-                        .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", target.display()))
-                };
-                if same(path)? {
-                    return Err(format!("E_SCHEMA_CYCLE: import back to {}", path.display()));
-                }
-                for previous in &paths {
-                    if same(previous)? {
-                        continue 'imports;
+        let mut nodes = vec![path.to_path_buf()];
+        let mut parent_dirs = vec![vec![canonical_parent(path)?]];
+        let mut alias_queue = VecDeque::<(usize, std::path::PathBuf)>::new();
+        let mut edges = Vec::<Vec<(std::path::PathBuf, usize)>>::new();
+        let mut root_imports = Vec::new();
+        let mut idx = 0;
+        while idx < nodes.len() {
+            let current = nodes[idx].clone();
+            let current_dir = canonical_parent(&current)?;
+            let start = ast.imports.len();
+            Self::preprocess_single(&mut ast, &current, usize::from(idx != 0))?;
+            let stmts: Vec<_> = ast.imports.drain(start..).collect();
+            let mut outgoing = Vec::new();
+            for stmt in stmts {
+                let rel = import_rel_path(&stmt);
+                let target = crate::utils::join_relative(&current_dir, &rel);
+                let mut target_idx = None;
+                for (i, existing) in nodes.iter().enumerate() {
+                    if is_same_file(existing, &target).map_err(|error| {
+                        format!("E_SCHEMA_SOURCE: {}: {error}", target.display())
+                    })? {
+                        let target_parent = canonical_parent(&target)?;
+                        if !parent_dirs[i].contains(&target_parent) {
+                            parent_dirs[i].push(target_parent.clone());
+                            alias_queue.push_back((i, target_parent));
+                        }
+                        target_idx = Some(i);
+                        break;
                     }
                 }
-                Self::preprocess_single(&mut ast, &target, 1)?;
-                paths.push(target);
-                imports.push(stmt);
+                let target_idx = match target_idx {
+                    Some(i) => i,
+                    None => {
+                        let target_parent = canonical_parent(&target)?;
+                        let i = nodes.len();
+                        nodes.push(target);
+                        parent_dirs.push(vec![target_parent]);
+                        i
+                    }
+                };
+                if idx == 0 && !outgoing.iter().any(|(_, id)| *id == target_idx) {
+                    root_imports.push(stmt);
+                }
+                outgoing.push((rel, target_idx));
+            }
+            edges.push(outgoing);
+            idx += 1;
+        }
+        fn check_cycle(
+            node: usize,
+            edges: &[Vec<(std::path::PathBuf, usize)>],
+            nodes: &[std::path::PathBuf],
+            state: &mut [u8],
+        ) -> Result<(), String> {
+            state[node] = 1;
+            for &(_, next) in &edges[node] {
+                if state[next] == 1 {
+                    return Err(format!(
+                        "E_SCHEMA_CYCLE: cyclic import {}",
+                        nodes[next].display()
+                    ));
+                }
+                if state[next] == 0 {
+                    check_cycle(next, edges, nodes, state)?;
+                }
+            }
+            state[node] = 2;
+            Ok(())
+        }
+        check_cycle(0, &edges, &nodes, &mut vec![0; nodes.len()])?;
+        while let Some((node, alt_dir)) = alias_queue.pop_front() {
+            for (rel, expected_idx) in &edges[node] {
+                let alt_target = crate::utils::join_relative(&alt_dir, rel);
+                if !is_same_file(&alt_target, &nodes[*expected_idx]).unwrap_or(false) {
+                    return Err(format!(
+                        "E_SCHEMA_SOURCE: {} resolves import {} differently across directories",
+                        nodes[node].display(),
+                        rel.display()
+                    ));
+                }
+                let alt_parent = canonical_parent(&alt_target)?;
+                if !parent_dirs[*expected_idx].contains(&alt_parent) {
+                    parent_dirs[*expected_idx].push(alt_parent.clone());
+                    alias_queue.push_back((*expected_idx, alt_parent));
+                }
             }
         }
-        ast.imports = imports;
+        ast.imports = root_imports;
         Ok(ast)
     }
 
@@ -189,15 +260,14 @@ impl parser::Parser {
             .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", path.display()))?;
         let pairs = parser::InnerParser::parse(parser::Rule::grammar, &source)
             .map_err(|error| error.with_path(&path.display().to_string()).to_string())?;
-        Self::append_declarations(ast, &path, depth, pairs)
+        Self::append_declarations(ast, depth, pairs)
             .map_err(|error| error.with_path(&path.display().to_string()).to_string())
     }
 }
 
 impl parser::Parser {
-    pub(crate) fn append_declarations<P: AsRef<Path>>(
+    pub(crate) fn append_declarations(
         ast: &mut ast::Ast,
-        path: &P,
         imported_depth: usize,
         mut file_content: Pairs<'_, parser::Rule>,
     ) -> Result<(), Box<PestError<parser::Rule>>> {
@@ -207,6 +277,8 @@ impl parser::Parser {
         if file_content.peek().is_some() {
             panic!("grammar should only have only one pair");
         }
+        let grammar_span = grammar.as_span();
+        let mut file_version = None;
         let mut eoi = false;
         for pair in grammar.into_inner() {
             if eoi {
@@ -218,21 +290,11 @@ impl parser::Parser {
                     let version = SyntaxVersion {
                         version: pair.into_inner().next_usize()?,
                     };
-                    if ast
-                        .syntax_version
-                        .as_ref()
-                        .is_some_and(|previous| *previous != version)
-                    {
-                        return Err(invalid(
-                            span,
-                            "E_SCHEMA_SYNTAX: all schema files must have the same syntax version",
-                        ));
-                    }
-                    ast.syntax_version = Some(version);
+                    file_version = Some((version, span));
                 }
                 parser::Rule::import_stmt => {
                     let mut pair = pair.into_inner();
-                    let node = pair.next_import(path, imported_depth);
+                    let node = pair.next_import(imported_depth);
                     pair.next_should_be_none();
                     ast.add_import(node);
                 }
@@ -328,24 +390,29 @@ impl parser::Parser {
             panic!("grammar should have only one EOI");
         }
 
-        if ast.syntax_version.is_none() {
-            ast.syntax_version = Some(SyntaxVersion::default());
+        let (version, span) = file_version.unwrap_or((SyntaxVersion::default(), grammar_span));
+        if ast
+            .syntax_version
+            .as_ref()
+            .is_some_and(|previous| *previous != version)
+        {
+            return Err(invalid(
+                span,
+                "E_SCHEMA_SYNTAX: all schema files must have the same syntax version",
+            ));
         }
+        ast.syntax_version = Some(version);
         Ok(())
     }
 }
 
 #[cfg(feature = "schema-extensions")]
 impl ast::Ast {
-    pub(crate) fn retain_root_imports(
-        &mut self,
-        path: &Path,
-        edges: &[crate::schema::ImportSource],
-    ) {
+    pub(crate) fn retain_root_imports(&mut self, edges: &[crate::schema::ImportSource]) {
         let mut seen = HashSet::new();
         let mut keep = edges.iter().map(|edge| seen.insert(&edge.module));
         self.imports
-            .retain(|import| import.imported_base() == path && keep.next() == Some(true));
+            .retain(|import| import.imported_depth() == 0 && keep.next() == Some(true));
     }
 }
 

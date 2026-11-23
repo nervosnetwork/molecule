@@ -90,9 +90,9 @@ The current Molecule version is not guaranteed to build on Rust versions earlier
 minimum supported version.
 
 For repository development, run `make ci-prepare` before invoking Cargo directly
-for library checks. It initializes missing, untracked lockfiles from the compiler's
-tested dependency versions while preserving existing lockfiles. The Makefile's
-build and test targets perform this step automatically.
+for library checks. It initializes missing or stale untracked lockfiles from the
+compiler's tested dependency versions while preserving newer local lockfiles.
+The Makefile's build and test targets perform this step automatically.
 
 ## License
 

@@ -39,11 +39,11 @@ impl ImplGetters for ast::Option_ {
             (inner, getter_ret, getter_stmt)
         };
         quote!(
-            pub fn to_opt(&self) -> Option<#getter_ret> {
+            pub fn to_opt(&self) -> ::core::option::Option<#getter_ret> {
                 if self.is_none() {
-                    None
+                    ::core::option::Option::None
                 } else {
-                    Some(#inner::new_unchecked(#getter_stmt))
+                    ::core::option::Option::Some(#inner::new_unchecked(#getter_stmt))
                 }
             }
         )
@@ -199,11 +199,11 @@ impl ImplGetters for ast::FixVec {
             )
         };
         let common_part = quote!(
-            pub fn get(&self, idx: usize) -> Option<#getter_ret> {
+            pub fn get(&self, idx: usize) -> ::core::option::Option<#getter_ret> {
                 if idx >= self.len() {
-                    None
+                    ::core::option::Option::None
                 } else {
-                    Some(self.get_unchecked(idx))
+                    ::core::option::Option::Some(self.get_unchecked(idx))
                 }
             }
             pub fn get_unchecked(&self, idx: usize) -> #getter_ret {
@@ -241,11 +241,11 @@ impl ImplGetters for ast::DynVec {
             (inner, getter_ret, getter_stmt_last, getter_stmt)
         };
         quote!(
-            pub fn get(&self, idx: usize) -> Option<#getter_ret> {
+            pub fn get(&self, idx: usize) -> ::core::option::Option<#getter_ret> {
                 if idx >= self.len() {
-                    None
+                    ::core::option::Option::None
                 } else {
-                    Some(self.get_unchecked(idx))
+                    ::core::option::Option::Some(self.get_unchecked(idx))
                 }
             }
             pub fn get_unchecked(&self, idx: usize) -> #getter_ret {

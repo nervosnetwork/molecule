@@ -35,13 +35,13 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_byte: bool) -> 
         pub struct #entity_iterator (#entity, usize, usize);
         impl ::core::iter::Iterator for #entity_iterator {
             type Item = #entity_inner;
-            fn next(&mut self) -> Option<Self::Item> {
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
                 if self.1 >= self.2 {
-                    None
+                    ::core::option::Option::None
                 } else {
                     let ret = self.0.get_unchecked(self.1);
                     self.1 += 1;
-                    Some(ret)
+                    ::core::option::Option::Some(ret)
                 }
             }
         }
@@ -73,13 +73,13 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_byte: bool) -> 
             pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, usize, usize);
             impl<'t: 'r, 'r> ::core::iter::Iterator for #reader_iterator<'t, 'r> {
                 type Item = #reader_inner<'t>;
-                fn next(&mut self) -> Option<Self::Item> {
+                fn next(&mut self) -> ::core::option::Option<Self::Item> {
                     if self.1 >= self.2 {
-                        None
+                        ::core::option::Option::None
                     } else {
                         let ret = self.0.get_unchecked(self.1);
                         self.1 += 1;
-                        Some(ret)
+                        ::core::option::Option::Some(ret)
                     }
                 }
             }

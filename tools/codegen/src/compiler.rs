@@ -1,4 +1,4 @@
-use std::{env, ffi, fs, io, io::Write as _, path};
+use std::{env, fs, io, io::Write as _, path};
 
 #[cfg(feature = "compiler-plugin")]
 use std::process;
@@ -24,11 +24,27 @@ pub(crate) enum Input {
     Intermediate(ir::Format, Vec<u8>),
 }
 
+#[cfg(feature = "compiler-plugin")]
+pub(crate) struct PluginChild(Option<process::Child>);
+
+#[cfg(feature = "compiler-plugin")]
+impl Drop for PluginChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            drop(child.stdin.take());
+            if matches!(child.try_wait(), Ok(None)) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+    }
+}
+
 pub(crate) enum Output {
     Directory(path::PathBuf),
     Stdout,
     #[cfg(feature = "compiler-plugin")]
-    PluginProcess(process::Child),
+    PluginProcess(PluginChild),
 }
 
 impl Default for Compiler {
@@ -134,7 +150,7 @@ impl Compiler {
 
     #[cfg(feature = "compiler-plugin")]
     pub fn output_plugin_process(&mut self, child: process::Child) -> &mut Self {
-        self.output = Output::PluginProcess(child);
+        self.output = Output::PluginProcess(PluginChild(Some(child)));
         self
     }
 
@@ -143,11 +159,9 @@ impl Compiler {
             .target
             .ok_or("target is not set: generate code or intermediate data")?;
         let ast = self.parse_ast()?;
+        let namespace = ast.namespace().to_owned();
         #[cfg(feature = "schema-extensions")]
-        let extended_name = ast
-            .source_graph()
-            .as_ref()
-            .map(|_| ast.namespace().to_owned());
+        let extended = ast.source_graph().is_some();
         let generator = generator::Generator::new(ast);
 
         let mut output_data = Vec::<u8>::new();
@@ -157,55 +171,47 @@ impl Compiler {
 
         match &mut self.output {
             Output::Directory(ref out_dir) => {
+                if !crate::utils::valid_namespace(&namespace) {
+                    return Err(format!("E_OUTPUT: invalid output namespace {namespace:?}"));
+                }
+                let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
                 #[cfg(feature = "schema-extensions")]
-                if let Some(namespace) = extended_name {
-                    let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
+                if extended {
                     write_atomic(&out_file, &output_data)?;
                     return Ok(());
                 }
-                let file_name = self
-                    .input
-                    .as_ref()
-                    .and_then(|input| match input {
-                        Input::SchemaFile(path) => path.file_name(),
-                        #[cfg(feature = "compiler-plugin")]
-                        Input::Intermediate(_, _) => None,
-                    })
-                    .and_then(ffi::OsStr::to_str)
-                    .unwrap();
-                let mut out_file = out_dir.to_owned();
-                out_file.push(file_name);
-                out_file.set_extension(target.extension());
-                let mut file_out = fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(&out_file)
-                    .unwrap();
-                file_out.write_all(&output_data).unwrap();
-                file_out.flush().unwrap();
+                write_in_place(&out_file, &output_data)?;
             }
             Output::Stdout => {
                 let stdout = io::stdout();
                 let mut stdout_handle = stdout.lock();
-                stdout_handle.write_all(&output_data).unwrap();
-                stdout_handle.flush().unwrap();
+                stdout_handle
+                    .write_all(&output_data)
+                    .and_then(|_| stdout_handle.flush())
+                    .map_err(|err| format!("E_OUTPUT: {err}"))?;
             }
             #[cfg(feature = "compiler-plugin")]
-            Output::PluginProcess(ref mut process) => {
-                {
-                    let child_stdin = process.stdin.as_mut().unwrap();
-                    child_stdin.write_all(&output_data).unwrap();
-                    child_stdin.flush().unwrap();
+            Output::PluginProcess(ref mut plugin) => {
+                let process = plugin
+                    .0
+                    .as_mut()
+                    .ok_or("E_OUTPUT: plugin process already consumed")?;
+                let mut child_stdin = process
+                    .stdin
+                    .take()
+                    .ok_or("E_OUTPUT: plugin process stdin is not piped")?;
+                let written = child_stdin
+                    .write_all(&output_data)
+                    .and_then(|_| child_stdin.flush());
+                drop(child_stdin);
+                let status = process
+                    .wait()
+                    .map_err(|err| format!("E_OUTPUT: failed to wait for plugin: {err}"))?;
+                plugin.0 = None;
+                if !status.success() {
+                    return Err(format!("E_OUTPUT: plugin exited with {status}"));
                 }
-                if let Ok(status) = process.wait() {
-                    if !status.success() {
-                        process::exit(1)
-                    }
-                } else {
-                    eprintln!("Error: failed to execute the plugin");
-                    process::exit(1)
-                }
+                written.map_err(|err| format!("E_OUTPUT: {err}"))?;
             }
         }
 
@@ -213,41 +219,69 @@ impl Compiler {
     }
 }
 
+fn write_in_place(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(destination)
+        .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
+    file.write_all(bytes)
+        .and_then(|_| file.flush())
+        .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))
+}
+
 #[cfg(feature = "schema-extensions")]
 fn write_atomic(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    struct Temporary(path::PathBuf);
+    struct Temporary(Option<path::PathBuf>);
     impl Drop for Temporary {
         fn drop(&mut self) {
-            let _ = fs::remove_file(&self.0);
+            if let Some(path) = self.0.take() {
+                let _ = fs::remove_file(path);
+            }
         }
     }
     let directory = destination
         .parent()
         .ok_or("E_OUTPUT: destination has no parent")?;
+    #[cfg(unix)]
+    let existing_perms = fs::metadata(destination).ok().map(|m| m.permissions());
     loop {
         let path = directory.join(format!(
             ".molecule-{}-{}.tmp",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let mut file = match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        if existing_perms.is_some() {
+            use std::os::unix::fs::OpenOptionsExt;
+            // Create strictly private before applying the destination's mode so
+            // overwriting a restricted file (e.g. 0600) never widens permissions.
+            options.mode(0o600);
+        }
+        let mut file = match options.open(&path) {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(format!("E_OUTPUT: {}: {error}", destination.display())),
         };
-        let temporary = Temporary(path);
+        let mut temporary = Temporary(Some(path));
         file.write_all(bytes)
             .and_then(|_| file.flush())
             .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
+        #[cfg(unix)]
+        if let Some(perms) = existing_perms.as_ref() {
+            file.set_permissions(perms.clone())
+                .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
+        }
         drop(file);
-        fs::rename(&temporary.0, destination)
+        let temp_path = temporary.0.as_ref().expect("active temporary path");
+        fs::rename(temp_path, destination)
             .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
+        temporary.0 = None;
         return Ok(());
     }
 }

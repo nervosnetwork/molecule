@@ -17,7 +17,7 @@ C_PROJS = examples/ci-tests
 ci-prepare:
 	@set -eu; \
 	for dir in bindings/rust tools/codegen examples/tests-utils-c; do \
-		if [ ! -f "$${dir}/Cargo.lock" ]; then \
+		if [ ! -f "$${dir}/Cargo.lock" ] || [ tools/compiler/Cargo.lock -nt "$${dir}/Cargo.lock" ]; then \
 			cp tools/compiler/Cargo.lock "$${dir}/Cargo.lock"; \
 		fi; \
 	done

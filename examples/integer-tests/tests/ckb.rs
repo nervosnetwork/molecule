@@ -40,6 +40,22 @@ fn ckb_schema_consumers_keep_names_and_wire_values() {
 
 #[test]
 fn discovery_port_distinguishes_absence_zero_and_invalid_input() {
+    assert_eq!(protocols::PortOpt::from_value(None).as_slice(), &[][..]);
+    assert_eq!(
+        protocols::PortOpt::from_value(Some(0)).as_slice(),
+        &[0, 0][..]
+    );
+    assert_eq!(
+        protocols::PortOpt::from_value(Some(u16::MAX)).as_slice(),
+        &[255, 255][..]
+    );
+    assert_eq!(
+        protocols::PortOpt::from_value(Some(8115)).as_slice(),
+        protocols::PortOpt::new_builder()
+            .set(Some(protocols::Uint16::from_u16(8115)))
+            .build()
+            .as_slice()
+    );
     for (wire, expected) in [
         (&[][..], None),
         (&[0, 0], Some(0)),
@@ -52,11 +68,19 @@ fn discovery_port_distinguishes_absence_zero_and_invalid_input() {
                 .unwrap(),
             expected
         );
+        assert_eq!(
+            protocols::PortOpt::from_slice(wire)
+                .unwrap()
+                .try_value()
+                .unwrap(),
+            expected
+        );
     }
     for wire in [&[0][..], &[0, 0, 0]] {
-        assert!(protocols::PortOptReader::new_unchecked(wire)
-            .try_value()
-            .is_err());
+        assert!(matches!(
+            protocols::PortOptReader::new_unchecked(wire).try_value(),
+            Err(molecule::integer::IntegerError::Size { expected: 2, .. })
+        ));
     }
 }
 
@@ -87,6 +111,11 @@ fn repeated_fees_decode_in_order_after_checking_the_count() {
     assert_eq!(fees.len(), values.len());
     assert_eq!(fees.next(), Some(values[0]));
     assert!(fees.eq(values[1..].iter().copied()));
+    assert!(packed
+        .try_values()
+        .unwrap()
+        .rev()
+        .eq(values.iter().rev().copied()));
     assert_eq!(
         extensions::Uint64VecReader::new_unchecked(&[0; 4])
             .try_values()
@@ -95,8 +124,9 @@ fn repeated_fees_decode_in_order_after_checking_the_count() {
         0
     );
     for wire in [&[][..], &[1, 0, 0, 0], &[0; 5], &[255; 4]] {
-        assert!(extensions::Uint64VecReader::new_unchecked(wire)
-            .try_values()
-            .is_err());
+        assert!(matches!(
+            extensions::Uint64VecReader::new_unchecked(wire).try_values(),
+            Err(molecule::integer::IntegerError::Verification(_))
+        ));
     }
 }

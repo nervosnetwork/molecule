@@ -576,6 +576,40 @@ fn native_and_sidecar_declarations_can_share_an_import_graph() {
 }
 
 #[test]
+fn single_byte_contract_ignores_redundant_byte_order() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("flag.mol");
+    fs::write(&root, "array Flag [byte; 1];").unwrap();
+    let meta = write_metadata(
+        dir.path(),
+        "flag.mol",
+        "flag.json",
+        json!([annotation("Flag", 8, false, "big")]),
+    );
+    let published = Compiler::new()
+        .input_schema_file(&root)
+        .type_metadata_file(&meta)
+        .parse_ast()
+        .unwrap();
+    fs::write(&root, "integer Flag = u8;").unwrap();
+    let migrated = Compiler::new()
+        .input_schema_file(&root)
+        .parse_ast()
+        .unwrap();
+    migrated.check_integer_contract(&published).unwrap();
+    // Changing signedness of a single-byte integer is still rejected.
+    fs::write(&root, "integer Flag = i8;").unwrap();
+    let changed = Compiler::new()
+        .input_schema_file(&root)
+        .parse_ast()
+        .unwrap();
+    assert!(changed
+        .check_integer_contract(&published)
+        .unwrap_err()
+        .contains("changed integer Flag"));
+}
+
+#[test]
 fn provenance_uses_character_columns_across_crlf_and_unicode_comments() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("types.mol");
@@ -588,4 +622,38 @@ fn provenance_uses_character_columns_across_crlf_and_unicode_comments() {
     let declarations = &graph.graph().modules[0].declarations;
     assert_eq!((declarations[0].line, declarations[0].column), (2, 9));
     assert_eq!((declarations[1].line, declarations[1].column), (3, 3));
+}
+
+#[cfg(unix)]
+#[test]
+fn sidecar_schema_path_resolves_symlinks_before_parent_dir() {
+    use std::os::unix::fs::symlink;
+    let dir = TempDir::new().unwrap();
+    let other = dir.path().join("other");
+    let other_sub = other.join("sub");
+    let meta_dir = dir.path().join("meta");
+    fs::create_dir_all(&other_sub).unwrap();
+    fs::create_dir_all(&meta_dir).unwrap();
+    let schema = "array Word [byte; 2];";
+    let word = other.join("word.mol");
+    fs::write(&word, schema).unwrap();
+    symlink(&other_sub, meta_dir.join("alias")).unwrap();
+    let sidecar = meta_dir.join("word.json");
+    fs::write(
+        &sidecar,
+        json!({
+            "metadata_version": 1,
+            "schema": "alias/../word.mol",
+            "schema_sha256": source_digest(schema.as_bytes()),
+            "integers": [annotation("Word", 16, false, "little")],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let ast = Compiler::new()
+        .input_schema_file(&word)
+        .type_metadata_file(&sidecar)
+        .parse_ast()
+        .unwrap();
+    assert_eq!(ast.integer("Word").unwrap().bits, 16);
 }

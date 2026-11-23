@@ -177,14 +177,15 @@ fn checked_field_rejects_invalid_offsets() {
 }
 
 #[test]
-fn checked_field_visits_each_header_word_once_and_skips_other_payloads() {
+fn checked_field_reads_only_header_and_selected_field_never_trailing_payloads() {
     let mut wire = [26u32, 16, 24, 25].map(u32::to_le_bytes).concat();
     wire.extend_from_slice(&61u64.to_le_bytes());
     wire.extend_from_slice(&[1, 2]);
     let (input, calls) = cursor(wire, usize::MAX);
     let amount = input.table_field_exact(3, 0).unwrap();
     assert_eq!(amount.read_array::<8>().unwrap(), 61u64.to_le_bytes());
-    assert_eq!(calls.get(), 5);
+    // Reads: total_size (0..4), first offset (4..8), remaining offsets (8..16), field (16..24).
+    assert_eq!(calls.get(), 4);
     assert_eq!(
         input
             .table_field_exact(0, 2)
@@ -193,6 +194,139 @@ fn checked_field_visits_each_header_word_once_and_skips_other_payloads() {
             .unwrap(),
         [2]
     );
+    // Header 0..16 remained cached via contiguous tail-append, so reading field 2 only fetches byte 25.
+    assert_eq!(calls.get(), 5);
     assert!(input.table_field_exact(4, 0).is_err());
     assert!(input.table_field_exact(3, 3).is_err());
+
+    // Empty 4-byte table reports FieldCount(0) when fields are required,
+    // and OutOfBound when minimum_fields is 0.
+    let (empty, _) = cursor(4u32.to_le_bytes().to_vec(), usize::MAX);
+    assert!(matches!(
+        empty.table_field_exact(1, 0),
+        Err(AccessError::Read(Error::FieldCount(0)))
+    ));
+    assert!(matches!(
+        empty.table_field_exact(0, 0),
+        Err(AccessError::Read(Error::OutOfBound(0, 0)))
+    ));
+
+    // Reading an early field (e.g. CellOutput.capacity in bytes 0..24 of a 97-byte table)
+    // must never request bytes past the header + selected field, even if trailing fields fail.
+    struct PrefixOnlySource {
+        prefix: Vec<u8>,
+        max_end: Rc<Cell<usize>>,
+    }
+    impl Read for PrefixOnlySource {
+        fn read(&self, output: &mut [u8], offset: usize) -> Result<usize, Error> {
+            let end = offset.checked_add(output.len()).ok_or(Error::Overflow)?;
+            self.max_end.set(self.max_end.get().max(end));
+            if end > self.prefix.len() {
+                return Err(Error::Read(self.prefix.len(), end));
+            }
+            output.copy_from_slice(&self.prefix[offset..end]);
+            Ok(output.len())
+        }
+    }
+    let mut cell_output_prefix = [97u32, 16, 24, 77].map(u32::to_le_bytes).concat();
+    cell_output_prefix.extend_from_slice(&6_100_000_000u64.to_le_bytes());
+    assert_eq!(cell_output_prefix.len(), 24);
+    let max_end = Rc::new(Cell::new(0));
+    let cell_output = Cursor::new(
+        97,
+        Box::new(PrefixOnlySource {
+            prefix: cell_output_prefix,
+            max_end: max_end.clone(),
+        }),
+    );
+    let capacity = cell_output.table_field_exact(3, 0).unwrap();
+    assert_eq!(
+        capacity.read_array::<8>().unwrap(),
+        6_100_000_000u64.to_le_bytes()
+    );
+    assert_eq!(max_end.get(), 24);
+
+    // Tables with > 16 fields validate offsets in bounded stack chunks without touching payloads.
+    let field_count = 20usize;
+    let first = (field_count + 1) * 4;
+    let total = first + field_count * 8;
+    let mut wide_prefix = Vec::with_capacity(first + 8);
+    wide_prefix.extend_from_slice(&(total as u32).to_le_bytes());
+    for i in 0..field_count {
+        wide_prefix.extend_from_slice(&((first + i * 8) as u32).to_le_bytes());
+    }
+    wide_prefix.extend_from_slice(&42u64.to_le_bytes());
+    let wide_max = Rc::new(Cell::new(0));
+    let wide = Cursor::new(
+        total,
+        Box::new(PrefixOnlySource {
+            prefix: wide_prefix,
+            max_end: wide_max.clone(),
+        }),
+    );
+    let first_field = wide.table_field_exact(field_count, 0).unwrap();
+    assert_eq!(first_field.read_array::<8>().unwrap(), 42u64.to_le_bytes());
+    assert_eq!(wide_max.get(), first + 8);
+}
+
+#[test]
+fn fixvec_item_exact_validates_header_bounds_and_skips_other_items() {
+    let mut wire = 3u32.to_le_bytes().to_vec();
+    for v in [10u64, 20, 30] {
+        wire.extend_from_slice(&v.to_le_bytes());
+    }
+    let (input, calls) = cursor(wire.clone(), usize::MAX);
+    assert_eq!(
+        input
+            .fixvec_item_exact(8, 0)
+            .unwrap()
+            .read_array::<8>()
+            .unwrap(),
+        10u64.to_le_bytes()
+    );
+    assert_eq!(calls.get(), 2);
+    assert_eq!(
+        input
+            .fixvec_item_exact(8, 2)
+            .unwrap()
+            .read_array::<8>()
+            .unwrap(),
+        30u64.to_le_bytes()
+    );
+    // Count header [0..4) remained cached after contiguous item 0 read, so item 2 adds only 1 read.
+    assert_eq!(calls.get(), 3);
+    assert!(matches!(
+        input.fixvec_item_exact(8, 3),
+        Err(AccessError::Read(Error::OutOfBound(3, 3)))
+    ));
+    assert!(matches!(
+        input.fixvec_item_exact(0, 0),
+        Err(AccessError::Read(Error::Data))
+    ));
+    // Truncated length fails before accessing an item.
+    let (short, _) = cursor(wire[..wire.len() - 1].to_vec(), 2);
+    assert!(matches!(
+        short.fixvec_item_exact(8, 0),
+        Err(AccessError::Read(Error::TotalSize(_, _)))
+    ));
+}
+
+#[test]
+fn legacy_read_at_rejects_overflow_and_impossible_read_counts() {
+    let mut overflow = Cursor::from([1u8; 8]);
+    overflow.offset = usize::MAX;
+    assert!(matches!(
+        overflow.read_at(&mut [0u8; 1]),
+        Err(Error::Overflow)
+    ));
+
+    let bad = Cursor::new(MAX_CACHE_SIZE + 8, Box::new(InvalidSource(true)));
+    assert!(matches!(
+        bad.read_at(&mut [0u8; 4]),
+        Err(Error::Read(_, MAX_CACHE_SIZE))
+    ));
+    assert!(matches!(
+        bad.read_at(&mut vec![0u8; MAX_CACHE_SIZE + 1]),
+        Err(Error::Read(_, _))
+    ));
 }

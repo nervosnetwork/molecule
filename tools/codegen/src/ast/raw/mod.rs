@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 #[cfg(feature = "compiler-plugin")]
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +36,6 @@ pub(crate) struct ImportStmt {
     name: String,
     paths: Vec<String>,
     path_supers: usize,
-    imported_base: PathBuf,
     imported_depth: usize,
 }
 
@@ -117,6 +114,7 @@ impl Ast {
         let namespace = path
             .file_stem()
             .and_then(|stem| stem.to_str())
+            .filter(|name| crate::utils::valid_namespace(name))
             .ok_or("E_SCHEMA_SOURCE: invalid file name")?;
         Ok(Self {
             namespace: namespace.to_owned(),

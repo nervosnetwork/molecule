@@ -1,8 +1,6 @@
-#[cfg(feature = "schema-extensions")]
-use super::HasName;
 use super::{
-    super::raw, Array, Ast, Deps, DynVec, FieldDecl, FixVec, ImportStmt, ItemDecl, Option_, Struct,
-    Table, TopDecl, Union, UnionItemDecl,
+    super::raw, Array, Ast, Deps, DynVec, FieldDecl, FixVec, HasName, ImportStmt, ItemDecl,
+    Option_, Struct, Table, TopDecl, Union, UnionItemDecl,
 };
 use std::{
     collections::{HashSet, VecDeque},
@@ -12,10 +10,12 @@ use std::{
 impl Ast {
     pub(crate) fn complete(raw: &raw::Ast) -> Result<Self, String> {
         let mut names = HashSet::from(["byte".to_owned()]);
+        let mut declared = HashSet::from(["byte"]);
         for decl in raw.decls() {
             if !names.insert(decl.name().to_ascii_lowercase()) {
                 return Err(format!("E_SYMBOL_COLLISION: {}", decl.name()));
             }
+            declared.insert(decl.name());
         }
 
         let mut deps = Deps::from([("byte", Rc::new(TopDecl::new_primitive("byte").unwrap()))]);
@@ -28,6 +28,12 @@ impl Ast {
                     deferred = 0;
                 }
                 Err(LayoutError::Unresolved(reference)) => {
+                    if !declared.contains(reference) {
+                        return Err(format!(
+                            "E_SCHEMA_DEPENDENCY: {} cannot resolve {reference} (missing type)",
+                            decl.name()
+                        ));
+                    }
                     pending.push_back(decl);
                     deferred += 1;
                     // One full pass without resolving a declaration cannot make progress.
@@ -47,7 +53,7 @@ impl Ast {
             }
         }
 
-        Ok(Self {
+        let ast = Self {
             syntax_version: raw.syntax_version().cloned().unwrap_or_default(),
             namespace: raw.namespace().to_owned(),
             imports: raw
@@ -68,20 +74,32 @@ impl Ast {
             integers: raw.integers().clone(),
             #[cfg(feature = "schema-extensions")]
             source_graph: None,
-        })
+        };
+        ast.validate_layout_limits()?;
+        Ok(ast)
     }
 
-    #[cfg(feature = "schema-extensions")]
-    pub(crate) fn validate_extensions(&self) -> Result<(), String> {
+    fn validate_layout_limits(&self) -> Result<(), String> {
         if u32::try_from(self.syntax_version.version()).is_err() {
             return Err("E_SCHEMA_NUMBER: syntax version exceeds u32".into());
         }
         for decl in &self.decls {
             let fields = match decl.as_ref() {
-                TopDecl::Union(union)
-                    if union.items.iter().any(|i| u32::try_from(i.id).is_err()) =>
-                {
-                    return Err(format!("E_SCHEMA_UNION: ID exceeds u32 in {}", union.name));
+                TopDecl::Union(union) => {
+                    if union.items.iter().any(|i| u32::try_from(i.id).is_err()) {
+                        return Err(format!("E_SCHEMA_UNION: ID exceeds u32 in {}", union.name));
+                    }
+                    let mut item_types = HashSet::new();
+                    for item in &union.items {
+                        if !item_types.insert(item.typ().name().to_ascii_lowercase()) {
+                            return Err(format!(
+                                "E_SCHEMA_UNION: duplicate union item {} in {}",
+                                item.typ().name(),
+                                union.name
+                            ));
+                        }
+                    }
+                    continue;
                 }
                 TopDecl::Array(array) if u32::try_from(array.item_count).is_err() => {
                     return Err(format!(

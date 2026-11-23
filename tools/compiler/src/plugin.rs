@@ -16,11 +16,14 @@ const MAX_GENERATED_CODE: u64 = 64 * 1024 * 1024;
 struct Process {
     child: Box<dyn StdChildWrapper>,
     workers: Vec<thread::JoinHandle<()>>,
+    kill_on_drop: bool,
 }
 impl Drop for Process {
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
-        let _ = self.child.inner_mut().wait();
+        if self.kill_on_drop {
+            let _ = self.child.start_kill();
+            let _ = self.child.wait();
+        }
         let deadline = Instant::now() + Duration::from_millis(250);
         for worker in self.workers.drain(..) {
             while !worker.is_finished() && Instant::now() < deadline {
@@ -106,6 +109,7 @@ fn communicate(
             .spawn()
             .map_err(|error| format!("cannot start process: {error}"))?,
         workers: Vec::new(),
+        kill_on_drop: true,
     };
     let stdout = process
         .child
@@ -136,7 +140,7 @@ fn communicate(
             })
             .map_err(|error| error.to_string())?,
     );
-    let mut input_complete = input.is_none();
+    let mut input_result = input.is_none().then_some(Ok(()));
     if let Some(bytes) = input {
         let mut stdin = process
             .child
@@ -153,32 +157,49 @@ fn communicate(
                 })
                 .map_err(|error| error.to_string())?,
         );
+    } else {
+        drop(send);
     }
     let start = Instant::now();
     let mut stdout = None;
     let mut stderr = None;
+    let mut exit_status = None;
     loop {
         let Some(remaining) = timeout.checked_sub(start.elapsed()) else {
             return Err("process timed out".into());
         };
-        match receive.recv_timeout(remaining.min(Duration::from_millis(20))) {
-            Ok(Event::Stdout(result)) => stdout = Some(result.map_err(|error| error.to_string())?),
-            Ok(Event::Stderr(result)) => stderr = Some(result.map_err(|error| error.to_string())?),
-            Ok(Event::Input(result)) => {
-                result.map_err(|error| format!("cannot send IR: {error}"))?;
-                input_complete = true;
+        let disconnected = match receive.recv_timeout(remaining.min(Duration::from_millis(20))) {
+            Ok(Event::Stdout(result)) => {
+                stdout = Some(result.map_err(|error| error.to_string())?);
+                false
             }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                thread::sleep(remaining.min(Duration::from_millis(20)))
+            Ok(Event::Stderr(result)) => {
+                stderr = Some(result.map_err(|error| error.to_string())?);
+                false
+            }
+            // Defer reporting stdin write failures (e.g. BrokenPipe) until the child
+            // exits and stderr is collected, so an early plugin diagnostic is preserved.
+            Ok(Event::Input(result)) => {
+                input_result = Some(result);
+                false
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+            Err(mpsc::RecvTimeoutError::Disconnected) => true,
+        };
+        // Wait until all pipes close before reaping so an exited leader pins its
+        // Unix PGID until `start_kill()` runs if descendants still hold pipes open.
+        let io_done =
+            (stdout.is_some() && stderr.is_some() && input_result.is_some()) || disconnected;
+        if io_done && exit_status.is_none() {
+            exit_status = process
+                .child
+                .try_wait()
+                .map_err(|error| error.to_string())?;
+            if exit_status.is_some() {
+                process.kill_on_drop = false;
             }
         }
-        if let Some(status) = process
-            .child
-            .inner_mut()
-            .try_wait()
-            .map_err(|error| error.to_string())?
-        {
+        if let Some(status) = exit_status {
             if let (Some(stdout), Some(stderr)) = (&mut stdout, &mut stderr) {
                 if !status.success() {
                     return Err(format!(
@@ -186,10 +207,16 @@ fn communicate(
                         String::from_utf8_lossy(stderr)
                     ));
                 }
-                if input_complete {
+                if let Some(result) = input_result.take() {
+                    result.map_err(|error| format!("cannot send IR: {error}"))?;
                     return Ok((std::mem::take(stdout), std::mem::take(stderr)));
                 }
             }
+            if disconnected {
+                return Err("plugin I/O worker exited unexpectedly".into());
+            }
+        } else if disconnected {
+            thread::sleep(remaining.min(Duration::from_millis(5)));
         }
     }
 }

@@ -5,3 +5,10 @@ option Maybe (Uint64);
 option Nested (Maybe);
 struct Fixed { amount: Uint64, }
 table Invoice { amount: Uint64, port: Nested, }
+
+table Option {}
+integer Amount = u64be;
+array AmountPair [Amount; 2];
+vector Amounts <Amount>;
+option AmountOpt (Amount);
+table Order { amount: Amount, tip: AmountOpt, }

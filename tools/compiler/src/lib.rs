@@ -51,10 +51,10 @@ impl From<RawAppConfig> for AppConfig {
             AppAction::DisplayFormat
         } else {
             let mut input = Vec::new();
-            if io::stdin().read_to_end(&mut input).is_err() {
-                eprintln!("Error: failed to read data from stdin)");
+            if let Err(error) = io::stdin().read_to_end(&mut input) {
+                eprintln!("Error: failed to read data from stdin: {error}");
                 process::exit(1);
-            };
+            }
             AppAction::ProcessIntermediate(input)
         };
         Self {
@@ -82,11 +82,14 @@ impl AppConfig {
                 println!("{}", self.format);
             }
             AppAction::ProcessIntermediate(ref input) => {
-                Compiler::new()
+                if let Err(error) = Compiler::new()
                     .generate_code(self.lang)
                     .input_intermediate(self.format, input.to_owned())
                     .run()
-                    .unwrap();
+                {
+                    eprintln!("Error: {error}");
+                    process::exit(1);
+                }
             }
         }
     }

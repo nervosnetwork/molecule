@@ -25,8 +25,27 @@ impl Generator {
         writeln!(writer)
     }
 
+    fn guard_name(name: &str) -> String {
+        let mut sanitized: String = name
+            .to_snake()
+            .to_uppercase()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if sanitized.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+            sanitized.insert(0, '_');
+        }
+        sanitized
+    }
+
     fn ifndef<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = name.to_snake().to_uppercase();
+        let n = Self::guard_name(name);
         let api_decorator = utilities::API_DECORATOR;
         w!(o, "#ifndef {}_H                                        ", n);
         w!(o, "#define {}_H                                        ", n);
@@ -43,7 +62,7 @@ impl Generator {
     }
 
     fn endif<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = name.to_snake().to_uppercase();
+        let n = Self::guard_name(name);
         let api_decorator = utilities::API_DECORATOR;
         w!(o, "                                                       ");
         w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
@@ -97,11 +116,13 @@ impl super::LanguageGenerator for Generator {
         for decl in ast.major_decls() {
             decl.gen_reader_interfaces(writer)?;
         }
+        integers::generate_reader_interfaces(writer, ast)?;
         writeln!(writer)?;
         Self::title(writer, "Builder APIs")?;
         for decl in ast.major_decls() {
             decl.gen_builder_interfaces(writer)?;
         }
+        integers::generate_builder_interfaces(writer, ast)?;
         writeln!(writer)?;
         Self::title(writer, "Default Value")?;
         writeln!(writer, r#"#define ____ 0x00"#)?;

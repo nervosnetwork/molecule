@@ -10,6 +10,7 @@ pub(crate) struct Generator;
 
 impl super::LanguageGenerator for Generator {
     fn generate<W: io::Write>(output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        super::rust::utilities::check_names(ast, true)?;
         generator::check_legacy_integer_types(ast)?;
         writeln!(
             output,
@@ -23,10 +24,6 @@ impl super::LanguageGenerator for Generator {
             writeln!(output, "use super::{}::*; ", &import.name())?;
         }
 
-        if !ast.integers().is_empty() {
-            writeln!(output, "{}", super::integers::rust(ast, true)?)?;
-        }
-
         for decl in ast.major_decls() {
             match decl.as_ref() {
                 ast::TopDecl::Option_(ref i) => i.gen_rust(output, ast)?,
@@ -38,6 +35,10 @@ impl super::LanguageGenerator for Generator {
                 ast::TopDecl::Table(ref i) => i.gen_rust(output, ast)?,
                 ast::TopDecl::Primitive(_) => unreachable!(),
             };
+        }
+
+        if !ast.integers().is_empty() {
+            writeln!(output, "{}", super::integers::rust(ast, true)?)?;
         }
 
         Ok(())

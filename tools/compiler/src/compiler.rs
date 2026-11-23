@@ -32,6 +32,7 @@ pub(crate) mod config {
                     .long("schema-file")
                     .help("Provide a schema file to compile.")
                     .required(true)
+                    .value_parser(clap::value_parser!(PathBuf))
                     .action(clap::ArgAction::Set),
             )
             .arg(
@@ -54,6 +55,7 @@ pub(crate) mod config {
                 clap::Arg::new("type-metadata")
                     .long("type-metadata")
                     .help("Explicit integer metadata sidecar; repeat for imported schemas.")
+                    .value_parser(clap::value_parser!(PathBuf))
                     .action(clap::ArgAction::Append),
             )
             .arg(
@@ -82,10 +84,10 @@ pub(crate) mod config {
 
     impl From<clap::ArgMatches> for AppConfig {
         fn from(matches: clap::ArgMatches) -> Self {
-            let schema_file = {
-                let path = matches.get_one::<String>("schema-file").unwrap();
-                PathBuf::from(path)
-            };
+            let schema_file = matches
+                .get_one::<PathBuf>("schema-file")
+                .unwrap()
+                .to_owned();
             let language = matches.get_one::<String>("language").unwrap();
             let wire_only = matches.get_flag("wire-only");
             if wire_only && language != "-" {
@@ -93,16 +95,16 @@ pub(crate) mod config {
                 process::exit(1);
             }
             let type_metadata = matches
-                .get_many::<String>("type-metadata")
+                .get_many::<PathBuf>("type-metadata")
                 .into_iter()
                 .flatten()
-                .map(PathBuf::from)
+                .cloned()
                 .collect();
             let plugin_timeout = *matches.get_one::<u64>("plugin-timeout").unwrap();
             if !schema_file.as_path().is_file() {
                 eprintln!(
                     "Error: schema-file [{}] should be a file",
-                    schema_file.to_str().unwrap()
+                    schema_file.display()
                 );
                 process::exit(1);
             }
@@ -175,7 +177,11 @@ fn compile(config: config::AppConfig) -> Result<(), String> {
             return legacy_plugin(plugin, &ast);
         }
         config::OutputConfig::Plugin(plugin) => {
-            let format = moleculec::plugin::negotiate(plugin, &ast, Duration::from_secs(5))?;
+            let format = moleculec::plugin::negotiate(
+                plugin,
+                &ast,
+                Duration::from_secs(config.plugin_timeout.min(5)),
+            )?;
             let input = format.serialize_ast(&ast)?;
             let (bytes, diagnostics) = moleculec::plugin::execute(
                 plugin,
@@ -189,9 +195,11 @@ fn compile(config: config::AppConfig) -> Result<(), String> {
             bytes
         }
     };
-    std::io::stdout()
-        .lock()
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    handle
         .write_all(&bytes)
+        .and_then(|_| handle.flush())
         .map_err(|error| format!("cannot write compiler output: {error}"))
 }
 
@@ -204,7 +212,7 @@ fn legacy_plugin(path: &Path, ast: &molecule_codegen::ast::Ast) -> Result<(), St
     let format = str::from_utf8(&reply.stdout)
         .ok()
         .filter(|_| reply.status.success())
-        .and_then(|value| IntermediateFormat::try_from(value).ok())
+        .and_then(|value| IntermediateFormat::try_from(value.trim()).ok())
         .unwrap_or(IntermediateFormat::JSON);
     let input = format.serialize_ast(ast)?;
     let mut child = process::Command::new(path)
@@ -217,9 +225,9 @@ fn legacy_plugin(path: &Path, ast: &molecule_codegen::ast::Ast) -> Result<(), St
         .expect("piped plugin stdin")
         .write_all(&input);
     let status = child.wait().map_err(|err| err.to_string())?;
-    written.map_err(|err| err.to_string())?;
     if !status.success() {
         return Err(format!("plugin exited with {status}"));
     }
+    written.map_err(|err| err.to_string())?;
     Ok(())
 }

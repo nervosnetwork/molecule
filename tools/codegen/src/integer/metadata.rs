@@ -62,10 +62,21 @@ impl MetadataFile {
                 metadata.metadata_version
             ));
         }
-        let schema = path
+        let base = path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(&metadata.schema);
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        #[cfg(not(windows))]
+        let schema = base.join(&metadata.schema);
+        #[cfg(windows)]
+        let schema = if metadata.schema.is_absolute() {
+            metadata.schema.clone()
+        } else {
+            let canonical_base = base
+                .canonicalize()
+                .map_err(|error| format!("E_META_SCHEMA: {}: {error}", base.display()))?;
+            crate::utils::join_relative(&canonical_base, &metadata.schema)
+        };
         let module = sources.module_at(&schema)?;
         if !metadata.schema_sha256.eq_ignore_ascii_case(&module.sha256) {
             return Err(format!(
@@ -126,7 +137,7 @@ impl Ast {
             let actual = self
                 .integer(name)
                 .ok_or_else(|| format!("missing integer {name}"))?;
-            if expected != actual {
+            if !expected.is_equivalent_to(*actual) {
                 return Err(format!(
                     "changed integer {name}: expected {expected:?}, found {actual:?}"
                 ));

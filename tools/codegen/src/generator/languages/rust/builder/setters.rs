@@ -14,7 +14,7 @@ impl ImplSetters for ast::Option_ {
         quote!(
             pub fn set<T>(mut self, v: T) -> Self
             where
-                T: ::core::convert::Into<Option<#inner>>
+                T: ::core::convert::Into<::core::option::Option<#inner>>
             {
                 self.0 = v.into();
                 self
@@ -138,7 +138,7 @@ fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
             self.0.extend(iter);
             self
         }
-        pub fn replace<T>(&mut self, index: usize, v: T) -> Option<#inner>
+        pub fn replace<T>(&mut self, index: usize, v: T) -> ::core::option::Option<#inner>
         where
             T: ::core::convert::Into<#inner>
         {

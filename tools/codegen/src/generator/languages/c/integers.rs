@@ -1,50 +1,173 @@
 use crate::{
     ast::{Ast, HasName},
-    integer::ByteOrder,
+    integer::{ByteOrder, IntegerSpec},
 };
 use std::io::{self, Write};
 
+fn value_type(spec: IntegerSpec) -> String {
+    let base = format!("{}int{}_t", if spec.signed { "" } else { "u" }, spec.bits);
+    if spec.bits > 64 {
+        format!("mol_{base}")
+    } else {
+        base
+    }
+}
+
+fn writer_param_type(spec: IntegerSpec) -> String {
+    if spec.bits > 64 {
+        value_type(spec)
+    } else if spec.signed {
+        "int64_t".into()
+    } else {
+        "uint64_t".into()
+    }
+}
+
+fn reader_sig(name: &str, spec: IntegerSpec) -> String {
+    let typ = value_type(spec);
+    format!(
+        "MOLECULE_API_DECORATOR mol_errno MolReader_{name}_read_value(const mol_seg_t *input, {typ} *output)"
+    )
+}
+
+fn builder_sig(name: &str, spec: IntegerSpec) -> String {
+    let parameter = writer_param_type(spec);
+    format!(
+        "MOLECULE_API_DECORATOR mol_errno MolBuilder_{name}_write_value({parameter} value, mol_seg_t *output)"
+    )
+}
+
+fn declared_integers(ast: &Ast) -> Vec<(String, IntegerSpec)> {
+    ast.major_decls()
+        .into_iter()
+        .filter_map(|decl| {
+            ast.integer(decl.name())
+                .map(|&spec| (decl.name().to_owned(), spec))
+        })
+        .collect()
+}
+
+fn check_symbol_collisions(ast: &Ast) -> io::Result<()> {
+    if ast.integers().is_empty() {
+        return Ok(());
+    }
+    let mut macros = std::collections::HashSet::new();
+    for decl in ast.decls() {
+        match decl.as_ref() {
+            crate::ast::TopDecl::Struct(record) => {
+                for field in record.fields() {
+                    macros.insert(format!("MolReader_{}_get_{}", decl.name(), field.name()));
+                    macros.insert(format!("MolBuilder_{}_set_{}", decl.name(), field.name()));
+                }
+            }
+            crate::ast::TopDecl::Table(table) => {
+                for field in table.fields() {
+                    macros.insert(format!("MolReader_{}_get_{}", decl.name(), field.name()));
+                    macros.insert(format!("MolBuilder_{}_set_{}", decl.name(), field.name()));
+                }
+            }
+            crate::ast::TopDecl::Union(union) => {
+                for item in union.items() {
+                    macros.insert(format!(
+                        "MolBuilder_{}_set_{}",
+                        decl.name(),
+                        item.typ().name()
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    for name in ast.integers().keys() {
+        for sym in [
+            format!("MolReader_{name}_read_value"),
+            format!("MolBuilder_{name}_write_value"),
+        ] {
+            if macros.contains(&sym) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("E_C_SYMBOL_COLLISION: integer accessor `{sym}` collides with a field macro"),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn generate_reader_interfaces<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
+    check_symbol_collisions(ast)?;
+    for (name, spec) in declared_integers(ast) {
+        w!(writer, "{};", reader_sig(&name, spec));
+    }
+    Ok(())
+}
+
+pub(super) fn generate_builder_interfaces<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
+    for (name, spec) in declared_integers(ast) {
+        w!(writer, "{};", builder_sig(&name, spec));
+    }
+    Ok(())
+}
+
 pub(super) fn generate<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
-    for decl in ast.major_decls() {
-        let Some(spec) = ast.integer(decl.name()) else {
-            continue;
-        };
-        let name = decl.name();
+    for (name, spec) in declared_integers(ast) {
         let bits = spec.bits;
-        let typ = format!("{}int{bits}_t", if spec.signed { "" } else { "u" });
         let width = spec.byte_width();
         let little = spec.byte_order == ByteOrder::Little;
+        w!(writer, "{} {{", reader_sig(&name, spec));
+        w!(writer, "    if (!output) return MOL_ERR_DATA;");
         if bits > 64 {
-            let typ = format!("mol_{typ}");
             let count = width / 8;
-            writeln!(writer, "MOLECULE_API_DECORATOR mol_errno MolReader_{name}_read_value(const mol_seg_t *input, {typ} *output) {{")?;
-            writeln!(writer, "    if (!output) return MOL_ERR_DATA;\n    return mol_integer_read_limbs(input, {count}, {little}, output->limbs);\n}}")?;
-            writeln!(writer, "MOLECULE_API_DECORATOR mol_errno MolBuilder_{name}_write_value({typ} value, mol_seg_t *output) {{\n    return mol_integer_write_limbs(value.limbs, {count}, {little}, output);\n}}")?;
+            w!(
+                writer,
+                "    return mol_integer_read_limbs(input, {count}, {little}, output->limbs);"
+            );
+            w!(writer, "}}");
+            w!(writer, "{} {{", builder_sig(&name, spec));
+            w!(
+                writer,
+                "    return mol_integer_write_limbs(value.limbs, {count}, {little}, output);"
+            );
+            w!(writer, "}}");
             continue;
         }
-        writeln!(writer, "MOLECULE_API_DECORATOR mol_errno MolReader_{name}_read_value(const mol_seg_t *input, {typ} *output) {{\n    if (!output) return MOL_ERR_DATA;\n    uint64_t value;\n    mol_errno error = mol_integer_read_u64(input, {width}, {little}, &value);\n    if (error != MOL_OK) return error;")?;
+        let typ = value_type(spec);
+        w!(writer, "    uint64_t value;");
+        w!(
+            writer,
+            "    mol_errno error = mol_integer_read_u64(input, {width}, {little}, &value);"
+        );
+        w!(writer, "    if (error != MOL_OK) return error;");
         if spec.signed {
             // For a negative value, the complement fits in int64_t even at INT64_MIN.
-            writeln!(writer, "    *output = value <= INT{bits}_MAX ? ({typ})value : ({typ})(-1 - (int64_t)(UINT{bits}_MAX - value));")?;
+            w!(writer, "    if (value <= (uint64_t)INT{bits}_MAX) {{");
+            w!(writer, "        *output = ({typ})value;");
+            w!(writer, "    }} else {{");
+            w!(
+                writer,
+                "        *output = ({typ})(-1 - (int64_t)((uint64_t)UINT{bits}_MAX - value));"
+            );
+            w!(writer, "    }}");
         } else {
-            writeln!(writer, "    *output = ({typ})value;")?;
+            w!(writer, "    *output = ({typ})value;");
         }
-        writeln!(writer, "    return MOL_OK;\n}}")?;
-        let parameter = if spec.signed { "int64_t" } else { "uint64_t" };
-        writeln!(writer, "MOLECULE_API_DECORATOR mol_errno MolBuilder_{name}_write_value({parameter} value, mol_seg_t *output) {{")?;
+        w!(writer, "    return MOL_OK;");
+        w!(writer, "}}");
+        w!(writer, "{} {{", builder_sig(&name, spec));
         let value = if spec.signed && bits < 64 {
-            writeln!(
+            w!(
                 writer,
                 "    if (value < INT{bits}_MIN || value > INT{bits}_MAX) return MOL_ERR_DATA;"
-            )?;
+            );
             format!("(uint{bits}_t)value")
         } else {
             "(uint64_t)value".into()
         };
-        writeln!(
+        w!(
             writer,
-            "    return mol_integer_write_u64({value}, {width}, {little}, output);\n}}"
-        )?;
+            "    return mol_integer_write_u64({value}, {width}, {little}, output);"
+        );
+        w!(writer, "}}");
     }
     Ok(())
 }

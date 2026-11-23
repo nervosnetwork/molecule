@@ -50,8 +50,22 @@ int main(void) {
     mol_seg_t amount = MolReader_Charge_get_amount(&charge);
     uint64_t index = 0;
     assert(MolReader_Uint64_read_value(&amount, &index) == MOL_OK && index == 256);
-    mol_uint256_t a={{255,0,0,0}}, b={{256,0,0,0}};
+    mol_uint256_t a=mol_uint256_from_u64(255), b=mol_uint256_from_u64(256);
     assert(mol_uint256_compare(a,b)<0);
+    mol_uint128_t u128_a={{1, 2}}, u128_b={{2, 2}}, u128_c={{0, 3}};
+    assert(mol_uint128_compare(u128_a, u128_a)==0);
+    assert(mol_uint128_compare(u128_a, u128_b)<0);
+    assert(mol_uint128_compare(u128_c, u128_b)>0);
+    assert(mol_uint256_compare(mol_uint256_from_u128(u128_a), mol_uint256_from_u128(u128_b))<0);
+    mol_int128_t i128_min={{0, (uint64_t)1 << 63}};
+    mol_int128_t i128_neg1={{UINT64_MAX, UINT64_MAX}};
+    mol_int128_t i128_zero={{0, 0}};
+    mol_int128_t i128_max={{UINT64_MAX, ((uint64_t)1 << 63) - 1}};
+    assert(mol_int128_compare(i128_min, i128_neg1)<0);
+    assert(mol_int128_compare(i128_neg1, i128_zero)<0);
+    assert(mol_int128_compare(i128_zero, i128_max)<0);
+    assert(mol_int128_compare(i128_max, i128_min)>0);
+    assert(mol_int128_compare(i128_neg1, i128_neg1)==0);
     uint64_t narrowed=123;
     assert(mol_uint256_to_u64(a,&narrowed)==0 && narrowed==255);
     b.limbs[1]=1;
@@ -68,13 +82,29 @@ int main(void) {
     --wire.size;
     assert(MolReader_U256Be_read_value(&wire, &value) == MOL_ERR_TOTAL_SIZE);
     for (unsigned i = 0; i < 4; ++i) assert(value.limbs[i] == i + 1);
+    uint8_t guard = 0xa5;
+    assert(narrow_i8_c(128, &guard) == MOL_ERR_DATA && guard == 0xa5);
+    assert(narrow_i8_c(-129, &guard) == MOL_ERR_DATA && guard == 0xa5);
+    assert(narrow_i8_c(INT64_MIN, &guard) == MOL_ERR_DATA && guard == 0xa5);
+    assert(narrow_u8_c(256, &guard) == MOL_ERR_DATA && guard == 0xa5);
+    assert(narrow_u8_c(UINT64_MAX, &guard) == MOL_ERR_DATA && guard == 0xa5);
     return 0;
 }
 '''
 with tempfile.TemporaryDirectory(prefix="molecule-integer-sanitize-") as directory:
     source = Path(directory) / "driver.c"
+    proto_check = Path(directory) / "prototypes.c"
     executable = Path(directory) / "test"
     source.write_text(driver)
-    subprocess.run([os.environ.get("CC","clang"), "-std=c11", "-pedantic-errors", "-O2", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g", "-I", str(out), "-I", str(crate.parent.parent / "bindings/c/include"), str(source), "-o", str(executable)], check=True)
+    # Verify generated headers compile cleanly without MOLECULE_API_DECORATOR
+    # under strict warning flags including -Wsign-compare and -Wmissing-prototypes.
+    # Treat legacy runtime headers as system includes here because molecule_reader.h
+    # and molecule_builder.h predate prototype declarations.
+    proto_check.write_text('#include "c/numbers.h"\n')
+    cc = os.environ.get("CC", "clang")
+    include_dir = str(crate.parent.parent / "bindings/c/include")
+    strict = [cc, "-std=c11", "-pedantic-errors", "-Wall", "-Wextra", "-Wsign-compare", "-Werror", "-O2", "-I", str(out)]
+    subprocess.run(strict + ["-Wmissing-prototypes", "-isystem", include_dir, "-c", str(proto_check), "-o", str(Path(directory) / "prototypes.o")], check=True)
+    subprocess.run(strict + ["-I", include_dir, "-Wno-unused-function", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g", str(source), "-o", str(executable)], check=True)
     subprocess.run([str(executable)], check=True)
 print(f"C sanitizers: {len(calls)} fixed vectors, 8 alignments, exact length and capacity failures passed")

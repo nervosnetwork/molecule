@@ -3,6 +3,7 @@ use core::{fmt, ops::Range};
 
 /// Failures of the bounded APIs. The legacy `Error` enum remains unchanged.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum AccessError {
     Read(Error),
     Bounds {
@@ -20,10 +21,6 @@ pub enum AccessError {
         capacity: usize,
     },
     BorrowConflict,
-    WindowTooSmall {
-        required: usize,
-        capacity: usize,
-    },
 }
 
 impl From<Error> for AccessError {
@@ -56,12 +53,6 @@ impl fmt::Display for AccessError {
                 )
             }
             Self::BorrowConflict => f.write_str("data source is already borrowed"),
-            Self::WindowTooSmall { required, capacity } => {
-                write!(
-                    f,
-                    "{required}-byte request exceeds {capacity}-byte cache window"
-                )
-            }
         }
     }
 }
@@ -93,12 +84,7 @@ fn read_exact(reader: &dyn Read, output: &mut [u8], offset: usize) -> Result<(),
 
 impl DataSource {
     fn window(&mut self, offset: usize, len: usize) -> Result<Range<usize>, AccessError> {
-        if len > self.cache.len() {
-            return Err(AccessError::WindowTooSmall {
-                required: len,
-                capacity: self.cache.len(),
-            });
-        }
+        debug_assert!(len <= self.cache.len());
         let end = offset.checked_add(len).ok_or(AccessError::Overflow)?;
         if self.cache_actual_size <= self.cache.len() && offset >= self.cache_start_point {
             if let Some(cache_end) = self.cache_start_point.checked_add(self.cache_actual_size) {
@@ -106,10 +92,26 @@ impl DataSource {
                     let start = offset - self.cache_start_point;
                     return Ok(start..start + len);
                 }
+                // Extend the cached window for contiguous/overlapping sequential reads
+                // without ever reading a byte past `end` or mutating the cached prefix.
+                let new_size = end - self.cache_start_point;
+                if self.cache_actual_size > 0 && offset <= cache_end && new_size <= self.cache.len()
+                {
+                    read_exact(
+                        self.reader.as_ref(),
+                        &mut self.cache[self.cache_actual_size..new_size],
+                        cache_end,
+                    )?;
+                    self.cache_actual_size = new_size;
+                    let start = offset - self.cache_start_point;
+                    return Ok(start..start + len);
+                }
             }
         }
 
         // A failed read may have overwritten the old cache. Invalidate it first.
+        // Never speculatively read past `offset + len`: unread trailing bytes may
+        // reside in a region the caller never asked to touch or that faults on read.
         self.cache_actual_size = 0;
         read_exact(self.reader.as_ref(), &mut self.cache[..len], offset)?;
         self.cache_start_point = offset;

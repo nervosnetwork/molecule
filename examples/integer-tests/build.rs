@@ -149,11 +149,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .output_dir(out.join("legacy"))
         .run()?;
 
-    Compiler::new()
-        .input_schema_file("fixtures/lazy_names.mol")
-        .generate_code(Language::RustLazyReader)
-        .output_dir(out.join("lazy"))
-        .run()?;
+    for (dir, language) in [
+        ("packed", Language::Rust),
+        ("lazy", Language::RustLazyReader),
+    ] {
+        Compiler::new()
+            .input_schema_file("fixtures/lazy_names.mol")
+            .generate_code(language)
+            .output_dir(out.join(dir))
+            .run()?;
+    }
 
     println!("cargo:rerun-if-changed=fixtures");
     let blockchain = Path::new("fixtures/blockchain.mol").canonicalize()?;
@@ -202,10 +207,13 @@ int check_c(unsigned int tag, const uint8_t *data, unsigned int len,
         default: return -1;
     }}
 }}
-int narrow_c(int64_t signed_value, uint64_t unsigned_value, uint8_t *out) {{
+int narrow_i8_c(int64_t value, uint8_t *out) {{
     mol_seg_t output = {{out, 1}};
-    return MolBuilder_I8Be_write_value(signed_value, &output)
-        | MolBuilder_U8Le_write_value(unsigned_value, &output);
+    return MolBuilder_I8Be_write_value(value, &output);
+}}
+int narrow_u8_c(uint64_t value, uint8_t *out) {{
+    mol_seg_t output = {{out, 1}};
+    return MolBuilder_U8Le_write_value(value, &output);
 }}
 "#
         ),

@@ -291,4 +291,61 @@ fn imported_native_integers_require_semantic_plugins_and_allow_explicit_wire_exp
     let legacy = run(&["--language", "fixture"]);
     assert!(legacy.status.success());
     assert_eq!(legacy.stdout, wire.stdout);
+
+    // Legacy v1 plugins printing `YAML\n` with trailing newline still negotiate YAML.
+    let wire_yaml = run(&["--language", "-", "--format", "yaml"]);
+    assert!(wire_yaml.status.success());
+    script(
+        dir.path(),
+        "if [ \"$1\" = --format ]; then printf 'YAML\\n'; else cat; fi",
+    );
+    let legacy_yaml = run(&["--language", "fixture"]);
+    assert!(legacy_yaml.status.success());
+    assert_eq!(legacy_yaml.stdout, wire_yaml.stdout);
+}
+
+#[test]
+fn early_plugin_failure_preserves_stderr_over_broken_pipe() {
+    let directory = TempDir::new().unwrap();
+    // Exit immediately with an explicit diagnostic without reading stdin.
+    let plugin = script(
+        directory.path(),
+        "printf 'E_CUSTOM_DIAGNOSTIC: rejected before reading stdin' >&2; exit 2",
+    );
+    // Input exceeds typical OS pipe buffers (64 KiB) so the writer hits EPIPE.
+    let error = moleculec::plugin::execute(&plugin, vec![b'x'; 512 * 1024], Duration::from_secs(5))
+        .unwrap_err();
+    assert!(
+        error.contains("E_CUSTOM_DIAGNOSTIC"),
+        "expected plugin stderr diagnostic, got: {error}"
+    );
+}
+
+#[test]
+fn builtin_plugin_validation_error_exits_cleanly_without_panic() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("conflict.mol");
+    fs::write(&root, "integer Uint64 = i64be;").unwrap();
+    let bin_dir = Path::new(env!("CARGO_BIN_EXE_moleculec-rust-lazy-reader"))
+        .parent()
+        .unwrap();
+    let mut paths = vec![bin_dir.to_owned()];
+    paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
+    let output = Command::new(env!("CARGO_BIN_EXE_moleculec"))
+        .env("PATH", std::env::join_paths(paths).unwrap())
+        .args([
+            "--schema-file",
+            root.to_str().unwrap(),
+            "--language",
+            "rust-lazy-reader",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("E_INT_LAZY_TYPE"), "{stderr}");
+    assert!(
+        !stderr.contains("panicked at"),
+        "plugin should report clean diagnostic instead of panicking: {stderr}"
+    );
 }

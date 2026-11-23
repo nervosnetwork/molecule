@@ -16,7 +16,7 @@ impl DefBuilder for ast::Option_ {
         let inner = entity_name(self.item().typ().name());
         quote!(
             #[derive(Clone, Debug, Default)]
-            pub struct #builder (pub(crate) Option<#inner>);
+            pub struct #builder (pub(crate) ::core::option::Option<#inner>);
         )
     }
 }

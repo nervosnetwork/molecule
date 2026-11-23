@@ -57,6 +57,14 @@ impl IntegerSpec {
     pub fn byte_width(self) -> usize {
         usize::from(self.bits) / 8
     }
+
+    /// Single-byte integers have no multi-byte order on the wire, so `u8le` and
+    /// `u8be` (likewise `i8le` and `i8be`) carry identical numeric semantics.
+    pub fn is_equivalent_to(self, other: Self) -> bool {
+        self.bits == other.bits
+            && self.signed == other.signed
+            && (self.bits == 8 || self.byte_order == other.byte_order)
+    }
 }
 
 impl std::str::FromStr for IntegerSpec {

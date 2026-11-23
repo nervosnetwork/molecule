@@ -92,7 +92,8 @@ extern "C" {
         out: *mut u8,
         capacity: u32,
     ) -> i32;
-    fn narrow_c(signed: i64, unsigned: u64, out: *mut u8) -> i32;
+    fn narrow_i8_c(value: i64, out: *mut u8) -> i32;
+    fn narrow_u8_c(value: u64, out: *mut u8) -> i32;
 }
 
 macro_rules! check_scalar {
@@ -182,8 +183,20 @@ macro_rules! check_scalar {
         }
         for wrong in [$width as usize - 1, $width as usize + 1] {
             let bytes = vec![0; wrong];
-            assert!(packed::$reader::new_unchecked(&bytes).$to().is_err());
-            assert!(lazy::$entity::from(cursor(&bytes, wrong, 1)).$to().is_err());
+            assert!(matches!(
+                packed::$reader::new_unchecked(&bytes).$to(),
+                Err(molecule::integer::IntegerError::Size {
+                    expected: $width,
+                    actual
+                }) if actual == wrong
+            ));
+            assert!(matches!(
+                lazy::$entity::from(cursor(&bytes, wrong, 1)).$to(),
+                Err(molecule::integer::IntegerError::Size {
+                    expected: $width,
+                    actual
+                }) if actual == wrong
+            ));
         }
     }};
 }
@@ -234,7 +247,9 @@ fn signed_and_unsigned_c_range_errors_leave_output_untouched() {
         (i64::MAX, u64::MAX),
     ] {
         let mut output = 0xa5;
-        assert_ne!(unsafe { narrow_c(signed, unsigned, &mut output) }, 0);
+        assert_ne!(unsafe { narrow_i8_c(signed, &mut output) }, 0);
+        assert_eq!(output, 0xa5);
+        assert_ne!(unsafe { narrow_u8_c(unsigned, &mut output) }, 0);
         assert_eq!(output, 0xa5);
     }
 }
@@ -249,6 +264,7 @@ fn lazy_field_values_follow_metadata_and_keep_opaque_fields_opaque() {
         .amount(packed::U64Be::from_u64(0x12345678))
         .opaque(packed::Byte32::from([0xa5; 32]))
         .build();
+    let amounts = packed::Amounts::try_from_values(&[10, 20, 30]).unwrap();
     for maximum in [1, 3] {
         let value = lazy::Pair::from(cursor(pair.as_slice(), pair.as_slice().len(), maximum));
         assert_eq!(value.little_value().unwrap(), 123);
@@ -259,6 +275,14 @@ fn lazy_field_values_follow_metadata_and_keep_opaque_fields_opaque() {
             maximum,
         ));
         assert_eq!(value.amount_value().unwrap(), 0x12345678);
+        let lazy_amounts = lazy::Amounts::from(cursor(
+            amounts.as_slice(),
+            amounts.as_slice().len(),
+            maximum,
+        ));
+        assert_eq!(lazy_amounts.get_value(0).unwrap(), 10);
+        assert_eq!(lazy_amounts.get_value(2).unwrap(), 30);
+        assert!(lazy_amounts.get_value(3).is_err());
         let value = lazy::Pair::from(cursor(pair.as_slice(), pair.as_slice().len() + 1, maximum));
         assert!(value.little_value().is_err());
     }

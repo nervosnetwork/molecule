@@ -1,6 +1,7 @@
 mod extended;
 mod format;
 mod from_ast;
+pub(crate) use extended::validate_wire;
 pub use extended::{Envelope, LogicalType, INTEGER_FEATURE};
 mod capabilities;
 pub use capabilities::Capabilities;
