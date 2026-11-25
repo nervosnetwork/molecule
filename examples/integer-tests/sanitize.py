@@ -21,6 +21,7 @@ for case in json.loads((crate / "fixtures/vectors.json").read_text()):
 driver = r'''
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 /* Exercise the integer header with the limits provided by ckb-c-stdlib. */
 #undef INT64_C
@@ -88,6 +89,32 @@ int main(void) {
     assert(narrow_i8_c(INT64_MIN, &guard) == MOL_ERR_DATA && guard == 0xa5);
     assert(narrow_u8_c(256, &guard) == MOL_ERR_DATA && guard == 0xa5);
     assert(narrow_u8_c(UINT64_MAX, &guard) == MOL_ERR_DATA && guard == 0xa5);
+    /* Truncated table headers must fail before reading past the 8-byte buffer. */
+    uint8_t *short_table = (uint8_t *)malloc(8);
+    assert(short_table != NULL);
+    const uint32_t bad_offsets[] = {12u, 256u, 0xfffffffcu};
+    for (size_t i = 0; i < sizeof(bad_offsets) / sizeof(bad_offsets[0]); ++i) {
+        uint32_t total = 8u, off = bad_offsets[i];
+        mol_pack_number(short_table, &total);
+        mol_pack_number(short_table + 4, &off);
+        mol_seg_t seg = {short_table, 8};
+        assert(MolReader_Invoice_verify(&seg, true) == MOL_ERR_HEADER);
+        if (off == 12u) {
+            assert(MolReader_Invoice_verify(&seg, false) == MOL_ERR_HEADER);
+        }
+    }
+    free(short_table);
+    /* Compatible verification checks extra trailing field offsets without VLAs. */
+    uint8_t extra_table[16 + 8 + 32 + 1];
+    memset(extra_table, 0, sizeof(extra_table));
+    uint32_t extra_hdr[4] = {sizeof(extra_table), 16u, 24u, 56u};
+    for (size_t i = 0; i < 4; ++i) mol_pack_number(extra_table + i * 4, &extra_hdr[i]);
+    mol_seg_t extra_seg = {extra_table, sizeof(extra_table)};
+    assert(MolReader_Invoice_verify(&extra_seg, false) == MOL_ERR_FIELD_COUNT);
+    assert(MolReader_Invoice_verify(&extra_seg, true) == MOL_OK);
+    uint32_t bad_extra = sizeof(extra_table) + 1u;
+    mol_pack_number(extra_table + 12, &bad_extra);
+    assert(MolReader_Invoice_verify(&extra_seg, true) == MOL_ERR_OFFSET);
     return 0;
 }
 '''

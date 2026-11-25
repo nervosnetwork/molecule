@@ -327,6 +327,7 @@ impl GenReader for ast::Table {
             o,
             "    if (!compatible && field_count > {fc}) return MOL_ERR_FIELD_COUNT;"
         )?;
+        w!(o, "    if (input->size < offset) return MOL_ERR_HEADER;");
         // Only declared fields need stored bounds. Compatible verification
         // still checks every extra offset, using a single previous value.
         if fc != 0 {
