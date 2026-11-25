@@ -169,7 +169,7 @@ impl LoadedGraph {
             root_id.clone(),
             root.clone(),
             crate::ast::verified::ModulePath::root(),
-            0usize,
+            0,
         )]);
         let mut paths = FileIndex::default();
         paths.insert(canonical(&root)?, root_id.clone())?;
@@ -276,10 +276,9 @@ impl LoadedGraph {
             // parse_ast so callers can inspect source provenance independently.
             layout = layout.and_then(|mut raw| {
                 let decl_start = raw.decls().len();
-                crate::Parser::append_declarations(&mut raw, usize::from(id != root_id), parsed)
+                crate::Parser::append_declarations(&mut raw, depth, parsed)
                     .map_err(|error| error.with_path(&path.display().to_string()).to_string())?;
-                if depth > 0 {
-                    let origin = (mod_path.clone(), depth == 1);
+                if id != root_id {
                     let added: Vec<String> = raw.decls()[decl_start..]
                         .iter()
                         .map(|d| d.name().to_owned())
@@ -287,7 +286,7 @@ impl LoadedGraph {
                     for name in added {
                         raw.decl_origins
                             .entry(name)
-                            .or_insert_with(|| origin.clone());
+                            .or_insert_with(|| mod_path.clone());
                     }
                 }
                 if id == root_id {

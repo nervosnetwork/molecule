@@ -17,13 +17,6 @@ extern "C" {
 #endif /* MOLECULE_API_DECORATOR */
 
 /*
- * This part is not for normal users.
- */
-
-// Test if the host is big endian machine.
-#define is_le()                 ((union { uint16_t i; unsigned char c; }){ .i = 1 }.c)
-
-/*
  * Definitions of types and simple utilities.
  */
 
@@ -49,7 +42,7 @@ typedef struct {
 
 MOLECULE_API_DECORATOR void mol_pack_number(uint8_t *dst, mol_num_t *num) {
     const uint8_t *src = (const uint8_t *)num;
-    if (is_le()) {
+    if (mol_is_little_endian()) {
         memcpy(dst, src, MOL_NUM_T_SIZE);
     } else {
         dst[3] = src[0];
@@ -274,8 +267,6 @@ MOLECULE_API_DECORATOR mol_seg_res_t mol_dynvec_builder_finalize(mol_builder_t b
 /*
  * Undef macros which are internal use only.
  */
-
-#undef is_le
 
 #ifdef __DEFINE_MOLECULE_API_DECORATOR
 #undef MOLECULE_API_DECORATOR

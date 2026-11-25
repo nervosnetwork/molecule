@@ -83,7 +83,7 @@ impl ImplEntity for ast::Struct {
         quote!(
             fn as_builder(self) -> Self::Builder {
                 <Self as molecule::prelude::Entity>::new_builder()
-                    #( .#fields(self.#fields_func()) )*
+                    #( .#fields(Self::#fields_func(&self)) )*
             }
         )
     }
@@ -116,7 +116,7 @@ impl ImplEntity for ast::Table {
         quote!(
             fn as_builder(self) -> Self::Builder {
                 <Self as molecule::prelude::Entity>::new_builder()
-                    #( .#fields(self.#fields_func()) )*
+                    #( .#fields(Self::#fields_func(&self)) )*
             }
         )
     }

@@ -136,7 +136,7 @@ fn lazy_table_verify_rejects_short_integer_fields_and_headerless_fixvecs() {
     holder.verify(false).unwrap();
 }
 
-#[allow(clippy::all, dead_code, unused_imports)]
+#[allow(clippy::all, dead_code)]
 mod reg_packed {
     pub mod common {
         pub mod defs {
@@ -163,7 +163,7 @@ mod reg_packed {
     }
 }
 
-#[allow(clippy::all, dead_code, unused_imports)]
+#[allow(clippy::all, dead_code)]
 mod reg_lazy {
     pub mod common {
         pub mod defs {
@@ -285,4 +285,79 @@ fn multi_module_imports_shadowing_and_case_variant_fields_compile_and_agree() {
     let lazy_shadow_t = reg_lazy::consumer::ShadowT::from(Cursor::from(shadow_t_bytes.to_vec()));
     lazy_shadow_t.verify(false).unwrap();
     assert_eq!(lazy_shadow_t.as_slice().unwrap(), 33);
+}
+
+#[test]
+fn colliding_rust_names_preserve_wire_types_and_field_access() {
+    use molecule::prelude::{Builder as _, Entity as _};
+    use reg_packed::consumer::{Amounts, Rates, RowsBuilder, Value, Values, T};
+    let rows = RowsBuilder::default().build();
+    assert_eq!(rows.as_slice(), &[0; 4]);
+    let amounts: Amounts = [T::from_u16(0x1234)].into_iter().collect();
+    assert_eq!(amounts.get(0).unwrap().as_slice(), &[0x34, 0x12]);
+    let bytes = [0x01, 0x02, 0x03, 0x04];
+    let wire = [bytes, bytes].concat();
+    let rates = Rates::from_slice(&wire).unwrap();
+    let lazy = reg_lazy::consumer::Rates::from(Cursor::from(wire));
+    assert_eq!(
+        rates.little().try_to_u32().unwrap(),
+        u32::from_le_bytes(bytes)
+    );
+    assert_eq!(rates.big().try_to_u32().unwrap(), u32::from_be_bytes(bytes));
+    assert_eq!(
+        lazy.little_value().unwrap(),
+        rates.little().try_to_u32().unwrap()
+    );
+    assert_eq!(lazy.big_value().unwrap(), rates.big().try_to_u32().unwrap());
+
+    let value = Value::new_builder().as_builder(11u8).into(22u8).build();
+    let rebuilt = molecule::prelude::Entity::as_builder(value).build();
+    assert_eq!(
+        Values::new_builder()
+            .push(rebuilt)
+            .build()
+            .get(0)
+            .unwrap()
+            .as_slice(),
+        &[11, 22]
+    );
+}
+
+#[test]
+fn lazy_union_decodes_and_verifies_nested_payloads() {
+    use reg_lazy::consumer::{Inner, Payload};
+    let decode = |id: u32, bytes: &[u8]| {
+        Payload::try_from(Cursor::from([id.to_le_bytes().as_slice(), bytes].concat()))
+    };
+    assert!(matches!(decode(0, &[]).unwrap(), Payload::OptByte(None)));
+    assert!(matches!(
+        decode(0, &[42]).unwrap(),
+        Payload::OptByte(Some(42))
+    ));
+    assert!(decode(0, &[42, 0]).is_err());
+    let raw = [2, 0, 0, 0, 3, 4];
+    let Payload::OptBytes(Some(bytes)) = decode(1, &raw).unwrap() else {
+        panic!("wrong variant")
+    };
+    assert_eq!(Vec::<u8>::try_from(bytes).unwrap(), [3, 4]);
+    assert!(decode(1, &[0, 0, 0, 0, 9]).is_err());
+    assert!(matches!(
+        decode(2, &[1, 0, 0, 0, 7]).unwrap(),
+        Payload::Inner(Inner::Byte(7))
+    ));
+    assert!(matches!(
+        decode(3, &[1, 0, 0, 0, 7]).unwrap(),
+        Payload::OptInner(Some(Inner::Byte(7)))
+    ));
+    assert!(decode(3, &[99, 0, 0, 0]).is_err());
+    // A table with an extra field is accepted only by compatible verification.
+    let extra = [0, 0, 0, 0, 8, 0, 0, 0, 8, 0, 0, 0];
+    let nested = decode(3, &extra).unwrap();
+    assert!(nested.verify(false).is_err());
+    nested.verify(true).unwrap();
+    let Payload::NestedRate(Some(Some(rate))) = decode(4, &[1, 0, 0, 0]).unwrap() else {
+        panic!("wrong variant")
+    };
+    assert_eq!(rate.try_to_u32().unwrap(), 1);
+    assert!(decode(4, &[1, 0]).unwrap().verify(false).is_err());
 }

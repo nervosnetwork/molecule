@@ -320,28 +320,34 @@ impl GenReader for ast::Table {
         w!(o, "        return MOL_ERR_OFFSET;                         ");
         w!(o, "    }}                                                 ");
         w!(o, "    mol_num_t field_count = offset / 4 - 1;            ");
-        w!(o, "    if (field_count < {}) {{                       ", fc);
-        w!(o, "        return MOL_ERR_FIELD_COUNT;                    ");
-        w!(o, "    }} else if (!compatible && field_count > {}) {{", fc);
-        w!(o, "        return MOL_ERR_FIELD_COUNT;                    ");
-        w!(o, "    }}                                                 ");
-        w!(o, "    if (input->size < MOL_NUM_T_SIZE*(field_count+1)){{");
-        w!(o, "        return MOL_ERR_HEADER;                         ");
-        w!(o, "    }}                                                 ");
-        w!(o, "    mol_num_t offsets[field_count+1];                  ");
-        w!(o, "    offsets[0] = offset;                               ");
-        w!(o, "    for (mol_num_t i=1; i<field_count; i++) {{         ");
-        w!(o, "        ptr += MOL_NUM_T_SIZE;                         ");
-        w!(o, "        offsets[i] = mol_unpack_number(ptr);           ");
-        w!(o, "        if (offsets[i-1] > offsets[i]) {{              ");
-        w!(o, "            return MOL_ERR_OFFSET;                     ");
-        w!(o, "        }}                                             ");
-        w!(o, "    }}                                                 ");
-        w!(o, "    if (offsets[field_count-1] > total_size) {{        ");
-        w!(o, "        return MOL_ERR_OFFSET;                         ");
-        w!(o, "    }}                                                 ");
-        if !self.fields().is_empty() {
-            w!(o, "    offsets[field_count] = total_size;                 ");
+        if fc != 0 {
+            writeln!(o, "    if (field_count < {fc}) return MOL_ERR_FIELD_COUNT;")?;
+        }
+        writeln!(
+            o,
+            "    if (!compatible && field_count > {fc}) return MOL_ERR_FIELD_COUNT;"
+        )?;
+        // Only declared fields need stored bounds. Compatible verification
+        // still checks every extra offset, using a single previous value.
+        if fc != 0 {
+            writeln!(o, "    mol_num_t offsets[{}];", fc + 1)?;
+            writeln!(o, "    offsets[0] = offset;")?;
+        }
+        w!(o, "    for (mol_num_t i = 1; i < field_count; i++) {{");
+        w!(o, "        ptr += MOL_NUM_T_SIZE;");
+        w!(o, "        mol_num_t next = mol_unpack_number(ptr);");
+        w!(o, "        if (offset > next) return MOL_ERR_OFFSET;");
+        if fc != 0 {
+            writeln!(o, "        if (i <= {fc}) offsets[i] = next;")?;
+        }
+        w!(o, "        offset = next;");
+        w!(o, "    }}");
+        w!(o, "    if (offset > total_size) return MOL_ERR_OFFSET;");
+        if fc != 0 {
+            writeln!(
+                o,
+                "    if (field_count == {fc}) offsets[{fc}] = total_size;"
+            )?;
             if self.fields().iter().any(|field| !field.typ().is_byte()) {
                 w!(o, "        mol_seg_t inner;                               ");
                 w!(o, "        mol_errno errno;                               ");

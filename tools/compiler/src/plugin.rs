@@ -4,7 +4,7 @@ use process_wrap::std::{StdChildWrapper, StdCommandWrap};
 use std::{
     io::{Read, Write},
     path::Path,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -54,6 +54,41 @@ fn read_limited(reader: impl Read, limit: u64) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+pub enum PluginFormat {
+    Wire(IntermediateFormat),
+    WithSources(IntermediateFormat),
+}
+
+fn capability_format(plugin: &Path, bytes: &[u8], ast: &Ast) -> Result<IntermediateFormat, String> {
+    Capabilities::from_json(bytes)
+        .and_then(|caps| caps.require(ast))
+        .map_err(|err| format!("{}: {err}", plugin.display()))
+}
+
+/// The v1 format probe also lets a new plugin request owners for a plain import
+/// graph. A v1 format name, or a plugin lacking the probe, retains the wire ABI.
+pub fn plain_format(plugin: &Path, ast: &Ast, timeout: Duration) -> Result<PluginFormat, String> {
+    let mut command = Command::new(plugin);
+    command.arg("--format");
+    if ast.imports().is_empty() {
+        command.env_remove(crate::SOURCE_IR_OFFER);
+    } else {
+        command.env(crate::SOURCE_IR_OFFER, "2");
+    }
+    let reply = communicate(command, None, timeout, MAX_DIAGNOSTIC)
+        .map_err(|err| format!("E_PLUGIN_CAPABILITY: {}: {err}", plugin.display()))?;
+    if reply.status.success() {
+        let text = std::str::from_utf8(&reply.stdout).unwrap_or("").trim();
+        if text.starts_with('{') {
+            return capability_format(plugin, &reply.stdout, ast).map(PluginFormat::WithSources);
+        }
+        if let Ok(format) = IntermediateFormat::try_from(text) {
+            return Ok(PluginFormat::Wire(format));
+        }
+    }
+    Ok(PluginFormat::Wire(IntermediateFormat::JSON))
+}
+
 pub fn negotiate(
     plugin: &Path,
     ast: &Ast,
@@ -62,10 +97,9 @@ pub fn negotiate(
     let mut command = Command::new(plugin);
     command.arg("--capabilities");
     let (bytes, _) = communicate(command, None, timeout, MAX_DIAGNOSTIC)
+        .and_then(successful)
         .map_err(|error| format!("E_PLUGIN_CAPABILITY: {}: {error}", plugin.display()))?;
-    Capabilities::from_json(&bytes)?
-        .require(ast)
-        .map_err(|error| format!("{}: {error}", plugin.display()))
+    capability_format(plugin, &bytes, ast)
 }
 
 /// Generate into a bounded buffer. The caller publishes it only on success.
@@ -81,7 +115,20 @@ pub fn execute(
         timeout,
         MAX_GENERATED_CODE,
     )
+    .and_then(successful)
     .map_err(|error| format!("E_PLUGIN_GENERATION: {}: {error}", plugin.display()))
+}
+
+fn successful(reply: Output) -> Result<(Vec<u8>, Vec<u8>), String> {
+    if reply.status.success() {
+        Ok((reply.stdout, reply.stderr))
+    } else {
+        Err(format!(
+            "process exited {}: {}",
+            reply.status,
+            String::from_utf8_lossy(&reply.stderr)
+        ))
+    }
 }
 
 fn communicate(
@@ -89,7 +136,7 @@ fn communicate(
     input: Option<Vec<u8>>,
     timeout: Duration,
     output_limit: u64,
-) -> Result<(Vec<u8>, Vec<u8>), String> {
+) -> Result<Output, String> {
     let stdin = if input.is_some() {
         Stdio::piped()
     } else {
@@ -201,15 +248,15 @@ fn communicate(
         }
         if let Some(status) = exit_status {
             if let (Some(stdout), Some(stderr)) = (&mut stdout, &mut stderr) {
-                if !status.success() {
-                    return Err(format!(
-                        "process exited {status}: {}",
-                        String::from_utf8_lossy(stderr)
-                    ));
-                }
                 if let Some(result) = input_result.take() {
-                    result.map_err(|error| format!("cannot send IR: {error}"))?;
-                    return Ok((std::mem::take(stdout), std::mem::take(stderr)));
+                    if status.success() {
+                        result.map_err(|error| format!("cannot send IR: {error}"))?;
+                    }
+                    return Ok(Output {
+                        status,
+                        stdout: std::mem::take(stdout),
+                        stderr: std::mem::take(stderr),
+                    });
                 }
             }
             if disconnected {

@@ -164,26 +164,24 @@ impl parser::Parser {
             rel
         }
         let mut ast = ast::Ast::for_file(path)?;
-        let mut nodes = vec![path.to_path_buf()];
+        let mut nodes = vec![(path.to_path_buf(), 0)];
         let mut node_paths = vec![crate::ast::verified::ModulePath::root()];
-        let mut node_depths = vec![0usize];
         let mut parent_dirs = vec![vec![canonical_parent(path)?]];
         let mut alias_queue = VecDeque::<(usize, std::path::PathBuf)>::new();
         let mut edges = Vec::<Vec<(std::path::PathBuf, usize)>>::new();
         let mut root_imports = Vec::new();
         let mut idx = 0;
         while idx < nodes.len() {
-            let current = nodes[idx].clone();
+            let (current, depth) = nodes[idx].clone();
             let current_dir = canonical_parent(&current)?;
             let start = ast.imports.len();
             let decl_start = ast.decls.len();
-            Self::preprocess_single(&mut ast, &current, usize::from(idx != 0))?;
+            Self::preprocess_single(&mut ast, &current, depth)?;
             if idx > 0 {
-                let origin = (node_paths[idx].clone(), node_depths[idx] == 1);
                 for decl in &ast.decls[decl_start..] {
                     ast.decl_origins
                         .entry(decl.name().to_owned())
-                        .or_insert_with(|| origin.clone());
+                        .or_insert_with(|| node_paths[idx].clone());
                 }
             }
             let stmts: Vec<_> = ast.imports.drain(start..).collect();
@@ -192,7 +190,7 @@ impl parser::Parser {
                 let rel = import_rel_path(&stmt);
                 let target = crate::utils::join_relative(&current_dir, &rel);
                 let mut target_idx = None;
-                for (i, existing) in nodes.iter().enumerate() {
+                for (i, (existing, _)) in nodes.iter().enumerate() {
                     if is_same_file(existing, &target).map_err(|error| {
                         format!("E_SCHEMA_SOURCE: {}: {error}", target.display())
                     })? {
@@ -215,9 +213,8 @@ impl parser::Parser {
                             stmt.paths().to_owned(),
                             stmt.path_supers(),
                         );
-                        nodes.push(target);
+                        nodes.push((target, depth + 1));
                         node_paths.push(node_paths[idx].resolve_edge(&edge));
-                        node_depths.push(node_depths[idx] + 1);
                         parent_dirs.push(vec![target_parent]);
                         i
                     }
@@ -233,7 +230,7 @@ impl parser::Parser {
         fn check_cycle(
             node: usize,
             edges: &[Vec<(std::path::PathBuf, usize)>],
-            nodes: &[std::path::PathBuf],
+            nodes: &[(std::path::PathBuf, usize)],
             state: &mut [u8],
         ) -> Result<(), String> {
             state[node] = 1;
@@ -241,7 +238,7 @@ impl parser::Parser {
                 if state[next] == 1 {
                     return Err(format!(
                         "E_SCHEMA_CYCLE: cyclic import {}",
-                        nodes[next].display()
+                        nodes[next].0.display()
                     ));
                 }
                 if state[next] == 0 {
@@ -255,10 +252,10 @@ impl parser::Parser {
         while let Some((node, alt_dir)) = alias_queue.pop_front() {
             for (rel, expected_idx) in &edges[node] {
                 let alt_target = crate::utils::join_relative(&alt_dir, rel);
-                if !is_same_file(&alt_target, &nodes[*expected_idx]).unwrap_or(false) {
+                if !is_same_file(&alt_target, &nodes[*expected_idx].0).unwrap_or(false) {
                     return Err(format!(
                         "E_SCHEMA_SOURCE: {} resolves import {} differently across directories",
-                        nodes[node].display(),
+                        nodes[node].0.display(),
                         rel.display()
                     ));
                 }

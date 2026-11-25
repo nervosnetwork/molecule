@@ -1,4 +1,4 @@
-use std::{env, fs, io, io::Write as _, path};
+use std::{env, io, io::Write as _, path};
 
 #[cfg(feature = "compiler-plugin")]
 use std::process;
@@ -106,13 +106,23 @@ impl Compiler {
 
     /// Parse and validate all configured schema inputs without producing output.
     pub fn parse_ast(&self) -> Result<crate::ast::Ast, String> {
+        self.parse(false)
+    }
+
+    /// Retain the source graph even for a plain schema when a plugin needs module ownership.
+    #[cfg(feature = "compiler-plugin")]
+    pub fn parse_ast_with_sources(&self) -> Result<crate::ast::Ast, String> {
+        self.parse(true)
+    }
+
+    fn parse(&self, _with_sources: bool) -> Result<crate::ast::Ast, String> {
         let input = self
             .input
             .as_ref()
             .ok_or("input is not set: schema file or intermediate data")?;
         let ast = match input {
             #[cfg(feature = "schema-extensions")]
-            Input::SchemaFile(path) if !self.type_metadata.is_empty() => {
+            Input::SchemaFile(path) if _with_sources || !self.type_metadata.is_empty() => {
                 crate::schema::LoadedGraph::load(path)?.parse_with_metadata(&self.type_metadata)
             }
             Input::SchemaFile(path) => parser::Parser::parse_file(path),
@@ -173,7 +183,8 @@ impl Compiler {
                     return Err(format!("E_OUTPUT: invalid output namespace {namespace:?}"));
                 }
                 let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
-                write_atomic(&out_file, &output_data)?;
+                crate::output::write_atomic(&out_file, &output_data)
+                    .map_err(|err| format!("E_OUTPUT: {}: {err}", out_file.display()))?;
             }
             Output::Stdout => {
                 let stdout = io::stdout();
@@ -209,135 +220,5 @@ impl Compiler {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(target_os = "macos")]
-const COPYFILE_ACL: u32 = 1 << 0;
-#[cfg(target_os = "macos")]
-const COPYFILE_XATTR: u32 = 1 << 2;
-
-#[cfg(target_os = "macos")]
-fn copy_macos_metadata(
-    src: &fs::File,
-    dst: &fs::File,
-    flags: u32,
-    destination: &path::Path,
-) -> Result<(), String> {
-    use std::os::unix::io::AsRawFd;
-    const COPYFILE_CHECK: u32 = 1 << 16;
-    const ENOTSUP: i32 = 45;
-    extern "C" {
-        fn fcopyfile(
-            from: std::ffi::c_int,
-            to: std::ffi::c_int,
-            state: *mut std::ffi::c_void,
-            flags: u32,
-        ) -> std::ffi::c_int;
-    }
-    // SAFETY: Both descriptors are live open files and `state` is NULL per copyfile(3).
-    let needed = unsafe {
-        fcopyfile(
-            src.as_raw_fd(),
-            dst.as_raw_fd(),
-            std::ptr::null_mut(),
-            COPYFILE_CHECK | flags,
-        )
-    };
-    if needed < 0 {
-        let err = io::Error::last_os_error();
-        if err.raw_os_error() == Some(ENOTSUP) {
-            return Ok(());
-        }
-        return Err(format!("E_OUTPUT: {}: {err}", destination.display()));
-    }
-    let copy_flags = (needed as u32) & flags;
-    if copy_flags != 0 {
-        // SAFETY: Both descriptors are live open files and `state` is NULL per copyfile(3).
-        let rc = unsafe {
-            fcopyfile(
-                src.as_raw_fd(),
-                dst.as_raw_fd(),
-                std::ptr::null_mut(),
-                copy_flags,
-            )
-        };
-        if rc < 0 {
-            let err = io::Error::last_os_error();
-            return Err(format!("E_OUTPUT: {}: {err}", destination.display()));
-        }
-    }
-    Ok(())
-}
-
-fn write_atomic(destination: &path::Path, bytes: &[u8]) -> Result<(), String> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    struct Temporary(Option<path::PathBuf>);
-    impl Drop for Temporary {
-        fn drop(&mut self) {
-            if let Some(path) = self.0.take() {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
-    let directory = destination
-        .parent()
-        .ok_or("E_OUTPUT: destination has no parent")?;
-    #[cfg(target_os = "macos")]
-    let existing_file = fs::File::open(destination).ok();
-    #[cfg(all(unix, target_os = "macos"))]
-    let existing_perms = existing_file
-        .as_ref()
-        .and_then(|f| f.metadata().ok())
-        .or_else(|| fs::metadata(destination).ok())
-        .map(|m| m.permissions());
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let existing_perms = fs::metadata(destination).ok().map(|m| m.permissions());
-    loop {
-        let path = directory.join(format!(
-            ".molecule-{}-{}.tmp",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        if existing_perms.is_some() {
-            use std::os::unix::fs::OpenOptionsExt;
-            // Create strictly private before applying the destination's mode so
-            // overwriting a restricted file (e.g. 0600) never widens permissions.
-            options.mode(0o600);
-        }
-        let mut file = match options.open(&path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(format!("E_OUTPUT: {}: {error}", destination.display())),
-        };
-        let mut temporary = Temporary(Some(path));
-        file.write_all(bytes)
-            .and_then(|_| file.flush())
-            .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
-        #[cfg(target_os = "macos")]
-        if let Some(ref src) = existing_file {
-            copy_macos_metadata(src, &file, COPYFILE_XATTR, destination)?;
-        }
-        #[cfg(unix)]
-        if let Some(perms) = existing_perms.as_ref() {
-            file.set_permissions(perms.clone())
-                .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
-        }
-        #[cfg(target_os = "macos")]
-        if let Some(ref src) = existing_file {
-            copy_macos_metadata(src, &file, COPYFILE_ACL, destination)?;
-        }
-        drop(file);
-        #[cfg(target_os = "macos")]
-        drop(existing_file);
-        let temp_path = temporary.0.as_ref().expect("active temporary path");
-        fs::rename(temp_path, destination)
-            .map_err(|error| format!("E_OUTPUT: {}: {error}", destination.display()))?;
-        temporary.0 = None;
-        return Ok(());
     }
 }

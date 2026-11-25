@@ -1,20 +1,17 @@
 use super::{
-    super::{
-        integers,
-        rust::{module_path_tokens, utilities::RustNamePlan},
-    },
+    super::{integers, rust::module_path_tokens},
     LazyReaderGenerator,
 };
 use crate::ast::{self, HasName, *};
-use crate::generator::{field_name, ident_name, ident_new};
+use crate::generator::{field_name, ident_name};
 use crate::integer::{ByteOrder, IntegerSpec};
 use proc_macro2::{Literal, TokenStream};
 use quote::quote;
 use std::io;
 
-fn lazy_type_path(typ: &TopDecl, plan: &RustNamePlan) -> TokenStream {
+fn lazy_type_path(typ: &TopDecl, ast: &Ast) -> TokenStream {
     let name = ident_name(typ.name(), "");
-    if let Some(module) = plan.qualified_lazy.get(typ.name()) {
+    if let Some(module) = ast.decl_origin(typ.name()) {
         let module = module_path_tokens(module);
         quote!(#module::#name)
     } else {
@@ -22,222 +19,52 @@ fn lazy_type_path(typ: &TopDecl, plan: &RustNamePlan) -> TokenStream {
     }
 }
 
-impl ast::Union {
-    fn get_item_name(typ: &TopDecl, plan: &RustNamePlan) -> TokenStream {
-        let item_name = ident_name(typ.name(), "");
-        let item_type_name = Self::get_type_name(typ, plan);
-
-        quote! {
-            #item_name(#item_type_name),
-        }
-    }
-
-    fn get_type_name(typ: &TopDecl, plan: &RustNamePlan) -> TokenStream {
-        match typ {
-            TopDecl::Primitive(v) => {
-                let name = ident_new(match v.name().to_lowercase().as_str() {
-                    "byte" => "u8",
-                    "uint8" => "u8",
-                    "int8" => "i8",
-                    "uint16" => "u16",
-                    "int16" => "i16",
-                    "uint32" => "u32",
-                    "int32" => "i32",
-                    "uint64" => "u64",
-                    "int64" => "i64",
-                    _ => {
-                        panic!("unknown type: {}", v.name())
-                    }
-                });
-                quote!(#name)
-            }
-            TopDecl::Option_(o) => {
-                let name = Self::get_type_name(o.item().typ(), plan);
-                quote!(::core::option::Option<#name>)
-            }
-            TopDecl::FixVec(v) => {
-                if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
-                    quote!(molecule::lazy_reader::Cursor)
-                } else {
-                    lazy_type_path(typ, plan)
-                }
-            }
-            _ => lazy_type_path(typ, plan),
-        }
-    }
-}
-
 impl LazyReaderGenerator for ast::Union {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        _ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let name = ident_name(self.name(), "");
-
-        // generate enum:
-        let q = self.items().iter().map(|item| {
-            let item_name = Self::get_item_name(item.typ().as_ref(), plan);
-            quote! {
-                #item_name
-            }
-        });
+        let mut variants = Vec::new();
+        let mut decode = Vec::new();
+        let mut verify = Vec::new();
+        for item in self.items() {
+            let typ = item.typ();
+            let variant = ident_name(typ.name(), "");
+            let id = item.id();
+            let (native, value) = cursor_type(typ, ast, true);
+            let check = value.verify_union_value();
+            let value = value.expression();
+            variants.push(quote!(#variant(#native)));
+            decode.push(quote!(#id => ::core::result::Result::Ok(Self::#variant(#value))));
+            verify.push(quote!(Self::#variant(_value) => #check));
+        }
         writeln!(
             output,
             "{}",
             quote! {
-                pub enum #name {
-                    #( #q )*
-                }
-            }
-        )?;
-
-        // generate enum try_from
-        let q = self.items().iter().map(|item| {
-            let item_id = item.id();
-            let item_name_str = item.typ().name();
-            let item_name = ident_name(item_name_str, "");
-            let item_type = Self::get_type_name(item.typ(), plan);
-
-            let q = match item.typ().as_ref() {
-                TopDecl::Primitive(a) => match a.name().to_lowercase().as_str() {
-                    "byte" | "uint8" | "int8" | "uint16" | "int16" | "uint32" | "int32"
-                    | "uint64" | "int64" => {
-                        quote! {{
-                            cur.verify_fixed_size(::core::mem::size_of::<#item_type>())?;
-                            cur.try_into()?
-                        }}
-                    }
-                    _ => {
-                        quote!(cur.into())
-                    }
-                },
-                TopDecl::Option_(o) => {
-                    let inner_type = lazy_type_path(o.item().typ(), plan);
-                    quote! {
-                        if cur.option_is_none() {
-                            ::core::option::Option::None
-                        } else {
-                            ::core::option::Option::Some(<#inner_type as ::core::convert::From<molecule::lazy_reader::Cursor>>::from(cur))
+                pub enum #name { #(#variants,)* }
+                impl ::core::convert::TryFrom<molecule::lazy_reader::Cursor> for #name {
+                    type Error = molecule::lazy_reader::Error;
+                    fn try_from(cur: molecule::lazy_reader::Cursor) -> ::core::result::Result<Self, molecule::lazy_reader::Error> {
+                        let item = cur.union_unpack()?;
+                        let cur = item.cursor;
+                        match item.item_id {
+                            #(#decode,)*
+                            _ => ::core::result::Result::Err(molecule::lazy_reader::Error::UnknownItem),
                         }
                     }
                 }
-                TopDecl::FixVec(v) => {
-                    if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
-                        quote! {{
-                            if cur.fixvec_length()? != cur.size - NUMBER_SIZE {
-                                return ::core::result::Result::Err(molecule::lazy_reader::Error::TotalSize(
-                                    cur.fixvec_length()?,
-                                    cur.size
-                                ));
-                            }
-
-                            cur.add_offset(NUMBER_SIZE)?;
-                            cur.sub_size(NUMBER_SIZE)?;
-                            cur
-                        }}
-                    } else {
-                        quote! {
-                            cur.into()
-                        }
-                    }
-                }
-                _ => {
-                    quote! {
-                        cur.into()
-                    }
-                }
-            };
-
-            quote! {
-                #item_id => {
-                    ::core::result::Result::Ok(Self::#item_name(#q))
-                }
-            }
-        });
-        let q = quote! {
-            impl ::core::convert::TryFrom<molecule::lazy_reader::Cursor> for #name {
-                type Error = molecule::lazy_reader::Error;
-                fn try_from(cur: molecule::lazy_reader::Cursor) -> ::core::result::Result<Self, Self::Error> {
-                    use molecule::lazy_reader::NUMBER_SIZE;
-                    let item = cur.union_unpack()?;
-
-                    let mut cur = cur;
-                    cur.add_offset(NUMBER_SIZE)?;
-                    cur.sub_size(NUMBER_SIZE)?;
-
-                    match item.item_id {
-                        #( #q )*
-                        _ => ::core::result::Result::Err(molecule::lazy_reader::Error::UnknownItem)
+                impl #name {
+                    pub fn verify(&self, _compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
+                        match self { #(#verify,)* }
                     }
                 }
             }
-        };
-        writeln!(output, "{}", q)?;
-
-        // generate verify
-        let verify_items = self.items().iter().map(|item| {
-            let item_name = ident_name(item.typ().name(), "");
-            match item.typ().as_ref() {
-                TopDecl::Primitive(_) => {
-                    quote!( Self::#item_name(_v) => ::core::result::Result::Ok(()), )
-                }
-                TopDecl::Option_(_) => {
-                    quote! {
-                        Self::#item_name(v) => {
-                            if v.is_some() {
-                                v.as_ref().unwrap().verify(compatible)?;
-                            }
-                            ::core::result::Result::Ok(())
-                        },
-                    }
-                }
-                TopDecl::FixVec(v) => {
-                    if let TopDecl::Primitive(_) = v.item().typ().as_ref() {
-                        quote! {
-                            Self::#item_name(_v) => ::core::result::Result::Ok(()),
-                        }
-                    } else {
-                        quote! {
-                            Self::#item_name(v) => {
-                                v.verify(compatible)?;
-                                ::core::result::Result::Ok(())
-                            },
-                        }
-                    }
-                }
-                _ => quote! {
-                    Self::#item_name(v) => {
-                        v.verify(compatible)?;
-                        ::core::result::Result::Ok(())
-                    },
-                },
-            }
-        });
-
-        let q = quote! {
-            impl #name {
-                pub fn verify(&self, compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                    match self {
-                        #( #verify_items )*
-                    }
-                }
-            }
-        };
-        writeln!(output, "{}", q)?;
-        Ok(())
+        )
     }
 }
 
 impl LazyReaderGenerator for ast::Array {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
-        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, plan);
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
         generate_rust_common_array(
             output,
             self.name(),
@@ -264,16 +91,10 @@ impl LazyReaderGenerator for ast::Array {
 impl LazyReaderGenerator for ast::Option_ {}
 
 impl LazyReaderGenerator for ast::Struct {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         generate_rust_common_table(
             output,
             ast,
-            plan,
             self.name(),
             self.fields(),
             Some(self.field_sizes()),
@@ -296,13 +117,8 @@ impl LazyReaderGenerator for ast::Struct {
 
 // in FixVec, all item size is same and known already, the count is unknown.
 impl LazyReaderGenerator for ast::FixVec {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
-        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, plan);
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
         generate_rust_common_array(
             output,
             self.name(),
@@ -330,13 +146,8 @@ impl LazyReaderGenerator for ast::FixVec {
 }
 
 impl LazyReaderGenerator for ast::DynVec {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
-        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, plan);
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
         generate_rust_common_array(
             output,
             self.name(),
@@ -348,11 +159,8 @@ impl LazyReaderGenerator for ast::DynVec {
         )?;
 
         let item_typ = self.item().typ().as_ref();
-        let verify_item = verify_cursor(
-            item_typ,
-            quote!(self.cursor.dynvec_slice_by_index(i)?),
-            plan,
-        );
+        let verify_item =
+            verify_cursor(item_typ, quote!(self.cursor.dynvec_slice_by_index(i)?), ast);
         let val_compatible = if verify_uses_compatible(item_typ) {
             quote!(compatible)
         } else {
@@ -377,13 +185,8 @@ impl LazyReaderGenerator for ast::DynVec {
 }
 
 impl LazyReaderGenerator for ast::Table {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        plan: &RustNamePlan,
-    ) -> io::Result<()> {
-        generate_rust_common_table(output, ast, plan, self.name(), self.fields(), None)?;
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        generate_rust_common_table(output, ast, self.name(), self.fields(), None)?;
         let field_count = self.fields().len();
         let name = ident_name(self.name(), "");
 
@@ -391,7 +194,7 @@ impl LazyReaderGenerator for ast::Table {
             verify_cursor(
                 f.typ().as_ref(),
                 quote!(self.cursor.table_slice_by_index(#index)?),
-                plan,
+                ast,
             )
         });
 
@@ -561,7 +364,6 @@ fn generate_rust_common_array_impl<W: io::Write>(
 fn generate_rust_common_table<W: io::Write>(
     output: &mut W,
     ast: &ast::Ast,
-    plan: &RustNamePlan,
     plain_name: &str,
     fields: &[FieldDecl],
     field_sizes: Option<&[usize]>,
@@ -581,7 +383,7 @@ fn generate_rust_common_table<W: io::Write>(
     };
     writeln!(output, "{}", q)?;
     for (index, field) in fields.iter().enumerate() {
-        generate_rust_common_table_impl(output, ast, plan, plain_name, field, index, field_sizes)?;
+        generate_rust_common_table_impl(output, ast, plain_name, field, index, field_sizes)?;
     }
     Ok(())
 }
@@ -589,13 +391,12 @@ fn generate_rust_common_table<W: io::Write>(
 fn generate_rust_common_table_impl<W: io::Write>(
     output: &mut W,
     ast: &ast::Ast,
-    plan: &RustNamePlan,
     plain_name: &str,
     field: &FieldDecl,
     index: usize,
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
-    let (transformed_name, tc) = cursor_type(field.typ(), ast, plan);
+    let (transformed_name, tc) = cursor_type(field.typ(), ast, false);
     let slice_by = generate_rust_slice_by(index, &field_sizes);
     let value = tc.expression();
     let name = ident_name(plain_name, "");
@@ -652,6 +453,7 @@ pub(super) fn check_legacy_integer_types(ast: &Ast) -> io::Result<()> {
 }
 
 enum CursorValue {
+    Byte,
     Into,
     TryInto,
     Bytes,
@@ -660,14 +462,39 @@ enum CursorValue {
 }
 
 impl CursorValue {
+    // Byte and Bytes lose their framing during conversion. Only payloads that
+    // retain a generated reader still have wire data to verify.
+    fn verify_union_value(&self) -> TokenStream {
+        match self {
+            Self::Into | Self::TryInto => quote!(_value.verify(_compatible)),
+            Self::Optional(inner) => {
+                let check = inner.verify_union_value();
+                quote!(match _value {
+                    ::core::option::Option::Some(_value) => #check,
+                    ::core::option::Option::None => ::core::result::Result::Ok(()),
+                })
+            }
+            Self::Byte | Self::Bytes | Self::Integer(_) => quote!(::core::result::Result::Ok(())),
+        }
+    }
+
     fn expression(&self) -> TokenStream {
         match self {
-            Self::Into => quote!(cur.into()),
-            Self::TryInto => quote!(cur.try_into()?),
-            Self::Bytes => quote!(cur.convert_to_rawbytes()?),
+            Self::Byte => quote!({
+                cur.verify_fixed_size(1)?;
+                ::core::convert::TryInto::try_into(cur)?
+            }),
+            Self::Into => quote!(::core::convert::Into::into(cur)),
+            Self::TryInto => quote!(::core::convert::TryInto::try_into(cur)?),
+            Self::Bytes => quote!({
+                let raw = cur.convert_to_rawbytes()?;
+                cur.verify_fixed_size(molecule::lazy_reader::NUMBER_SIZE + raw.size)?;
+                raw
+            }),
             Self::Integer(spec) => {
                 let width = spec.byte_width();
-                let value = integers::decode(*spec, quote!(cur.try_into()?));
+                let value =
+                    integers::decode(*spec, quote!(::core::convert::TryInto::try_into(cur)?));
                 quote!({
                     cur.verify_fixed_size(#width)?;
                     #value
@@ -681,9 +508,9 @@ impl CursorValue {
     }
 }
 
-fn cursor_type(typ: &TopDecl, ast: &Ast, plan: &RustNamePlan) -> (TokenStream, CursorValue) {
+fn cursor_type(typ: &TopDecl, ast: &Ast, union_payload: bool) -> (TokenStream, CursorValue) {
     match typ {
-        TopDecl::Array(array) => {
+        TopDecl::Array(array) if !union_payload => {
             if let Some(legacy) = legacy_integer(typ.name()).filter(|legacy| {
                 array.item().typ().is_byte() && array.item_count() == legacy.byte_width()
             }) {
@@ -696,22 +523,22 @@ fn cursor_type(typ: &TopDecl, ast: &Ast, plan: &RustNamePlan) -> (TokenStream, C
                 let width = array.item_count();
                 (quote!([u8; #width]), CursorValue::TryInto)
             } else {
-                (lazy_type_path(typ, plan), CursorValue::Into)
+                (lazy_type_path(typ, ast), CursorValue::Into)
             }
         }
-        TopDecl::Primitive(_) => (quote!(u8), CursorValue::TryInto),
+        TopDecl::Primitive(_) => (quote!(u8), CursorValue::Byte),
         TopDecl::FixVec(vector) if vector.item().typ().is_byte() => {
             (quote!(molecule::lazy_reader::Cursor), CursorValue::Bytes)
         }
         TopDecl::Option_(option) => {
-            let (native, value) = cursor_type(option.item().typ(), ast, plan);
+            let (native, value) = cursor_type(option.item().typ(), ast, union_payload);
             (
                 quote!(::core::option::Option<#native>),
                 CursorValue::Optional(Box::new(value)),
             )
         }
-        TopDecl::Union(_) => (lazy_type_path(typ, plan), CursorValue::TryInto),
-        _ => (lazy_type_path(typ, plan), CursorValue::Into),
+        TopDecl::Union(_) => (lazy_type_path(typ, ast), CursorValue::TryInto),
+        _ => (lazy_type_path(typ, ast), CursorValue::Into),
     }
 }
 
@@ -742,11 +569,11 @@ fn verify_uses_compatible(typ: &TopDecl) -> bool {
     }
 }
 
-fn verify_cursor(typ: &TopDecl, cur: TokenStream, plan: &RustNamePlan) -> TokenStream {
+fn verify_cursor(typ: &TopDecl, cur: TokenStream, ast: &Ast) -> TokenStream {
     match typ {
         TopDecl::Primitive(_) => quote!((#cur).verify_fixed_size(1)?;),
         TopDecl::Option_(v) => {
-            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), plan);
+            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), ast);
             quote!({
                 let val = #cur;
                 if !val.option_is_none() {
@@ -755,7 +582,7 @@ fn verify_cursor(typ: &TopDecl, cur: TokenStream, plan: &RustNamePlan) -> TokenS
             })
         }
         TopDecl::Union(_) => {
-            let type_path = lazy_type_path(typ, plan);
+            let type_path = lazy_type_path(typ, ast);
             quote!(<#type_path as ::core::convert::TryFrom<molecule::lazy_reader::Cursor>>::try_from(#cur)?.verify(compatible)?;)
         }
         TopDecl::Array(array) => {
@@ -771,7 +598,7 @@ fn verify_cursor(typ: &TopDecl, cur: TokenStream, plan: &RustNamePlan) -> TokenS
             quote!((#cur).verify_fixvec(#item_size)?;)
         }
         TopDecl::DynVec(_) | TopDecl::Table(_) => {
-            let type_path = lazy_type_path(typ, plan);
+            let type_path = lazy_type_path(typ, ast);
             quote!(<#type_path as ::core::convert::From<molecule::lazy_reader::Cursor>>::from(#cur).verify(compatible)?;)
         }
     }

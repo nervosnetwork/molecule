@@ -65,7 +65,7 @@ impl Envelope {
         })
     }
 
-    pub fn recover(self) -> Result<ast::Ast, String> {
+    pub fn recover(mut self) -> Result<ast::Ast, String> {
         if self.ir_version != 2 {
             return Err(format!(
                 "E_IR_VERSION: expected 2, found {}",
@@ -124,28 +124,7 @@ impl Envelope {
         {
             return Err("E_IR_SOURCE: namespace differs from root file name".into());
         }
-        let source_names: BTreeSet<_> = self
-            .sources
-            .modules
-            .iter()
-            .flat_map(|module| module.declarations.iter().map(|decl| decl.name.as_str()))
-            .collect();
-        let wire_names: BTreeSet<_> = self.wire_ir.decls.iter().map(TopDecl::name).collect();
-        if source_names != wire_names {
-            return Err("E_IR_SOURCE: declarations and source owners differ".into());
-        }
-        for decl in &self.wire_ir.decls {
-            let owner = self
-                .sources
-                .owner(decl.name())
-                .ok_or("E_IR_SOURCE: missing declaration owner")?;
-            if (owner.id == self.sources.root) != (decl.imported_depth() == 0) {
-                return Err(format!(
-                    "E_IR_SOURCE: ownership/depth mismatch for {}",
-                    decl.name()
-                ));
-            }
-        }
+        let origins = recover_decl_origins(&self.sources, &mut self.wire_ir)?;
         let annotations = self
             .logical_types
             .into_iter()
@@ -154,34 +133,46 @@ impl Envelope {
             })
             .collect();
         let mut ast = self.wire_ir.recover(true)?;
-        let origins = collect_decl_origins(&self.sources)?;
         integer::bind(&mut ast, self.sources, annotations)?;
         ast.set_decl_origins(origins);
         Ok(ast)
     }
 }
 
-fn collect_decl_origins(
+fn recover_decl_origins(
     graph: &SchemaGraph,
-) -> Result<std::collections::BTreeMap<String, (ast::verified::ModulePath, bool)>, String> {
+    wire: &mut Ir,
+) -> Result<std::collections::BTreeMap<String, ast::verified::ModulePath>, String> {
     use std::collections::{BTreeMap, VecDeque};
+    let modules: BTreeMap<_, _> = graph.modules.iter().map(|m| (m.id.as_str(), m)).collect();
+    let mut declarations: BTreeMap<_, _> = wire
+        .decls
+        .iter_mut()
+        .map(|decl| (decl.name().to_owned(), decl))
+        .collect();
     let mut origins = BTreeMap::new();
     let mut visited = BTreeSet::from([graph.root.as_str()]);
-    let mut queue = VecDeque::from([(
-        graph.root.as_str(),
-        ast::verified::ModulePath::root(),
-        0usize,
-    )]);
+    let mut queue = VecDeque::from([(graph.root.as_str(), ast::verified::ModulePath::root(), 0)]);
     while let Some((id, mod_path, depth)) = queue.pop_front() {
-        let Some(module) = graph.modules.iter().find(|m| m.id == id) else {
-            continue;
-        };
-        if depth > 0 {
-            let origin = (mod_path.clone(), depth == 1);
-            for decl in &module.declarations {
-                origins
-                    .entry(decl.name.clone())
-                    .or_insert_with(|| origin.clone());
+        let module = modules
+            .get(id)
+            .ok_or("E_IR_SOURCE: missing source module")?;
+        for source in &module.declarations {
+            let decl = declarations
+                .remove(&source.name)
+                .ok_or("E_IR_SOURCE: declarations and source owners differ")?;
+            let stored = decl.imported_depth_mut();
+            if (*stored == 0) != (depth == 0) {
+                return Err(format!(
+                    "E_IR_SOURCE: ownership/depth mismatch for {}",
+                    source.name
+                ));
+            }
+            // Early v2 producers stored 1 for every import. The source graph
+            // still identifies its shortest path when exporting v1 again.
+            *stored = depth;
+            if depth != 0 {
+                origins.insert(source.name.clone(), mod_path.clone());
             }
         }
         for edge in &module.imports {
@@ -196,7 +187,11 @@ fn collect_decl_origins(
             }
         }
     }
-    Ok(origins)
+    if declarations.is_empty() {
+        Ok(origins)
+    } else {
+        Err("E_IR_SOURCE: declarations and source owners differ".into())
+    }
 }
 
 pub(crate) fn identifier(name: &str) -> bool {
@@ -293,15 +288,15 @@ impl Ir {
 }
 
 impl TopDecl {
-    pub(crate) fn imported_depth(&self) -> usize {
+    fn imported_depth_mut(&mut self) -> &mut usize {
         match self {
-            Self::Option_(value) => value.imported_depth,
-            Self::Union(value) => value.imported_depth,
-            Self::Array(value) => value.imported_depth,
-            Self::Struct(value) => value.imported_depth,
-            Self::FixVec(value) => value.imported_depth,
-            Self::DynVec(value) => value.imported_depth,
-            Self::Table(value) => value.imported_depth,
+            Self::Option_(value) => &mut value.imported_depth,
+            Self::Union(value) => &mut value.imported_depth,
+            Self::Array(value) => &mut value.imported_depth,
+            Self::Struct(value) => &mut value.imported_depth,
+            Self::FixVec(value) => &mut value.imported_depth,
+            Self::DynVec(value) => &mut value.imported_depth,
+            Self::Table(value) => &mut value.imported_depth,
         }
     }
 }

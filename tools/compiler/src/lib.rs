@@ -6,6 +6,9 @@ use std::{
 use molecule_codegen::{Compiler, IntermediateFormat, Language};
 pub mod plugin;
 
+/// Offer a source-aware IR on the existing format probe without changing v1 plugins.
+const SOURCE_IR_OFFER: &str = "MOLECULEC_IR_VERSION";
+
 pub(crate) enum AppAction {
     DisplayFormat,
     DisplayCapabilities,
@@ -45,7 +48,9 @@ pub fn build_commandline(lang: Language, format: IntermediateFormat) -> AppConfi
 impl From<RawAppConfig> for AppConfig {
     fn from(input: RawAppConfig) -> Self {
         let (lang, format, matches) = input;
-        let action = if matches.get_flag("capabilities") {
+        let action = if matches.get_flag("capabilities")
+            || (matches.get_flag("format") && std::env::var(SOURCE_IR_OFFER).as_deref() == Ok("2"))
+        {
             AppAction::DisplayCapabilities
         } else if matches.get_flag("format") {
             AppAction::DisplayFormat

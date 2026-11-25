@@ -13,8 +13,7 @@ pub(crate) struct Ast {
     integers: std::collections::BTreeMap<String, crate::integer::IntegerSpec>,
     decls: Vec<TopDecl>,
     #[property(skip)]
-    pub(crate) decl_origins:
-        std::collections::BTreeMap<String, (crate::ast::verified::ModulePath, bool)>,
+    pub(crate) decl_origins: std::collections::BTreeMap<String, crate::ast::verified::ModulePath>,
 }
 
 impl Default for SyntaxVersion {

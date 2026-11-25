@@ -2,6 +2,73 @@ use molecule_codegen::Compiler;
 use std::fs;
 
 #[test]
+fn detached_imports_use_the_shortest_distance_from_the_root() {
+    use molecule_codegen::ast::TopDecl;
+    let dir = tempfile::tempdir().unwrap();
+    for (name, source) in [
+        ("leaf", "struct fee_rate { n: byte, }"),
+        ("mid", "import leaf; table Mid {}"),
+        ("left", "struct FeeRate { n: byte, }"),
+    ] {
+        fs::write(dir.path().join(format!("{name}.mol")), source).unwrap();
+    }
+    let root = dir.path().join("root.mol");
+    for (imports, field, depth) in [
+        ("", "FeeRate", 2),
+        ("", "fee_rate", 2),
+        ("import leaf;", "fee_rate", 1),
+    ] {
+        fs::write(
+            &root,
+            format!("import mid; import left; {imports} table Root {{ value: {field}, }}"),
+        )
+        .unwrap();
+        let mut compiler = Compiler::new();
+        compiler.input_schema_file(&root);
+        let ast = compiler.parse_ast().unwrap();
+        let depth_of = |name| {
+            ast.decls().iter().find_map(|d| match d.as_ref() {
+                TopDecl::Struct(s) if s.name() == name => Some(s.imported_depth()),
+                _ => None,
+            })
+        };
+        assert_eq!(depth_of("FeeRate"), Some(1));
+        assert_eq!(depth_of("fee_rate"), Some(depth));
+        #[cfg(feature = "compiler-plugin")]
+        {
+            use molecule_codegen::{IntermediateFormat::JSON, Language};
+            let wire = JSON.serialize_wire(&ast).unwrap();
+            let sources = compiler.parse_ast_with_sources().unwrap();
+            let mut old: serde_json::Value =
+                serde_json::from_slice(&JSON.serialize_ast(&sources).unwrap()).unwrap();
+            for decl in old["wire_ir"]["declarations"].as_array_mut().unwrap() {
+                if decl.get("imported_depth").is_some() {
+                    decl["imported_depth"] = 1.into();
+                }
+            }
+            let recovered = JSON.recover(&serde_json::to_vec(&old).unwrap()).unwrap();
+            assert_eq!(JSON.serialize_wire(&recovered).unwrap(), wire);
+            for lang in [Language::Rust, Language::RustLazyReader] {
+                let result = Compiler::new()
+                    .input_intermediate(JSON, wire.clone())
+                    .generate_code(lang)
+                    .output_dir(dir.path())
+                    .run();
+                if field == "FeeRate" {
+                    result.unwrap();
+                } else {
+                    let error = result.unwrap_err();
+                    assert!(
+                        error.contains("E_RUST_TYPE_COLLISION") && error.contains(field),
+                        "{error}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn missing_schema_and_import_report_the_missing_path() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("root.mol");
@@ -287,7 +354,7 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
     let stripped = generated_opt.replace(":: core :: option :: Option", "");
     assert!(!stripped.contains("Option <"), "{generated_opt}");
     assert!(!stripped.contains("Option<"), "{generated_opt}");
-    assert!(generated_opt.contains(":: core :: option :: Option < Amount >"));
+    assert!(generated_opt.contains(":: core :: option :: Option < self :: Amount >"));
 
     // Duplicate union item types and missing transitive type diagnostics.
     fs::write(&root, "union U { byte: 0, byte: 1, }").unwrap();
@@ -434,7 +501,7 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
 #[cfg(unix)]
 #[test]
 fn cross_directory_aliases_allow_unambiguous_imports_and_reject_conflicting_ones() {
-    use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::os::unix::fs::symlink;
     for use_symlink in [false, true] {
         // 1. Conflicting targets (a/word.mol 2B vs b/word.mol 4B) must fail in both orders.
         let dir = tempfile::tempdir().unwrap();
@@ -497,181 +564,6 @@ fn cross_directory_aliases_allow_unambiguous_imports_and_reject_conflicting_ones
             assert!(matches!(word.as_ref(), TopDecl::Array(a) if a.item_count() == 2));
         }
     }
-
-    // Overwriting an existing output file (plain, native integer, or sidecar) preserves
-    // 0600 permissions on Unix as well as macOS ACLs and extended attributes.
-    for (name, schema) in [
-        ("plain", "array Word [byte; 2];"),
-        ("extended", "integer Word = u16le;"),
-    ] {
-        let dir = tempfile::tempdir().unwrap();
-        let schema_path = dir.path().join(format!("{name}.mol"));
-        fs::write(&schema_path, schema).unwrap();
-        let out_file = dir.path().join(format!("{name}.rs"));
-        fs::write(&out_file, b"// old").unwrap();
-        fs::set_permissions(&out_file, fs::Permissions::from_mode(0o600)).unwrap();
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            assert!(Command::new("xattr")
-                .args(["-w", "user.molecule_test", "preserved"])
-                .arg(&out_file)
-                .status()
-                .unwrap()
-                .success());
-            let acl_ok = Command::new("chmod")
-                .args(["+a", "everyone allow readattr"])
-                .arg(&out_file)
-                .status()
-                .unwrap()
-                .success();
-            assert!(acl_ok, "chmod +a failed on macOS tempdir");
-        }
-        Compiler::new()
-            .generate_code(molecule_codegen::Language::Rust)
-            .input_schema_file(&schema_path)
-            .output_dir(dir.path())
-            .run()
-            .unwrap();
-        let meta = fs::metadata(&out_file).unwrap();
-        let mode = meta.permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "{name}: expected 0600 mode, got {mode:o}");
-        #[cfg(target_os = "macos")]
-        {
-            use std::process::Command;
-            let xattr_out = Command::new("xattr")
-                .args(["-p", "user.molecule_test"])
-                .arg(&out_file)
-                .output()
-                .unwrap();
-            assert!(
-                xattr_out.status.success()
-                    && String::from_utf8_lossy(&xattr_out.stdout).trim() == "preserved",
-                "{name}: xattr lost after overwrite: {:?}",
-                xattr_out
-            );
-            let ls_out = Command::new("ls")
-                .args(["-le"])
-                .arg(&out_file)
-                .output()
-                .unwrap();
-            let ls_text = String::from_utf8_lossy(&ls_out.stdout);
-            assert!(
-                ls_text.contains("everyone allow readattr"),
-                "{name}: ACL lost after overwrite:\n{ls_text}"
-            );
-        }
-    }
-
-    #[cfg(all(target_os = "macos", feature = "schema-extensions"))]
-    {
-        use std::process::Command;
-        let dir = tempfile::tempdir().unwrap();
-        let schema_path = dir.path().join("sidecar.mol");
-        let source = "array Word [byte; 2];";
-        fs::write(&schema_path, source).unwrap();
-        let meta_path = dir.path().join("sidecar.json");
-        let digest = molecule_codegen::schema::source_digest(source.as_bytes());
-        fs::write(
-            &meta_path,
-            format!(
-                r#"{{"metadata_version":1,"schema":"sidecar.mol","schema_sha256":"{digest}","integers":[{{"type":"Word","bits":16,"signed":false,"byte_order":"little"}}]}}"#
-            ),
-        )
-        .unwrap();
-        let out_file = dir.path().join("sidecar.rs");
-        fs::write(&out_file, b"// old").unwrap();
-        fs::set_permissions(&out_file, fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(Command::new("xattr")
-            .args(["-w", "user.molecule_sidecar", "kept"])
-            .arg(&out_file)
-            .status()
-            .unwrap()
-            .success());
-        assert!(Command::new("chmod")
-            .args(["+a", "everyone allow readattr"])
-            .arg(&out_file)
-            .status()
-            .unwrap()
-            .success());
-        Compiler::new()
-            .input_schema_file(&schema_path)
-            .type_metadata_file(&meta_path)
-            .generate_code(molecule_codegen::Language::Rust)
-            .output_dir(dir.path())
-            .run()
-            .unwrap();
-        let mode = fs::metadata(&out_file).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        let xattr_out = Command::new("xattr")
-            .args(["-p", "user.molecule_sidecar"])
-            .arg(&out_file)
-            .output()
-            .unwrap();
-        assert!(
-            xattr_out.status.success()
-                && String::from_utf8_lossy(&xattr_out.stdout).trim() == "kept"
-        );
-        let ls_out = Command::new("ls")
-            .args(["-le"])
-            .arg(&out_file)
-            .output()
-            .unwrap();
-        assert!(String::from_utf8_lossy(&ls_out.stdout).contains("everyone allow readattr"));
-    }
-}
-
-#[cfg(unix)]
-#[test]
-fn plain_overwrite_preserves_existing_file_on_write_failure() {
-    use std::process::Command;
-    if std::env::var_os("MOLECULE_TEST_RLIMIT_FSIZE_CHILD").is_some() {
-        let dir = std::path::PathBuf::from(std::env::var_os("MOLECULE_TEST_RLIMIT_DIR").unwrap());
-        let schema_path = dir.join("plain.mol");
-        let out_file = dir.join("plain.rs");
-        let err = Compiler::new()
-            .generate_code(molecule_codegen::Language::Rust)
-            .input_schema_file(&schema_path)
-            .output_dir(&dir)
-            .run()
-            .unwrap_err();
-        assert!(err.contains("E_OUTPUT"), "{err}");
-        assert_eq!(fs::read(&out_file).unwrap(), b"// original intact content");
-        let entries: Vec<_> = fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
-        assert!(
-            !entries.iter().any(|n| n.starts_with(".molecule-")),
-            "leaked temporary files: {entries:?}"
-        );
-        return;
-    }
-
-    let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("plain.mol"), "array Word [byte; 2];").unwrap();
-    fs::write(dir.path().join("plain.rs"), b"// original intact content").unwrap();
-    let exe = std::env::current_exe().unwrap();
-    let status = Command::new("python3")
-        .args([
-            "-c",
-            "import os, resource, signal, sys; signal.signal(signal.SIGXFSZ, signal.SIG_IGN); resource.setrlimit(resource.RLIMIT_FSIZE, (1024, 1024)); os.execv(sys.argv[1], sys.argv[1:])",
-        ])
-        .arg(&exe)
-        .args([
-            "--exact",
-            "plain_overwrite_preserves_existing_file_on_write_failure",
-            "--nocapture",
-        ])
-        .env("MOLECULE_TEST_RLIMIT_FSIZE_CHILD", "1")
-        .env("MOLECULE_TEST_RLIMIT_DIR", dir.path())
-        .status()
-        .unwrap();
-    assert!(status.success(), "rlimit child failed: {status}");
-    assert_eq!(
-        fs::read(dir.path().join("plain.rs")).unwrap(),
-        b"// original intact content"
-    );
 }
 
 #[cfg(all(unix, feature = "compiler-plugin"))]

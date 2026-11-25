@@ -94,80 +94,89 @@ fn check_symbol_collisions(ast: &Ast) -> io::Result<()> {
     Ok(())
 }
 
-pub(super) fn generate_reader_interfaces<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
-    check_symbol_collisions(ast)?;
-    for (name, spec) in declared_integers(ast) {
-        w!(writer, "{};", reader_sig(&name, spec));
-    }
-    Ok(())
-}
-
-pub(super) fn generate_builder_interfaces<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
-    for (name, spec) in declared_integers(ast) {
-        w!(writer, "{};", builder_sig(&name, spec));
-    }
-    Ok(())
+pub(super) fn spec_guard(name: &str, spec: IntegerSpec) -> String {
+    let sign = if spec.signed { "I" } else { "U" };
+    let order = if spec.bits == 8 {
+        ""
+    } else if spec.byte_order == ByteOrder::Little {
+        "LE"
+    } else {
+        "BE"
+    };
+    format!("MOL_INTEGER_{sign}{}{order}_{name}", spec.bits)
 }
 
 pub(super) fn generate<W: Write>(writer: &mut W, ast: &Ast) -> io::Result<()> {
+    check_symbol_collisions(ast)?;
     for (name, spec) in declared_integers(ast) {
-        let bits = spec.bits;
-        let width = spec.byte_width();
-        let little = spec.byte_order == ByteOrder::Little;
-        w!(writer, "{} {{", reader_sig(&name, spec));
-        w!(writer, "    if (!output) return MOL_ERR_DATA;");
-        if bits > 64 {
-            let count = width / 8;
-            w!(
-                writer,
-                "    return mol_integer_read_limbs(input, {count}, {little}, output->limbs);"
-            );
-            w!(writer, "}}");
-            w!(writer, "{} {{", builder_sig(&name, spec));
-            w!(
-                writer,
-                "    return mol_integer_write_limbs(value.limbs, {count}, {little}, output);"
-            );
-            w!(writer, "}}");
-            continue;
-        }
-        let typ = value_type(spec);
-        w!(writer, "    uint64_t value;");
-        w!(
-            writer,
-            "    mol_errno error = mol_integer_read_u64(input, {width}, {little}, &value);"
-        );
-        w!(writer, "    if (error != MOL_OK) return error;");
-        if spec.signed {
-            // For a negative value, the complement fits in int64_t even at INT64_MIN.
-            w!(writer, "    if (value <= (uint64_t)INT{bits}_MAX) {{");
-            w!(writer, "        *output = ({typ})value;");
-            w!(writer, "    }} else {{");
-            w!(
-                writer,
-                "        *output = ({typ})(-1 - (int64_t)((uint64_t)UINT{bits}_MAX - value));"
-            );
-            w!(writer, "    }}");
-        } else {
-            w!(writer, "    *output = ({typ})value;");
-        }
-        w!(writer, "    return MOL_OK;");
-        w!(writer, "}}");
-        w!(writer, "{} {{", builder_sig(&name, spec));
-        let value = if spec.signed && bits < 64 {
-            w!(
-                writer,
-                "    if (value < INT{bits}_MIN || value > INT{bits}_MAX) return MOL_ERR_DATA;"
-            );
-            format!("(uint{bits}_t)value")
-        } else {
-            "(uint64_t)value".into()
-        };
-        w!(
-            writer,
-            "    return mol_integer_write_u64({value}, {width}, {little}, output);"
-        );
-        w!(writer, "}}");
+        let api = format!("MOL_INTEGER_API_{name}");
+        let kind = spec_guard(&name, spec);
+        writeln!(writer, "#ifndef {api}\n#define {api}\n#define {kind}")?;
+        w!(writer, "{};", reader_sig(&name, spec));
+        w!(writer, "{};", builder_sig(&name, spec));
+        write_accessors(writer, &name, spec)?;
+        writeln!(writer, "#elif !defined({kind})\n#error \"incompatible Molecule integer declarations for {name}\"\n#endif")?;
     }
+    Ok(())
+}
+
+fn write_accessors<W: Write>(writer: &mut W, name: &str, spec: IntegerSpec) -> io::Result<()> {
+    let bits = spec.bits;
+    let width = spec.byte_width();
+    let little = spec.byte_order == ByteOrder::Little;
+    w!(writer, "{} {{", reader_sig(name, spec));
+    w!(writer, "    if (!output) return MOL_ERR_DATA;");
+    if bits > 64 {
+        let count = width / 8;
+        w!(
+            writer,
+            "    return mol_integer_read_limbs(input, {count}, {little}, output->limbs);"
+        );
+        w!(writer, "}}");
+        w!(writer, "{} {{", builder_sig(name, spec));
+        w!(
+            writer,
+            "    return mol_integer_write_limbs(value.limbs, {count}, {little}, output);"
+        );
+        w!(writer, "}}");
+        return Ok(());
+    }
+    let typ = value_type(spec);
+    w!(writer, "    uint64_t value;");
+    w!(
+        writer,
+        "    mol_errno error = mol_integer_read_u64(input, {width}, {little}, &value);"
+    );
+    w!(writer, "    if (error != MOL_OK) return error;");
+    if spec.signed {
+        // For a negative value, the complement fits in int64_t even at INT64_MIN.
+        w!(writer, "    if (value <= (uint64_t)INT{bits}_MAX) {{");
+        w!(writer, "        *output = ({typ})value;");
+        w!(writer, "    }} else {{");
+        w!(
+            writer,
+            "        *output = ({typ})(-1 - (int64_t)((uint64_t)UINT{bits}_MAX - value));"
+        );
+        w!(writer, "    }}");
+    } else {
+        w!(writer, "    *output = ({typ})value;");
+    }
+    w!(writer, "    return MOL_OK;");
+    w!(writer, "}}");
+    w!(writer, "{} {{", builder_sig(name, spec));
+    let value = if spec.signed && bits < 64 {
+        w!(
+            writer,
+            "    if (value < INT{bits}_MIN || value > INT{bits}_MAX) return MOL_ERR_DATA;"
+        );
+        format!("(uint{bits}_t)value")
+    } else {
+        "(uint64_t)value".into()
+    };
+    w!(
+        writer,
+        "    return mol_integer_write_u64({value}, {width}, {little}, output);"
+    );
+    w!(writer, "}}");
     Ok(())
 }

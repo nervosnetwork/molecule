@@ -2,8 +2,8 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::utilities::{
-    entity_name, entity_new_unchecked, entity_union_name, func_name, reader_name,
-    reader_new_unchecked, reader_union_name, usize_lit,
+    entity_new_unchecked, entity_ref, entity_union_name, func_name, reader_new_unchecked,
+    reader_ref, reader_union_name, usize_lit,
 };
 use crate::ast::{self as ast, HasName};
 
@@ -30,13 +30,13 @@ impl ImplGetters for ast::Option_ {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let typ = self.item().typ();
         let (getter_ret, ctor) = if is_entity {
-            let inner = entity_name(typ.name());
+            let inner = entity_ref(typ);
             (
                 quote!(#inner),
                 entity_new_unchecked(typ, quote!(self.0.clone())),
             )
         } else {
-            let inner = reader_name(typ.name());
+            let inner = reader_ref(typ);
             (
                 quote!(#inner<'r>),
                 reader_new_unchecked(typ, quote!(self.0)),
@@ -74,7 +74,7 @@ impl ImplGetters for ast::Union {
             } else {
                 reader_new_unchecked(item.typ(), quote!(inner))
             };
-            quote!(#item_id => #ctor.into(),)
+            quote!(#item_id => ::core::convert::Into::into(#ctor),)
         });
         quote!(
             pub fn to_enum(&self) -> #getter_ret {
@@ -92,14 +92,14 @@ impl ImplGetters for ast::Array {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let typ = self.item().typ();
         let (getter_ret, getter_ret_byte, getter_stmt_byte) = if is_entity {
-            let inner = entity_name(typ.name());
+            let inner = entity_ref(typ);
             (
                 quote!(#inner),
                 quote!(molecule::bytes::Bytes),
                 quote!(self.0.clone()),
             )
         } else {
-            let inner = reader_name(typ.name());
+            let inner = reader_ref(typ);
             (quote!(#inner<'r>), quote!(&'r [u8]), quote!(self.0))
         };
         let each_getter = (0..self.item_count())
@@ -145,13 +145,13 @@ impl ImplGetters for ast::Struct {
                 let end = usize_lit(offset);
                 let typ = f.typ();
                 let (getter_ret, ctor) = if is_entity {
-                    let inner = entity_name(typ.name());
+                    let inner = entity_ref(typ);
                     (
                         quote!(#inner),
                         entity_new_unchecked(typ, quote!(self.0.slice(#start..#end))),
                     )
                 } else {
-                    let inner = reader_name(typ.name());
+                    let inner = reader_ref(typ);
                     (
                         quote!(#inner<'r>),
                         reader_new_unchecked(typ, quote!(&self.0[#start..#end])),
@@ -176,7 +176,7 @@ impl ImplGetters for ast::FixVec {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let typ = self.item().typ();
         let (getter_ret, ctor, getter_ret_byte, getter_stmt_byte) = if is_entity {
-            let inner = entity_name(typ.name());
+            let inner = entity_ref(typ);
             (
                 quote!(#inner),
                 entity_new_unchecked(typ, quote!(self.0.slice(start..end))),
@@ -184,7 +184,7 @@ impl ImplGetters for ast::FixVec {
                 quote!(self.0.slice(molecule::NUMBER_SIZE..)),
             )
         } else {
-            let inner = reader_name(typ.name());
+            let inner = reader_ref(typ);
             (
                 quote!(#inner<'r>),
                 reader_new_unchecked(typ, quote!(&self.0[start..end])),
@@ -223,14 +223,14 @@ impl ImplGetters for ast::DynVec {
     fn impl_getters_internal(&self, is_entity: bool) -> m4::TokenStream {
         let typ = self.item().typ();
         let (getter_ret, ctor_last, ctor) = if is_entity {
-            let inner = entity_name(typ.name());
+            let inner = entity_ref(typ);
             (
                 quote!(#inner),
                 entity_new_unchecked(typ, quote!(self.0.slice(start..))),
                 entity_new_unchecked(typ, quote!(self.0.slice(start..end))),
             )
         } else {
-            let inner = reader_name(typ.name());
+            let inner = reader_ref(typ);
             (
                 quote!(#inner<'r>),
                 reader_new_unchecked(typ, quote!(&self.0[start..])),
@@ -271,14 +271,14 @@ impl ImplGetters for ast::Table {
                 let func = func_name(f.name());
                 let typ = f.typ();
                 let (getter_ret, ctor, ctor_last) = if is_entity {
-                    let inner = entity_name(typ.name());
+                    let inner = entity_ref(typ);
                     (
                         quote!(#inner),
                         entity_new_unchecked(typ, quote!(self.0.slice(start..end))),
                         entity_new_unchecked(typ, quote!(self.0.slice(start..))),
                     )
                 } else {
-                    let inner = reader_name(typ.name());
+                    let inner = reader_ref(typ);
                     (
                         quote!(#inner<'r>),
                         reader_new_unchecked(typ, quote!(&self.0[start..end])),

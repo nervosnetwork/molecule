@@ -192,7 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("leaf", "integer LeafAmt = u64le;"),
         ("mid", "import leaf; table Mid { a: LeafAmt, }"),
         ("mod_a", "integer FeeRate = u32le;"),
-        ("mod_b", "integer fee_rate = u64be;"),
+        ("mod_b", "integer fee_rate = u32be;"),
         (
             "imp_row",
             "integer RowLe = u16le; struct FeeRow { v: RowLe, } option OptFeeRow (FeeRow);",
@@ -217,6 +217,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "table Vec {}\n",
                 "table From {}\n",
                 "struct ShadowS { as_slice: byte, build: byte, }\n",
+                "table Reader {} table Entity {} table Builder {}\n",
+                "struct Value { as_builder: byte, into: byte, } vector Values <Value>; option MaybeValue (Value);\n",
+                "integer T = u16le; struct Row { default: T, } array Rows [Row; 2]; vector Amounts <T>;\n",
+                "struct Rates { little: FeeRate, big: fee_rate, }\n",
+                "vector Bytes <byte>; option OptBytes (Bytes); option OptByte (byte);\n",
+                "option OptRate (FeeRate); option NestedRate (OptRate);\n",
+                "union Inner { Error, byte, } option OptInner (Inner);\n",
+                "union Payload { OptByte, OptBytes, Inner, OptInner, NestedRate, Value, }\n",
                 "table ShadowT { as_slice: byte, ok: Ok, err: Err, cur: Cursor, }\n",
                 "table Combined { def: DefVal, leaf: LeafAmt, rate: FeeRate, opt_row: OptFeeRow, local_row: fee_row, cases: CaseFields, }\n",
                 "union MixedUnion { LeafAmt, FeeRate, OptFeeRow, }\n",
@@ -249,9 +257,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         ("a/base", "integer ABaseVal = u32le;"),
         ("b/base", "integer BBaseVal = u64be;"),
+        ("b/bridge", "import base; struct BDetail { amount: BBaseVal, }"),
         (
             "base_root",
-            "import a/base; import b/base; struct CaseFieldsC { feeRate: byte, feerate: byte, } table BasePair { a: ABaseVal, b: BBaseVal, }",
+            "import a/base; import b/bridge; struct CaseFieldsC { feeRate: byte, feerate: byte, } table BasePair { a: ABaseVal, b: BBaseVal, } table NoFields {}",
         ),
     ] {
         let schema = out.join(format!("{name}.mol"));
@@ -303,6 +312,14 @@ int check_c_imports_and_case_fields(void) {{
     mol_seg_t cf_seg = {{cf_bytes, 2}};
     if (*MolReader_CaseFieldsC_get_feeRate(&cf_seg).ptr != 4) return -3;
     if (*MolReader_CaseFieldsC_get_feerate(&cf_seg).ptr != 9) return -4;
+    uint8_t table[34] = {{34,0,0,0, 20,0,0,0, 24,0,0,0, 32,0,0,0, 32,0,0,0}};
+    mol_seg_t row = {{table, sizeof(table)}};
+    if (MolReader_BasePair_verify(&row, true) != MOL_OK || MolReader_NoFields_verify(&row, true) != MOL_OK) return -5;
+    if (MolReader_BasePair_verify(&row, false) != MOL_ERR_FIELD_COUNT) return -6;
+    table[16] = 31;
+    if (MolReader_BasePair_verify(&row, true) != MOL_ERR_OFFSET || MolReader_NoFields_verify(&row, true) != MOL_ERR_OFFSET) return -7;
+    table[12] = 31;
+    if (MolReader_BasePair_verify(&row, true) != MOL_ERR_DATA) return -8;
     return 0;
 }}
 "#
@@ -310,7 +327,116 @@ int check_c_imports_and_case_fields(void) {{
     )?;
     if env::var("HOST")? == env::var("TARGET")? {
         println!("cargo:rerun-if-changed=../../bindings/c/include");
-        cc::Build::new()
+        let plain = out.join("shared.mol");
+        fs::write(&plain, "array Amount [byte; 2];")?;
+        legacy_codegen::Compiler::new()
+            .input_schema_file(&plain)
+            .generate_code(legacy_codegen::Language::C)
+            .output_dir(out.join("legacy"))
+            .run()?;
+        fs::write(
+            &plain,
+            "array Amount [byte; 2]; struct Pair { amount: Amount, }",
+        )?;
+        Compiler::new()
+            .input_schema_file(&plain)
+            .generate_code(Language::C)
+            .output_dir(out.join("packed"))
+            .run()?;
+        let sidecar = out.join("shared.json");
+        metadata(
+            &plain,
+            json!([{"type":"Amount","bits":16,"signed":false,"byte_order":"big"}]),
+            &sidecar,
+        )?;
+        Compiler::new()
+            .input_schema_file(&plain)
+            .type_metadata_file(sidecar)
+            .generate_code(Language::C)
+            .output_dir(out.join("c"))
+            .run()?;
+        let additional = out.join("additional");
+        fs::create_dir_all(&additional)?;
+        fs::write(
+            &plain,
+            "array Amount [byte; 2]; struct Extra { value: Amount, }",
+        )?;
+        Compiler::new()
+            .input_schema_file(&plain)
+            .generate_code(Language::C)
+            .output_dir(additional)
+            .run()?;
+        let wide = out.join("wide");
+        fs::create_dir_all(&wide)?;
+        fs::write(&plain, "integer Amount = u32le;")?;
+        Compiler::new()
+            .input_schema_file(&plain)
+            .generate_code(Language::C)
+            .output_dir(wide)
+            .run()?;
+
+        for (dir, source) in [
+            ("swapped", "struct Amount { nth1: byte, nth0: byte, }"),
+            (
+                "wrapped",
+                "struct Item { inner: byte, } array Amount [Item; 2];",
+            ),
+            ("aggregate", "struct Pair { other: byte, amount: byte, }"),
+        ] {
+            fs::create_dir_all(out.join(dir))?;
+            fs::write(&plain, source)?;
+            legacy_codegen::Compiler::new()
+                .input_schema_file(&plain)
+                .generate_code(legacy_codegen::Language::C)
+                .output_dir(out.join(dir))
+                .run()?;
+        }
+
+        let mut build = cc::Build::new();
+        // The 0.9.2 bridge includes b/base.h after the current a/base.h.
+        let mixed = out.join("mixed");
+        for dir in ["a", "b"] {
+            fs::create_dir_all(mixed.join(dir))?;
+        }
+        fs::copy(out.join("c/a/base.h"), mixed.join("a/base.h"))?;
+        fs::copy(out.join("c/base_root.h"), mixed.join("base_root.h"))?;
+        for (name, schema) in [
+            ("base", "array BBaseVal [byte; 8];"),
+            (
+                "bridge",
+                "import base; struct BDetail { amount: BBaseVal, }",
+            ),
+        ] {
+            let input = mixed.join(format!("b/{name}.mol"));
+            fs::write(&input, schema)?;
+            legacy_codegen::Compiler::new()
+                .input_schema_file(input)
+                .generate_code(legacy_codegen::Language::C)
+                .output_dir(mixed.join("b"))
+                .run()?;
+        }
+        let source = mixed.join("check.c");
+        fs::write(&source, "#define MOLECULE_API_DECORATOR static\n#include \"base_root.h\"\nsize_t mixed_b_size(void) { return sizeof(MolDefault_BBaseVal); }\n")?;
+        build.file(source);
+
+        for (i, headers) in [
+            ["legacy", "packed", "c"],
+            ["c", "packed", "c"],
+            ["packed", "c", "packed"],
+            ["legacy", "c", "packed"],
+        ]
+        .iter()
+        .enumerate()
+        {
+            let source = out.join(format!("include_order_{i}.c"));
+            let includes: String = headers
+                .iter()
+                .map(|dir| format!("#include \"{dir}/shared.h\"\n"))
+                .collect();
+            fs::write(&source, format!("#define MOLECULE_API_DECORATOR static\n{includes}mol_errno included_{i}(mol_seg_t *s, uint16_t *v) {{ return sizeof(MolDefault_Pair) == 2 ? MolReader_Amount_read_value(s, v) : MOL_ERR; }}\n"))?;
+            build.file(source);
+        }
+        build
             .file(&bridge)
             .include(&out)
             .include("../../bindings/c/include")

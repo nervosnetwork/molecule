@@ -49,7 +49,18 @@ moleculec --schema-file amount.mol --type-metadata amount.json --language rust
 In a build script, enable `molecule-codegen`'s `schema-extensions` feature and call
 `Compiler::type_metadata_file` before `generate_code(...).run()`. `parse_ast()`
 validates inputs without producing output. Directory output buffers its result
-and atomically replaces a destination file only after successful validation.
+and atomically replaces a writable destination file after successful validation.
+For a destination with multiple hard links, identical output is a no-op and
+changed output returns `E_OUTPUT` with every link intact.
+Unix replacement preserves the owner, group and mode. On macOS, Linux,
+FreeBSD and NetBSD it also preserves ACLs and visible extended attributes.
+If inspection or restoration fails, the original stays intact. Privileged
+attributes hidden from the caller (Linux `trusted.*` or BSD `system.*`) may
+be lost when a changed file is replaced. Linux rejects changes to files with
+capability or integrity attributes (`security.capability`, `security.ima`,
+`security.evm`). On OpenBSD and DragonFly, changed files on a filesystem with
+unknown metadata support return an error. An identical writable file needs
+no replacement.
 All files are read once into a source snapshot shared by provenance and the AST.
 Imported owners use canonical paths relative to the root schema's directory when
 representable and otherwise keep the import spelling. Hard links share the
@@ -129,10 +140,27 @@ uses two's complement limbs. Use the accessors to encode these structs in schema
 byte order. They require no compiler-specific `__int128`. The numeric runtime
 include uses a separate filename extension and include guard so generated schema
 headers can use the name `molecule_integer.h`, including through imports.
+Current plain and annotated headers for the same layout work in either order.
+When two headers share declarations and one comes from 0.9.2, include the old
+header first. Its byte arrays can supply the wire API when their size and byte
+offsets match. A conflict fails C or C++ compilation. Overlapping aggregate
+declarations require regenerating the old header because it carries no layout
+identity. A current header never reserves an old header's basename guard.
 
 ## IR and plugins
 
-Inputs without explicit extensions keep IR v1 and the original plugin protocol.
+Plain schema exports and legacy plugins keep IR v1. For plain schemas with imports,
+the CLI sets `MOLECULEC_IR_VERSION=2` on the `--format` probe. A plugin can
+return its capability manifest to receive declaration owners in IR v2. A JSON
+or YAML format name selects v1 as before. Both bundled Rust generators use
+owner paths to distinguish declarations that generate the same Rust name.
+V1 exports record the shortest import depth. A detached v1 layout has no
+module paths for indirect declarations. If Rust needs to name one, generate
+from the schema or supply IR v2. Archived 0.9.2 v1 files store depth 1 for every import. For example, a
+type defined by a direct import and one defined by its own import can produce
+identical v1 IR. The Rust plugins cannot distinguish these cases from the
+archived file alone. Regenerate from the original schemas to recover the
+owners and depths in v2.
 Extended inputs emit IR v2 with unchanged `wire_ir`, complete source/owner/import
 provenance, `logical_types`, and `required_features: ["logical-integer-v1"]`.
 JSON/YAML recovery revalidates widths, ownership, layout and import correspondence.

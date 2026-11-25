@@ -2,7 +2,7 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::super::utilities::{
-    builder_name, entity_as_slice, entity_name, field_name, reader_name, usize_lit,
+    builder_name, entity_as_slice, entity_name, entity_ref, field_name, reader_name, usize_lit,
 };
 use crate::ast::{self as ast, HasName};
 
@@ -35,7 +35,7 @@ pub(in super::super) trait ImplBuilder: HasName {
 impl ast::Option_ {
     pub(crate) fn gen_from(&self) -> m4::TokenStream {
         let entity = entity_name(self.name());
-        let item_name = entity_name(self.item().typ().name());
+        let item_name = entity_ref(self.item().typ());
         quote!(
             impl ::core::convert::From<#item_name> for #entity {
                 fn from(value: #item_name) -> Self {
@@ -74,7 +74,7 @@ impl ast::Union {
         self.items()
             .iter()
             .map(|item| {
-                let item_name = entity_name(item.typ().name());
+                let item_name = entity_ref(item.typ());
                 quote!(
                     impl ::core::convert::From<#item_name> for #entity {
                         fn from(value: #item_name) -> Self {
@@ -132,7 +132,7 @@ impl ast::Array {
     pub(crate) fn gen_from(&self) -> m4::TokenStream {
         let entity = entity_name(self.name());
         let reader = reader_name(self.name());
-        let item_name = entity_name(self.item().typ().name());
+        let item_name = entity_ref(self.item().typ());
         let n = self.item_count();
         let maybe_byte_arr = if self.item().typ().name() == "byte" {
             quote!(
@@ -299,11 +299,11 @@ impl ImplBuilder for ast::DynVec {
     }
 }
 
-fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
+fn gen_from_iter(name: &str, item: &ast::TopDecl) -> m4::TokenStream {
     let entity = entity_name(name);
-    let item_name = entity_name(item_name);
+    let item_name = entity_ref(item);
     quote!(
-        impl<T> ::core::iter::FromIterator<T> for #entity
+        impl<T> ::core::iter::FromIterator<T> for self::#entity
         where
             T: ::core::convert::Into<#item_name>,
         {
@@ -314,7 +314,7 @@ fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
             }
         }
 
-        impl<T> ::core::convert::From<molecule::prelude::Vec<T>> for #entity
+        impl<T> ::core::convert::From<molecule::prelude::Vec<T>> for self::#entity
         where
             T: ::core::convert::Into<#item_name>
         {
@@ -327,13 +327,13 @@ fn gen_from_iter(name: &str, item_name: &str) -> m4::TokenStream {
 
 impl ast::FixVec {
     pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
-        gen_from_iter(self.name(), self.item().typ().name())
+        gen_from_iter(self.name(), self.item().typ())
     }
 }
 
 impl ast::DynVec {
     pub(crate) fn gen_from_iter(&self) -> m4::TokenStream {
-        gen_from_iter(self.name(), self.item().typ().name())
+        gen_from_iter(self.name(), self.item().typ())
     }
 }
 

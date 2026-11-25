@@ -16,3 +16,12 @@ jobs:
       - run: cargo test --locked --manifest-path examples/integer-tests/Cargo.toml --no-default-features --features bytes_vec
       - run: cargo check --locked --manifest-path examples/integer-tests/Cargo.toml --target riscv64imac-unknown-none-elf --no-default-features --features bytes_vec
       - run: python3 examples/integer-tests/sanitize.py
+  windows-output:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+      - run: Copy-Item tools/compiler/Cargo.lock tools/codegen/Cargo.lock
+      - run: cargo test --manifest-path tools/codegen/Cargo.toml --all-features --test output

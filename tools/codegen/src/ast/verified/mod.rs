@@ -93,7 +93,7 @@ pub struct Ast {
     #[cfg(feature = "schema-extensions")]
     source_graph: Option<crate::schema::SchemaGraph>,
     #[property(skip)]
-    decl_origins: Option<BTreeMap<String, (ModulePath, bool)>>,
+    decl_origins: Option<BTreeMap<String, ModulePath>>,
 }
 
 #[derive(Debug, Clone, Property)]
@@ -102,6 +102,12 @@ pub struct ImportStmt {
     name: String,
     paths: Vec<String>,
     path_supers: usize,
+}
+
+impl ImportStmt {
+    pub(crate) fn module_path(&self) -> ModulePath {
+        ModulePath::new(self.name.clone(), self.paths.clone(), self.path_supers)
+    }
 }
 
 #[derive(Debug)]
@@ -230,15 +236,12 @@ impl Ast {
         self.decl_origins.is_some()
     }
 
-    pub(crate) fn decl_origin(&self, name: &str) -> Option<(&ModulePath, bool)> {
-        self.decl_origins
-            .as_ref()
-            .and_then(|map| map.get(name))
-            .map(|(path, direct)| (path, *direct))
+    pub(crate) fn decl_origin(&self, name: &str) -> Option<&ModulePath> {
+        self.decl_origins.as_ref().and_then(|map| map.get(name))
     }
 
     #[cfg(feature = "compiler-plugin")]
-    pub(crate) fn set_decl_origins(&mut self, origins: BTreeMap<String, (ModulePath, bool)>) {
+    pub(crate) fn set_decl_origins(&mut self, origins: BTreeMap<String, ModulePath>) {
         self.decl_origins = Some(origins);
     }
 }
@@ -263,7 +266,7 @@ impl TopDecl {
         }
     }
 
-    fn imported_depth(&self) -> usize {
+    pub(crate) fn imported_depth(&self) -> usize {
         match self {
             Self::Primitive(_) => usize::MAX,
             Self::Option_(inner) => inner.imported_depth,

@@ -1,8 +1,8 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use super::super::utilities::{entity_name, entity_union_name, field_name, func_name, usize_lit};
-use crate::ast::{self as ast, HasName};
+use super::super::utilities::{entity_ref, entity_union_name, field_name, func_name, usize_lit};
+use crate::ast;
 
 pub(in super::super) trait ImplSetters {
     fn impl_setters(&self) -> m4::TokenStream;
@@ -10,7 +10,7 @@ pub(in super::super) trait ImplSetters {
 
 impl ImplSetters for ast::Option_ {
     fn impl_setters(&self) -> m4::TokenStream {
-        let inner = entity_name(self.item().typ().name());
+        let inner = entity_ref(self.item().typ());
         quote!(
             pub fn set<T>(mut self, v: T) -> Self
             where
@@ -40,7 +40,7 @@ impl ImplSetters for ast::Union {
 
 impl ImplSetters for ast::Array {
     fn impl_setters(&self) -> m4::TokenStream {
-        let inner = entity_name(self.item().typ().name());
+        let inner = entity_ref(self.item().typ());
         let item_count = usize_lit(self.item_count());
         let entire_setter = quote!(
             pub fn set<T>(mut self, v: T) -> Self
@@ -81,13 +81,13 @@ impl ImplSetters for ast::Struct {
 
 impl ImplSetters for ast::FixVec {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_vector(self.item().typ().name())
+        impl_setters_for_vector(self.item().typ())
     }
 }
 
 impl ImplSetters for ast::DynVec {
     fn impl_setters(&self) -> m4::TokenStream {
-        impl_setters_for_vector(self.item().typ().name())
+        impl_setters_for_vector(self.item().typ())
     }
 }
 
@@ -102,7 +102,7 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
         .iter()
         .map(|f| {
             let field_name = field_name(f.name());
-            let field_type = entity_name(f.typ().name());
+            let field_type = entity_ref(f.typ());
             quote!(
                 pub fn #field_name<T>(mut self, v: T) -> Self
                 where
@@ -119,8 +119,8 @@ fn impl_setters_for_struct_or_table(inner: &[ast::FieldDecl]) -> m4::TokenStream
     )
 }
 
-fn impl_setters_for_vector(inner_name: &str) -> m4::TokenStream {
-    let inner = entity_name(inner_name);
+fn impl_setters_for_vector(item: &ast::TopDecl) -> m4::TokenStream {
+    let inner = entity_ref(item);
     quote!(
         pub fn set(mut self, v: molecule::prelude::Vec<#inner>) -> Self
         {

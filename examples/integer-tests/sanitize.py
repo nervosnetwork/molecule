@@ -103,6 +103,35 @@ with tempfile.TemporaryDirectory(prefix="molecule-integer-sanitize-") as directo
     proto_check.write_text('#include "c/numbers.h"\n')
     cc = os.environ.get("CC", "clang")
     include_dir = str(crate.parent.parent / "bindings/c/include")
+    for compiler, dialect, language in [(cc, "c99", "c"), (os.environ.get("CXX", "clang++"), "c++17", "c++")]:
+        positive = '''#include "legacy/shared.h"
+#include "c/shared.h"
+#include "packed/shared.h"
+#include "additional/shared.h"
+int main(void) {
+    uint8_t bytes[] = {1, 2};
+    mol_seg_t pair = {bytes, sizeof(bytes)};
+    mol_seg_t amount = MolReader_Pair_get_amount(&pair);
+    uint16_t value = 0;
+    return MolReader_Amount_read_value(&amount, &value) != MOL_OK || value != 258;
+}
+'''
+        subprocess.run([compiler, f"-std={dialect}", "-pedantic-errors", "-I", str(out), "-isystem", include_dir, "-x", language,
+                        "-", "-o", str(executable)], input=positive, text=True, check=True)
+        subprocess.run([str(executable)], check=True)
+        for first, second, diagnostic in [
+            ("legacy", "wide", "MolBuilder_Amount_set_nth2"),
+            ("swapped", "c", "MolDefault_Amount"),
+            ("wrapped", "c", "MolDefault_Amount"),
+            ("aggregate", "c", "cannot verify shared Molecule layout Pair"),
+            ("c", "legacy", "MolDefault_Amount"),
+        ]:
+            includes = f'#include "{first}/shared.h"\n#include "{second}/shared.h"\n'
+            conflict = subprocess.run(
+                [compiler, f"-std={dialect}", "-fsyntax-only", "-I", str(out), "-I", include_dir, "-x", language, "-"],
+                input=includes, text=True, capture_output=True,
+            )
+            assert conflict.returncode and diagnostic in conflict.stderr, (first, second, conflict.stderr)
     strict = [cc, "-std=c11", "-pedantic-errors", "-Wall", "-Wextra", "-Wsign-compare", "-Werror", "-O2", "-I", str(out)]
     subprocess.run(strict + ["-Wmissing-prototypes", "-isystem", include_dir, "-c", str(proto_check), "-o", str(Path(directory) / "prototypes.o")], check=True)
     subprocess.run(strict + ["-I", include_dir, "-Wno-unused-function", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g", str(source), "-o", str(executable)], check=True)

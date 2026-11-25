@@ -40,7 +40,7 @@ fn inputs(directory: &Path) -> Compiler {
     compiler
 }
 
-fn cli(directory: &Path) -> Command {
+fn fixture_cli(directory: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_moleculec"));
     let mut paths = vec![directory.to_owned()];
     paths.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap()));
@@ -50,13 +50,17 @@ fn cli(directory: &Path) -> Command {
         .args([
             "--schema-file",
             "types.mol",
-            "--type-metadata",
-            "types.json",
             "--language",
             "fixture",
             "--plugin-timeout",
             "1",
         ]);
+    command
+}
+
+fn cli(directory: &Path) -> Command {
+    let mut command = fixture_cli(directory);
+    command.args(["--type-metadata", "types.json"]);
     command
 }
 
@@ -95,7 +99,55 @@ fn failed_negotiation_never_sends_ir_or_runs_generation() {
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
         assert!(!directory.path().join("invoked").exists());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("E_PLUGIN_CAPABILITY"));
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            diagnostic.contains("moleculec-fixture: E_PLUGIN_CAPABILITY"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn plain_format_probe_offers_source_ir_only_for_imports() {
+    let dir = TempDir::new().unwrap();
+    let dir = dir.path();
+    let schema = dir.join("types.mol");
+    let run = || {
+        fixture_cli(dir)
+            .env("MOLECULEC_IR_VERSION", "2")
+            .output()
+            .unwrap()
+    };
+    script(
+        dir,
+        r#"if [ "$1" = --format ]; then echo "${MOLECULEC_IR_VERSION-unset}" > offer; echo json; else cat; fi"#,
+    );
+    fs::write(dir.join("leaf.mol"), "array Word [byte; 2];").unwrap();
+    for (source, expected) in [
+        ("table Root {}", "unset"),
+        ("import leaf; table Root {}", "2"),
+    ] {
+        fs::write(&schema, source).unwrap();
+        let result = run();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("offer")).unwrap().trim(),
+            expected
+        );
+    }
+    for reply in ["{", "{}"] {
+        script(dir, &format!("echo '{reply}'"));
+        let result = run();
+        let diagnostic = String::from_utf8_lossy(&result.stderr);
+        assert!(!result.status.success() && result.stdout.is_empty());
+        assert!(
+            diagnostic.contains("moleculec-fixture: E_PLUGIN_CAPABILITY"),
+            "{diagnostic}"
+        );
     }
 }
 
@@ -348,4 +400,61 @@ fn builtin_plugin_validation_error_exits_cleanly_without_panic() {
         !stderr.contains("panicked at"),
         "plugin should report clean diagnostic instead of panicking: {stderr}"
     );
+}
+
+#[test]
+fn plain_schema_plugins_use_the_same_declaration_owners_as_the_library() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::create_dir(root.join("type")).unwrap();
+    for (path, source) in [
+        ("left", "array FeeRate [byte; 2];"),
+        (
+            "type/defs",
+            "array fee_rate [byte; 2]; struct Balance { value: fee_rate, }",
+        ),
+        ("bridge", "import type/defs; table Bridge {}"),
+        (
+            "types",
+            "import left; import bridge; table Payment { fee: FeeRate, balance: Balance, }",
+        ),
+        (
+            "both",
+            "import left; import type/defs; struct Rates { little: FeeRate, big: fee_rate, }",
+        ),
+    ] {
+        fs::write(root.join(format!("{path}.mol")), source).unwrap();
+    }
+    let bin = Path::new(env!("CARGO_BIN_EXE_moleculec-rust"))
+        .parent()
+        .unwrap();
+    for name in ["types", "both"] {
+        let schema = root.join(format!("{name}.mol"));
+        for (language, plugin, extension) in [
+            (Language::Rust, "rust", "rs"),
+            (Language::RustLazyReader, "rust-lazy-reader", "rs"),
+            (Language::C, "c", "h"),
+        ] {
+            Compiler::new()
+                .input_schema_file(&schema)
+                .generate_code(language)
+                .output_dir(root)
+                .run()
+                .unwrap();
+            let expected = fs::read(root.join(format!("{name}.{extension}"))).unwrap();
+            let out = Command::new(env!("CARGO_BIN_EXE_moleculec"))
+                .env("PATH", bin)
+                .arg("--schema-file")
+                .arg(&schema)
+                .args(["--language", plugin])
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert_eq!(out.stdout, expected, "{name} / {plugin}");
+        }
+    }
 }

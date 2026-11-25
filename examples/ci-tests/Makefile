@@ -88,7 +88,7 @@ ${TARGET_TMP_DIR}/test-build-default: c/test-build-default.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<
 
 ${TARGET_TMP_DIR}/test-build-default-cpp: c/test-build-default.c ${C_DEPS}
-	@${CXX} ${CFLAGS} -I${MOLINC} -o $@ $<
+	@${CXX} ${CFLAGS} -x c++ -Wvla -I${MOLINC} -o $@ $<
 
 ${TARGET_TMP_DIR}/simple-example: c/simple-example.c ${C_DEPS}
 	@${CC} ${CFLAGS} -I${MOLINC} -o $@ $<

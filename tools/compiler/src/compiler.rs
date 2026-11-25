@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, io::Write, path::Path, process, str, time::Duration};
+use std::{io::Write, path::Path, process, time::Duration};
 
 use molecule_codegen::{Compiler, IntermediateFormat};
 
@@ -163,58 +163,64 @@ fn compile(config: config::AppConfig) -> Result<(), String> {
     if let Some(path) = config.integer_contract {
         compiler.integer_contract_file(path);
     }
-    let ast = compiler.parse_ast()?;
-    let bytes = match &config.output_config {
+    let ast = match config.output_config {
+        config::OutputConfig::Plugin(_) => compiler.parse_ast_with_sources()?,
+        config::OutputConfig::Output(_) => compiler.parse_ast()?,
+    };
+    let timeout = Duration::from_secs(config.plugin_timeout);
+    match &config.output_config {
         config::OutputConfig::Output(format) => {
-            if config.wire_only {
+            let bytes = if config.wire_only {
                 eprintln!("Wire-only export: logical type semantics are intentionally omitted.");
                 format.serialize_wire(&ast)?
             } else {
                 format.serialize_ast(&ast)?
-            }
-        }
-        config::OutputConfig::Plugin(plugin) if ast.source_graph().is_none() => {
-            return legacy_plugin(plugin, &ast);
+            };
+            write_output(&bytes)
         }
         config::OutputConfig::Plugin(plugin) => {
-            let format = moleculec::plugin::negotiate(
-                plugin,
-                &ast,
-                Duration::from_secs(config.plugin_timeout.min(5)),
-            )?;
-            let input = format.serialize_ast(&ast)?;
-            let (bytes, diagnostics) = moleculec::plugin::execute(
-                plugin,
-                input,
-                Duration::from_secs(config.plugin_timeout),
-            )?;
-            std::io::stderr()
-                .lock()
-                .write_all(&diagnostics)
-                .map_err(|error| format!("cannot write plugin diagnostics: {error}"))?;
-            bytes
+            use moleculec::plugin::{negotiate, plain_format, PluginFormat};
+            let probe_timeout = timeout.min(Duration::from_secs(5));
+            let format = if config.type_metadata.is_empty() && ast.integers().is_empty() {
+                match plain_format(plugin, &ast, probe_timeout)? {
+                    PluginFormat::Wire(format) => {
+                        return stream_v1(plugin, format.serialize_wire(&ast)?)
+                    }
+                    PluginFormat::WithSources(format) => format,
+                }
+            } else {
+                negotiate(plugin, &ast, probe_timeout)?
+            };
+            generate_with_sources(plugin, &ast, format, timeout)
         }
-    };
+    }
+}
+
+fn generate_with_sources(
+    path: &Path,
+    ast: &molecule_codegen::ast::Ast,
+    format: IntermediateFormat,
+    timeout: Duration,
+) -> Result<(), String> {
+    let (bytes, diagnostics) =
+        moleculec::plugin::execute(path, format.serialize_ast(ast)?, timeout)?;
+    std::io::stderr()
+        .lock()
+        .write_all(&diagnostics)
+        .map_err(|err| format!("cannot write plugin diagnostics: {err}"))?;
+    write_output(&bytes)
+}
+
+fn write_output(bytes: &[u8]) -> Result<(), String> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
     handle
-        .write_all(&bytes)
+        .write_all(bytes)
         .and_then(|_| handle.flush())
         .map_err(|error| format!("cannot write compiler output: {error}"))
 }
 
-/// V1 plugins negotiate only a format and stream their output directly to the caller.
-fn legacy_plugin(path: &Path, ast: &molecule_codegen::ast::Ast) -> Result<(), String> {
-    let reply = process::Command::new(path)
-        .arg("--format")
-        .output()
-        .map_err(|err| err.to_string())?;
-    let format = str::from_utf8(&reply.stdout)
-        .ok()
-        .filter(|_| reply.status.success())
-        .and_then(|value| IntermediateFormat::try_from(value.trim()).ok())
-        .unwrap_or(IntermediateFormat::JSON);
-    let input = format.serialize_ast(ast)?;
+fn stream_v1(path: &Path, input: Vec<u8>) -> Result<(), String> {
     let mut child = process::Command::new(path)
         .stdin(process::Stdio::piped())
         .spawn()

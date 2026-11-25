@@ -4,6 +4,7 @@ pub mod ast;
 pub(crate) mod compiler;
 pub(crate) mod generator;
 pub mod integer;
+mod output;
 pub(crate) mod parser;
 pub(crate) mod utils;
 
