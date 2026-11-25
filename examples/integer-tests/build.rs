@@ -28,6 +28,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         "reg_mol/common",
         "reg_packed/common",
         "reg_lazy/common",
+        "reg_mol/pkg",
+        "reg_packed/pkg",
+        "reg_lazy/pkg",
         "c/a",
         "c/b",
     ] {
@@ -265,6 +268,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "table PlainRoot { amount: RootAmt, child: PlainChild, list: PlainLeafVec, u: PlainUnion, opt: OptPlainLeaf, wrap: LocalWrap, }\n",
                 "union PlainRootUnion { RootAmt, PlainChild, OptPlainLeaf, PlainLeafVec, PlainPairVec, OptPlainPairVec, PlainUnion, OptPlainUnion, }\n",
             ),
+        ),
+        ("pkg/internal", "table PrivateInner { a: byte, }"),
+        (
+            "pkg/outer",
+            "import internal;\nunion PublicOuter { PrivateInner, byte, }\n",
+        ),
+        (
+            "pkg_root",
+            "import pkg/outer;\ninteger RootAmt = u64le;\ntable PublicRoot { amount: RootAmt, outer: PublicOuter, }\n",
         ),
     ];
     for &(rel, src) in reg_schemas {

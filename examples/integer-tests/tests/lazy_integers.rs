@@ -46,6 +46,23 @@ pub mod cross_mod_lazy {
     }
 }
 
+#[allow(clippy::all, dead_code)]
+mod private_union_case {
+    pub mod pkg {
+        // Deliberately private (not `pub mod`) so any reference to `pkg::internal`
+        // from sibling `pkg_root` fails to compile with E0603.
+        mod internal {
+            include!(concat!(env!("OUT_DIR"), "/reg_lazy/pkg/internal.rs"));
+        }
+        pub mod outer {
+            include!(concat!(env!("OUT_DIR"), "/reg_lazy/pkg/outer.rs"));
+        }
+    }
+    pub mod pkg_root {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/pkg_root.rs"));
+    }
+}
+
 #[test]
 fn conventional_numeric_getters_use_the_declared_order_in_every_container() {
     let value = 256u64.to_be_bytes();
@@ -902,11 +919,36 @@ fn cross_module_unannotated_child_verification_retries_short_reads() {
         lazy_root.verify(false).unwrap();
         lazy_root.verify(true).unwrap();
         assert_eq!(lazy_root.amount_value().unwrap(), 0xdead_beef_cafe_babe);
+        // Reading fields through imported unannotated child readers also retries short reads.
+        let lazy_child = lazy_root.child().unwrap();
+        assert_eq!(lazy_child.a().unwrap(), 9);
+        let lazy_leaf = lazy_child.leaf().unwrap();
+        assert_eq!(lazy_leaf.tag().unwrap(), 7);
+        assert_eq!(
+            Vec::<u8>::try_from(lazy_leaf.data().unwrap()).unwrap(),
+            vec![0x11, 0x22, 0x33]
+        );
+        let lazy_list = lazy_child.list().unwrap();
+        assert_eq!(lazy_list.len().unwrap(), 1);
+        assert_eq!(
+            Vec::<u8>::try_from(lazy_list.get(0).unwrap().data().unwrap()).unwrap(),
+            vec![0x11, 0x22, 0x33]
+        );
+        let lazy_opt_leaf = lazy_child.opt().unwrap().unwrap();
+        assert_eq!(
+            Vec::<u8>::try_from(lazy_opt_leaf.data().unwrap()).unwrap(),
+            vec![0x11, 0x22, 0x33]
+        );
         // Decoding an imported unannotated Union field directly via getter retries short reads.
-        assert!(matches!(
-            lazy_root.u().unwrap(),
-            cross_mod_lazy::plain_child::PlainUnion::PlainLeaf(_)
-        ));
+        let cross_mod_lazy::plain_child::PlainUnion::PlainLeaf(u_leaf) = lazy_root.u().unwrap()
+        else {
+            panic!("wrong variant")
+        };
+        assert_eq!(u_leaf.tag().unwrap(), 7);
+        assert_eq!(
+            Vec::<u8>::try_from(u_leaf.data().unwrap()).unwrap(),
+            vec![0x11, 0x22, 0x33]
+        );
         // DynVec of imported unannotated Union retries short reads in get(), iter(), verify().
         let lazy_uvec = cross_mod_lazy::plain_root::PlainUnionVec::from(short_cursor(
             union_vec.as_slice().to_vec(),
@@ -970,5 +1012,64 @@ fn cross_module_unannotated_child_verification_retries_short_reads() {
         ));
         assert!(lazy_bad.verify(false).is_err());
         assert!(lazy_bad.verify(true).is_err());
+    }
+
+    // Large payload (> MAX_CACHE_SIZE) read through imported unannotated child reader on short reads.
+    let big_payload: Vec<u8> = (0..(molecule::lazy_reader::MAX_CACHE_SIZE + 37))
+        .map(|i| (i & 0xff) as u8)
+        .collect();
+    let big_leaf = plain_leaf::PlainLeaf::new_builder()
+        .tag(3u8)
+        .data(
+            plain_leaf::PlainBytes::new_builder()
+                .extend(big_payload.iter().copied().map(Into::into))
+                .build(),
+        )
+        .build();
+    let big_root = plain_root::PlainRoot::new_builder()
+        .amount(plain_root::RootAmt::from_u64(42))
+        .opt(
+            plain_child::OptPlainLeaf::new_builder()
+                .set(Some(big_leaf))
+                .build(),
+        )
+        .build();
+    let lazy_big =
+        cross_mod_lazy::plain_root::PlainRoot::from(short_cursor(big_root.as_slice().to_vec(), 3));
+    lazy_big.verify(false).unwrap();
+    assert_eq!(
+        Vec::<u8>::try_from(lazy_big.opt().unwrap().unwrap().data().unwrap()).unwrap(),
+        big_payload
+    );
+
+    // Importing a public union whose variant type lives in a private module must compile without
+    // exposing the private module and still verify/decode under 1-byte and 3-byte short reads.
+    let inner_table = [9u32, 8]
+        .map(u32::to_le_bytes)
+        .concat()
+        .into_iter()
+        .chain([0x5au8])
+        .collect::<Vec<_>>();
+    let outer_union = [0u32.to_le_bytes().as_slice(), &inner_table].concat();
+    let pub_root_wire = [(20 + outer_union.len()) as u32, 12, 20]
+        .map(u32::to_le_bytes)
+        .concat()
+        .into_iter()
+        .chain(99u64.to_le_bytes())
+        .chain(outer_union)
+        .collect::<Vec<_>>();
+    for chunk in [1usize, 3] {
+        let pub_root = private_union_case::pkg_root::PublicRoot::from(short_cursor(
+            pub_root_wire.clone(),
+            chunk,
+        ));
+        pub_root.verify(false).unwrap();
+        assert_eq!(pub_root.amount_value().unwrap(), 99);
+        let private_union_case::pkg::outer::PublicOuter::PrivateInner(inner) =
+            pub_root.outer().unwrap()
+        else {
+            panic!("wrong variant")
+        };
+        assert_eq!(inner.a().unwrap(), 0x5a);
     }
 }

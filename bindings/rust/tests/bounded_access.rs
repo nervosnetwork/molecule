@@ -490,3 +490,34 @@ fn access_error_converts_into_lazy_error_and_exact_helpers_retry_short_reads() {
         Err(AccessError::Read(Error::TotalSize(4, 5)))
     ));
 }
+
+#[test]
+fn legacy_read_at_retries_short_reads_and_rejects_zero_progress() {
+    for chunk in [1usize, 3] {
+        for size in [8usize, MAX_CACHE_SIZE + 37] {
+            let bytes: Vec<u8> = (0..size).map(|i| (i * 31) as u8).collect();
+            let (cur, _) = cursor(bytes.clone(), chunk);
+            assert_eq!(Vec::<u8>::try_from(cur.clone()).unwrap(), bytes);
+            assert_eq!(
+                cur.unpack_number().unwrap(),
+                u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize
+            );
+            assert_eq!(
+                u64::try_from(cur.slice_by_offset(0, 8).unwrap()).unwrap(),
+                u64::from_le_bytes(bytes[..8].try_into().unwrap())
+            );
+            assert_eq!(
+                <[u8; 8]>::try_from(cur.slice_by_offset(0, 8).unwrap()).unwrap(),
+                bytes[..8]
+            );
+        }
+    }
+
+    for size in [4usize, MAX_CACHE_SIZE + 1] {
+        let zero = Cursor::new(size, Box::new(InvalidSource(false)));
+        assert!(matches!(
+            zero.read_at(&mut vec![0u8; size]),
+            Err(Error::Read(0, expected)) if expected == size
+        ));
+    }
+}

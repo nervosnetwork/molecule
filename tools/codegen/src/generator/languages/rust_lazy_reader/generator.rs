@@ -5,370 +5,13 @@ use super::{
 use crate::ast::{self, HasName, *};
 use crate::generator::{field_name, ident_name};
 use crate::integer::{ByteOrder, IntegerSpec};
-use proc_macro2::{Ident, Literal, TokenStream};
-use quote::{format_ident, quote};
-use std::collections::{HashMap, HashSet};
+use proc_macro2::{Literal, TokenStream};
+use quote::quote;
 use std::io;
 
-pub(super) struct ImportedHelpers<'a> {
-    verify_cursor_ids: HashMap<&'a str, usize>,
-    verify_cursor_decls: Vec<(usize, &'a TopDecl)>,
-    decode_union_ids: HashMap<&'a str, usize>,
-    decode_union_decls: Vec<(usize, &'a ast::Union)>,
-    verify_union_ids: HashMap<&'a str, usize>,
-    verify_union_decls: Vec<(usize, &'a ast::Union)>,
-}
-
-fn unwrap_option(mut typ: &TopDecl) -> &TopDecl {
-    while let TopDecl::Option_(v) = typ {
-        typ = v.item().typ();
-    }
-    typ
-}
-
-impl<'a> ImportedHelpers<'a> {
-    pub(super) fn collect(ast: &'a Ast) -> Self {
-        if ast.integers().is_empty() {
-            return Self {
-                verify_cursor_ids: HashMap::new(),
-                verify_cursor_decls: Vec::new(),
-                decode_union_ids: HashMap::new(),
-                decode_union_decls: Vec::new(),
-                verify_union_ids: HashMap::new(),
-                verify_union_decls: Vec::new(),
-            };
-        }
-
-        let mut verify_cursor_seen = HashSet::new();
-        let mut verify_cursor_needed = HashSet::new();
-        let mut decode_union_seen = HashSet::new();
-        let mut decode_union_needed = HashSet::new();
-        let mut verify_union_seen = HashSet::new();
-        let mut verify_union_needed = HashSet::new();
-
-        fn visit_verify_cursor<'a>(
-            typ: &'a TopDecl,
-            seen: &mut HashSet<&'a str>,
-            needed: &mut HashSet<&'a str>,
-        ) {
-            if !seen.insert(typ.name()) {
-                return;
-            }
-            match typ {
-                TopDecl::Option_(v) => visit_verify_cursor(v.item().typ(), seen, needed),
-                TopDecl::DynVec(v) if v.imported_depth() > 0 => {
-                    needed.insert(typ.name());
-                    visit_verify_cursor(v.item().typ(), seen, needed);
-                }
-                TopDecl::Table(v) if v.imported_depth() > 0 => {
-                    needed.insert(typ.name());
-                    for field in v.fields() {
-                        visit_verify_cursor(field.typ(), seen, needed);
-                    }
-                }
-                TopDecl::Union(v) if v.imported_depth() > 0 => {
-                    needed.insert(typ.name());
-                    for item in v.items() {
-                        visit_verify_cursor(item.typ(), seen, needed);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        fn visit_decode_union<'a>(
-            typ: &'a TopDecl,
-            seen: &mut HashSet<&'a str>,
-            needed: &mut HashSet<&'a str>,
-        ) {
-            let inner = unwrap_option(typ);
-            let TopDecl::Union(u) = inner else {
-                return;
-            };
-            if u.imported_depth() == 0 || !seen.insert(inner.name()) {
-                return;
-            }
-            needed.insert(inner.name());
-            for item in u.items() {
-                visit_decode_union(item.typ(), seen, needed);
-            }
-        }
-
-        fn visit_verify_union<'a>(
-            typ: &'a TopDecl,
-            union_seen: &mut HashSet<&'a str>,
-            union_needed: &mut HashSet<&'a str>,
-            cursor_seen: &mut HashSet<&'a str>,
-            cursor_needed: &mut HashSet<&'a str>,
-        ) {
-            let inner = unwrap_option(typ);
-            match inner {
-                TopDecl::Table(_) | TopDecl::DynVec(_) => {
-                    visit_verify_cursor(inner, cursor_seen, cursor_needed);
-                }
-                TopDecl::Union(u) if u.imported_depth() > 0 => {
-                    if !union_seen.insert(inner.name()) {
-                        return;
-                    }
-                    union_needed.insert(inner.name());
-                    for item in u.items() {
-                        visit_verify_union(
-                            item.typ(),
-                            union_seen,
-                            union_needed,
-                            cursor_seen,
-                            cursor_needed,
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        for decl in ast.decls().iter().filter(|d| d.imported_depth() == 0) {
-            match decl.as_ref() {
-                TopDecl::Table(v) => {
-                    for field in v.fields() {
-                        visit_verify_cursor(
-                            field.typ(),
-                            &mut verify_cursor_seen,
-                            &mut verify_cursor_needed,
-                        );
-                        visit_decode_union(
-                            field.typ(),
-                            &mut decode_union_seen,
-                            &mut decode_union_needed,
-                        );
-                    }
-                }
-                TopDecl::DynVec(v) => {
-                    visit_verify_cursor(
-                        v.item().typ(),
-                        &mut verify_cursor_seen,
-                        &mut verify_cursor_needed,
-                    );
-                    visit_decode_union(
-                        v.item().typ(),
-                        &mut decode_union_seen,
-                        &mut decode_union_needed,
-                    );
-                }
-                TopDecl::Union(v) => {
-                    for item in v.items() {
-                        visit_decode_union(
-                            item.typ(),
-                            &mut decode_union_seen,
-                            &mut decode_union_needed,
-                        );
-                        visit_verify_union(
-                            item.typ(),
-                            &mut verify_union_seen,
-                            &mut verify_union_needed,
-                            &mut verify_cursor_seen,
-                            &mut verify_cursor_needed,
-                        );
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let mut verify_cursor_ids = HashMap::new();
-        let mut verify_cursor_decls = Vec::new();
-        let mut decode_union_ids = HashMap::new();
-        let mut decode_union_decls = Vec::new();
-        let mut verify_union_ids = HashMap::new();
-        let mut verify_union_decls = Vec::new();
-        for decl in ast.decls() {
-            if verify_cursor_needed.contains(decl.name()) {
-                let id = verify_cursor_decls.len();
-                verify_cursor_ids.insert(decl.name(), id);
-                verify_cursor_decls.push((id, decl.as_ref()));
-            }
-            if let TopDecl::Union(u) = decl.as_ref() {
-                if decode_union_needed.contains(decl.name()) {
-                    let id = decode_union_decls.len();
-                    decode_union_ids.insert(decl.name(), id);
-                    decode_union_decls.push((id, u));
-                }
-                if verify_union_needed.contains(decl.name()) {
-                    let id = verify_union_decls.len();
-                    verify_union_ids.insert(decl.name(), id);
-                    verify_union_decls.push((id, u));
-                }
-            }
-        }
-        Self {
-            verify_cursor_ids,
-            verify_cursor_decls,
-            decode_union_ids,
-            decode_union_decls,
-            verify_union_ids,
-            verify_union_decls,
-        }
-    }
-
-    fn verify_cursor_ident(&self, name: &str) -> Option<Ident> {
-        self.verify_cursor_ids
-            .get(name)
-            .map(|id| format_ident!("__mol_verify_{id}"))
-    }
-
-    fn decode_union_ident(&self, name: &str) -> Option<Ident> {
-        self.decode_union_ids
-            .get(name)
-            .map(|id| format_ident!("__mol_decode_union_{id}"))
-    }
-
-    fn verify_union_ident(&self, name: &str) -> Option<Ident> {
-        self.verify_union_ids
-            .get(name)
-            .map(|id| format_ident!("__mol_verify_union_{id}"))
-    }
-
-    pub(super) fn emit<W: io::Write>(&self, output: &mut W, ast: &Ast) -> io::Result<()> {
-        for &(id, decl) in &self.verify_cursor_decls {
-            let fn_name = format_ident!("__mol_verify_{id}");
-            let tokens = match decl {
-                TopDecl::Table(t) => {
-                    let field_count = t.fields().len();
-                    let body = if t.fields().is_empty() {
-                        quote!(cur.verify_table_exact(0, compatible)?;)
-                    } else {
-                        let verify_fields = t.fields().iter().enumerate().map(|(index, f)| {
-                            verify_cursor(
-                                f.typ().as_ref(),
-                                quote!(cur.dynvec_item_exact(count, #index)?),
-                                ast,
-                                true,
-                                self,
-                            )
-                        });
-                        quote! {
-                            let count = cur.verify_table_exact(#field_count, compatible)?;
-                            #( #verify_fields )*
-                        }
-                    };
-                    quote! {
-                        fn #fn_name(cur: &molecule::lazy_reader::Cursor, compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                            #body
-                            ::core::result::Result::Ok(())
-                        }
-                    }
-                }
-                TopDecl::DynVec(v) => {
-                    let item_typ = v.item().typ().as_ref();
-                    let param = if verify_uses_compatible(item_typ) {
-                        quote!(compatible)
-                    } else {
-                        quote!(_compatible)
-                    };
-                    let verify_item = verify_cursor(
-                        item_typ,
-                        quote!(cur.dynvec_item_exact(count, i)?),
-                        ast,
-                        true,
-                        self,
-                    );
-                    quote! {
-                        fn #fn_name(cur: &molecule::lazy_reader::Cursor, #param: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                            let count = cur.verify_dynvec_exact()?;
-                            for i in 0..count {
-                                #verify_item
-                            }
-                            ::core::result::Result::Ok(())
-                        }
-                    }
-                }
-                TopDecl::Union(u) => {
-                    let uses_compat = u
-                        .items()
-                        .iter()
-                        .any(|i| verify_uses_compatible(i.typ().as_ref()));
-                    let param = if uses_compat {
-                        quote!(compatible)
-                    } else {
-                        quote!(_compatible)
-                    };
-                    let arms = u.items().iter().map(|item| {
-                        let item_id = item.id();
-                        let check = verify_cursor(
-                            item.typ().as_ref(),
-                            quote!(item.cursor),
-                            ast,
-                            true,
-                            self,
-                        );
-                        quote!(#item_id => { #check })
-                    });
-                    quote! {
-                        fn #fn_name(cur: &molecule::lazy_reader::Cursor, #param: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                            let item = cur.union_unpack_exact()?;
-                            match item.item_id {
-                                #(#arms,)*
-                                _ => return ::core::result::Result::Err(molecule::lazy_reader::Error::UnknownItem),
-                            }
-                            ::core::result::Result::Ok(())
-                        }
-                    }
-                }
-                _ => unreachable!(),
-            };
-            writeln!(output, "{tokens}")?;
-        }
-        for &(id, u) in &self.decode_union_decls {
-            let fn_name = format_ident!("__mol_decode_union_{id}");
-            let type_path = lazy_type_path_by_name(u.name(), ast);
-            let arms = u.items().iter().map(|item| {
-                let typ = item.typ();
-                let variant = ident_name(typ.name(), "");
-                let item_id = item.id();
-                let (_, value) = cursor_type(typ, ast, true);
-                let expr = value.expression(typ, true, self);
-                quote!(#item_id => ::core::result::Result::Ok(#type_path::#variant(#expr)))
-            });
-            writeln!(
-                output,
-                "{}",
-                quote! {
-                    fn #fn_name(cur: molecule::lazy_reader::Cursor) -> ::core::result::Result<#type_path, molecule::lazy_reader::Error> {
-                        let item = cur.union_unpack_exact()?;
-                        let cur = item.cursor;
-                        match item.item_id {
-                            #(#arms,)*
-                            _ => ::core::result::Result::Err(molecule::lazy_reader::Error::UnknownItem),
-                        }
-                    }
-                }
-            )?;
-        }
-        for &(id, u) in &self.verify_union_decls {
-            let fn_name = format_ident!("__mol_verify_union_{id}");
-            let type_path = lazy_type_path_by_name(u.name(), ast);
-            let arms = u.items().iter().map(|item| {
-                let typ = item.typ();
-                let variant = ident_name(typ.name(), "");
-                let (_, value) = cursor_type(typ, ast, true);
-                let check = value.verify_union_value(typ, true, self);
-                quote!(#type_path::#variant(_value) => #check)
-            });
-            writeln!(
-                output,
-                "{}",
-                quote! {
-                    fn #fn_name(val: &#type_path, _compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                        match val { #(#arms,)* }
-                    }
-                }
-            )?;
-        }
-        Ok(())
-    }
-}
-
-fn lazy_type_path_by_name(raw_name: &str, ast: &Ast) -> TokenStream {
-    let name = ident_name(raw_name, "");
-    if let Some(module) = ast.decl_origin(raw_name) {
+fn lazy_type_path(typ: &TopDecl, ast: &Ast) -> TokenStream {
+    let name = ident_name(typ.name(), "");
+    if let Some(module) = ast.decl_origin(typ.name()) {
         let module = module_path_tokens(module);
         quote!(#module::#name)
     } else {
@@ -376,17 +19,8 @@ fn lazy_type_path_by_name(raw_name: &str, ast: &Ast) -> TokenStream {
     }
 }
 
-fn lazy_type_path(typ: &TopDecl, ast: &Ast) -> TokenStream {
-    lazy_type_path_by_name(typ.name(), ast)
-}
-
 impl LazyReaderGenerator for ast::Union {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let name = ident_name(self.name(), "");
         let exact = !ast.integers().is_empty();
         let unpack = if exact {
@@ -402,8 +36,8 @@ impl LazyReaderGenerator for ast::Union {
             let variant = ident_name(typ.name(), "");
             let id = item.id();
             let (native, value) = cursor_type(typ, ast, true);
-            let check = value.verify_union_value(typ, exact, imported);
-            let value = value.expression(typ, exact, imported);
+            let check = value.verify_union_value();
+            let value = value.expression(exact);
             variants.push(quote!(#variant(#native)));
             decode.push(quote!(#id => ::core::result::Result::Ok(Self::#variant(#value))));
             verify.push(quote!(Self::#variant(_value) => #check));
@@ -441,16 +75,10 @@ enum SequenceKind {
 }
 
 impl LazyReaderGenerator for ast::Array {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
-        let item_typ = self.item().typ().as_ref();
-        let (transformed_name, tc) = cursor_type(item_typ, ast, false);
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
         let exact = !ast.integers().is_empty();
-        let value = tc.expression(item_typ, exact, imported);
+        let value = tc.expression(exact);
         generate_rust_common_array(
             output,
             self.name(),
@@ -479,19 +107,13 @@ impl LazyReaderGenerator for ast::Array {
 impl LazyReaderGenerator for ast::Option_ {}
 
 impl LazyReaderGenerator for ast::Struct {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         generate_rust_common_table(
             output,
             ast,
             self.name(),
             self.fields(),
             Some(self.field_sizes()),
-            imported,
         )?;
         let name = ident_name(self.name(), "");
         let total_size: usize = self.field_sizes().iter().sum();
@@ -511,17 +133,11 @@ impl LazyReaderGenerator for ast::Struct {
 
 // in FixVec, all item size is same and known already, the count is unknown.
 impl LazyReaderGenerator for ast::FixVec {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
-        let item_typ = self.item().typ().as_ref();
-        let (transformed_name, tc) = cursor_type(item_typ, ast, false);
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
         let exact = !ast.integers().is_empty();
         let item_size = self.item_size();
-        let value = tc.expression(item_typ, exact, imported);
+        let value = tc.expression(exact);
         generate_rust_common_array(
             output,
             self.name(),
@@ -552,16 +168,11 @@ impl LazyReaderGenerator for ast::FixVec {
 }
 
 impl LazyReaderGenerator for ast::DynVec {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let item_typ = self.item().typ().as_ref();
         let (transformed_name, tc) = cursor_type(item_typ, ast, false);
         let exact = !ast.integers().is_empty();
-        let value = tc.expression(item_typ, exact, imported);
+        let value = tc.expression(exact);
         generate_rust_common_array(
             output,
             self.name(),
@@ -582,7 +193,6 @@ impl LazyReaderGenerator for ast::DynVec {
                 quote!(self.cursor.dynvec_item_exact(count, i)?),
                 ast,
                 true,
-                imported,
             );
             quote! {
                 let count = self.cursor.verify_dynvec_exact()?;
@@ -596,7 +206,6 @@ impl LazyReaderGenerator for ast::DynVec {
                 quote!(self.cursor.dynvec_slice_by_index(i)?),
                 ast,
                 false,
-                imported,
             );
             quote! {
                 self.cursor.verify_dynvec()?;
@@ -621,13 +230,8 @@ impl LazyReaderGenerator for ast::DynVec {
 }
 
 impl LazyReaderGenerator for ast::Table {
-    fn gen_rust<W: io::Write>(
-        &self,
-        output: &mut W,
-        ast: &ast::Ast,
-        imported: &ImportedHelpers<'_>,
-    ) -> io::Result<()> {
-        generate_rust_common_table(output, ast, self.name(), self.fields(), None, imported)?;
+    fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
+        generate_rust_common_table(output, ast, self.name(), self.fields(), None)?;
         let field_count = self.fields().len();
         let name = ident_name(self.name(), "");
         let exact = !ast.integers().is_empty();
@@ -642,7 +246,6 @@ impl LazyReaderGenerator for ast::Table {
                         quote!(self.cursor.dynvec_item_exact(count, #index)?),
                         ast,
                         true,
-                        imported,
                     )
                 });
                 quote! {
@@ -657,7 +260,6 @@ impl LazyReaderGenerator for ast::Table {
                     quote!(self.cursor.table_slice_by_index(#index)?),
                     ast,
                     false,
-                    imported,
                 )
             });
             quote! {
@@ -867,7 +469,6 @@ fn generate_rust_common_table<W: io::Write>(
     plain_name: &str,
     fields: &[FieldDecl],
     field_sizes: Option<&[usize]>,
-    imported: &ImportedHelpers<'_>,
 ) -> io::Result<()> {
     let name = ident_name(plain_name, "");
     let q = quote! {
@@ -888,7 +489,7 @@ fn generate_rust_common_table<W: io::Write>(
     for (index, field) in fields.iter().enumerate() {
         let (transformed_name, tc) = cursor_type(field.typ(), ast, false);
         let slice_by = generate_rust_slice_by(index, field_count, field_sizes, exact);
-        let value = tc.expression(field.typ(), exact, imported);
+        let value = tc.expression(exact);
         let field_name = field_name(field.name());
         let q = quote! {
             impl #name {
@@ -955,86 +556,46 @@ enum CursorValue {
 impl CursorValue {
     // Byte and Bytes lose their framing during conversion. Only payloads that
     // retain a generated reader still have wire data to verify.
-    fn verify_union_value(
-        &self,
-        typ: &TopDecl,
-        exact: bool,
-        imported: &ImportedHelpers<'_>,
-    ) -> TokenStream {
-        match (self, typ) {
-            (Self::Optional(inner), TopDecl::Option_(opt)) => {
-                let check = inner.verify_union_value(opt.item().typ(), exact, imported);
+    fn verify_union_value(&self) -> TokenStream {
+        match self {
+            Self::Into | Self::TryInto => quote!(_value.verify(_compatible)),
+            Self::Optional(inner) => {
+                let check = inner.verify_union_value();
                 quote!(match _value {
                     ::core::option::Option::Some(_value) => #check,
                     ::core::option::Option::None => ::core::result::Result::Ok(()),
                 })
             }
-            (Self::Into, TopDecl::Table(_) | TopDecl::DynVec(_)) if exact => {
-                if let Some(fn_name) = imported.verify_cursor_ident(typ.name()) {
-                    quote!(#fn_name(&_value.cursor, _compatible))
-                } else {
-                    quote!(_value.verify(_compatible))
-                }
-            }
-            (Self::Into, TopDecl::FixVec(v)) if exact => {
-                let item_size = v.item_size();
-                quote!({
-                    _value.cursor.fixvec_len_exact(#item_size)?;
-                    ::core::result::Result::Ok(())
-                })
-            }
-            (Self::TryInto, TopDecl::Union(_)) if exact => {
-                if let Some(fn_name) = imported.verify_union_ident(typ.name()) {
-                    quote!(#fn_name(_value, _compatible))
-                } else {
-                    quote!(_value.verify(_compatible))
-                }
-            }
-            (Self::Into | Self::TryInto, _) => quote!(_value.verify(_compatible)),
-            (Self::Byte | Self::Bytes | Self::FixedBytes(_) | Self::Integer(_), _) => {
+            Self::Byte | Self::Bytes | Self::FixedBytes(_) | Self::Integer(_) => {
                 quote!(::core::result::Result::Ok(()))
             }
-            (Self::Optional(_), _) => unreachable!(),
         }
     }
 
-    fn expression(
-        &self,
-        typ: &TopDecl,
-        exact: bool,
-        imported: &ImportedHelpers<'_>,
-    ) -> TokenStream {
-        match (self, typ) {
-            (Self::Byte, _) if exact => quote!(cur.read_array::<1>()?[0]),
-            (Self::Byte, _) => quote!({
+    fn expression(&self, exact: bool) -> TokenStream {
+        match self {
+            Self::Byte if exact => quote!(cur.read_array::<1>()?[0]),
+            Self::Byte => quote!({
                 cur.verify_fixed_size(1)?;
                 ::core::convert::TryInto::try_into(cur)?
             }),
-            (Self::Into, _) => quote!(::core::convert::Into::into(cur)),
-            (Self::TryInto, TopDecl::Union(_)) if exact => {
-                if let Some(fn_name) = imported.decode_union_ident(typ.name()) {
-                    quote!(#fn_name(cur)?)
-                } else {
-                    quote!(::core::convert::TryInto::try_into(cur)?)
-                }
-            }
-            (Self::TryInto, _) => quote!(::core::convert::TryInto::try_into(cur)?),
-            (Self::Bytes, _) if exact => quote!(cur.fixvec_raw_bytes_exact()?),
-            (Self::Bytes, _) => quote!({
+            Self::Into => quote!(::core::convert::Into::into(cur)),
+            Self::TryInto => quote!(::core::convert::TryInto::try_into(cur)?),
+            Self::Bytes if exact => quote!(cur.fixvec_raw_bytes_exact()?),
+            Self::Bytes => quote!({
                 let raw = cur.convert_to_rawbytes()?;
                 cur.verify_fixed_size(molecule::lazy_reader::NUMBER_SIZE + raw.size)?;
                 raw
             }),
-            (Self::FixedBytes(width), _) => quote!(cur.read_array::<#width>()?),
-            (Self::Integer(spec), _) => {
+            Self::FixedBytes(width) => quote!(cur.read_array::<#width>()?),
+            Self::Integer(spec) => {
                 let width = spec.byte_width();
                 integers::decode(*spec, quote!(cur.read_array::<#width>()?))
             }
-            (Self::Optional(inner), TopDecl::Option_(opt)) => {
-                let value = inner.expression(opt.item().typ(), exact, imported);
+            Self::Optional(inner) => {
+                let value = inner.expression(exact);
                 quote!(if cur.option_is_none() { ::core::option::Option::None } else { ::core::option::Option::Some(#value) })
             }
-            (Self::Optional(_), _) => unreachable!(),
         }
     }
 }
@@ -1113,17 +674,11 @@ fn verify_uses_compatible(typ: &TopDecl) -> bool {
     }
 }
 
-fn verify_cursor(
-    typ: &TopDecl,
-    cur: TokenStream,
-    ast: &Ast,
-    exact: bool,
-    imported: &ImportedHelpers<'_>,
-) -> TokenStream {
+fn verify_cursor(typ: &TopDecl, cur: TokenStream, ast: &Ast, exact: bool) -> TokenStream {
     match typ {
         TopDecl::Primitive(_) => quote!((#cur).verify_fixed_size(1)?;),
         TopDecl::Option_(v) => {
-            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), ast, exact, imported);
+            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), ast, exact);
             quote!({
                 let val = #cur;
                 if !val.option_is_none() {
@@ -1132,11 +687,6 @@ fn verify_cursor(
             })
         }
         TopDecl::Union(_) => {
-            if exact {
-                if let Some(fn_name) = imported.verify_cursor_ident(typ.name()) {
-                    return quote!(#fn_name(&(#cur), compatible)?;);
-                }
-            }
             let type_path = lazy_type_path(typ, ast);
             quote!(<#type_path as ::core::convert::TryFrom<molecule::lazy_reader::Cursor>>::try_from(#cur)?.verify(compatible)?;)
         }
@@ -1157,11 +707,6 @@ fn verify_cursor(
             }
         }
         TopDecl::DynVec(_) | TopDecl::Table(_) => {
-            if exact {
-                if let Some(fn_name) = imported.verify_cursor_ident(typ.name()) {
-                    return quote!(#fn_name(&(#cur), compatible)?;);
-                }
-            }
             let type_path = lazy_type_path(typ, ast);
             quote!(<#type_path as ::core::convert::From<molecule::lazy_reader::Cursor>>::from(#cur).verify(compatible)?;)
         }
