@@ -102,20 +102,28 @@ impl Cursor {
             .checked_add(1)
             .and_then(|n| n.checked_mul(NUMBER_SIZE))
             .ok_or(AccessError::Overflow)?;
-        let start = self.read_number_at(start_pos)?;
-        let end = if index + 1 == count {
-            self.size
+        let (start, end) = if index + 1 == count {
+            (self.read_number_at(start_pos)?, self.size)
         } else {
-            let end_pos = start_pos
-                .checked_add(NUMBER_SIZE)
-                .ok_or(AccessError::Overflow)?;
-            self.read_number_at(end_pos)?
+            let mut pair = [0; NUMBER_SIZE * 2];
+            self.read_exact_at(start_pos, &mut pair)?;
+            let words = pair.as_chunks::<NUMBER_SIZE>().0;
+            (
+                u32::from_le_bytes(words[0]) as usize,
+                u32::from_le_bytes(words[1]) as usize,
+            )
         };
         let len = end.checked_sub(start).ok_or(Error::Offset)?;
         if start < header_end || end > self.size {
             return Err(Error::Offset.into());
         }
         self.slice_exact(start, len)
+    }
+
+    /// Validate a dynamic-vector header and slice item `index` in O(1).
+    pub fn dynvec_get_exact(&self, index: usize) -> Result<Self, AccessError> {
+        let count = self.dynvec_len_exact()?;
+        self.dynvec_item_exact(count, index)
     }
 
     /// Validate the offset table and retain the selected field in the same pass.

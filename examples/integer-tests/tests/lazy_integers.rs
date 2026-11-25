@@ -10,6 +10,42 @@ pub mod schema {
     include!(concat!(env!("OUT_DIR"), "/lazy/lazy_names.rs"));
 }
 
+#[allow(clippy::all)]
+pub mod lazy_blockchain {
+    include!(concat!(env!("OUT_DIR"), "/lazy/blockchain.rs"));
+}
+
+#[allow(clippy::all)]
+pub mod packed_blockchain {
+    include!(concat!(env!("OUT_DIR"), "/packed/blockchain.rs"));
+}
+
+#[allow(clippy::all)]
+pub mod cross_mod_packed {
+    pub mod plain_leaf {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/plain_leaf.rs"));
+    }
+    pub mod plain_child {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/plain_child.rs"));
+    }
+    pub mod plain_root {
+        include!(concat!(env!("OUT_DIR"), "/reg_packed/plain_root.rs"));
+    }
+}
+
+#[allow(clippy::all)]
+pub mod cross_mod_lazy {
+    pub mod plain_leaf {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/plain_leaf.rs"));
+    }
+    pub mod plain_child {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/plain_child.rs"));
+    }
+    pub mod plain_root {
+        include!(concat!(env!("OUT_DIR"), "/reg_lazy/plain_root.rs"));
+    }
+}
+
 #[test]
 fn conventional_numeric_getters_use_the_declared_order_in_every_container() {
     let value = 256u64.to_be_bytes();
@@ -647,4 +683,292 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
         borrowed.get(0),
         Err(molecule::lazy_reader::Error::Common)
     ));
+}
+
+struct CountingSource {
+    bytes: Vec<u8>,
+    chunk: usize,
+    calls: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl molecule::lazy_reader::Read for CountingSource {
+    fn read(
+        &self,
+        output: &mut [u8],
+        offset: usize,
+    ) -> Result<usize, molecule::lazy_reader::Error> {
+        self.calls.set(self.calls.get() + 1);
+        let remaining =
+            self.bytes
+                .get(offset..)
+                .ok_or(molecule::lazy_reader::Error::OutOfBound(
+                    offset,
+                    self.bytes.len(),
+                ))?;
+        let count = remaining.len().min(output.len()).min(self.chunk);
+        output[..count].copy_from_slice(&remaining[..count]);
+        Ok(count)
+    }
+}
+
+fn counting_cursor(bytes: Vec<u8>, chunk: usize) -> (Cursor, std::rc::Rc<std::cell::Cell<usize>>) {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let cur = Cursor::new(
+        bytes.len(),
+        Box::new(CountingSource {
+            bytes,
+            chunk,
+            calls: calls.clone(),
+        }),
+    );
+    (cur, calls)
+}
+
+#[test]
+fn dynvec_and_fixvec_iteration_scale_linearly_in_read_calls() {
+    use molecule::prelude::{Builder as _, Entity as _};
+
+    let build_bytes_vec = |n: usize| -> Vec<u8> {
+        let mut builder = packed_blockchain::BytesVec::new_builder();
+        for i in 0..n {
+            let payload = [(i & 0xff) as u8, ((i >> 8) & 0xff) as u8];
+            let item = packed_blockchain::Bytes::new_builder()
+                .extend(payload.into_iter().map(Into::into))
+                .build();
+            builder = builder.push(item);
+        }
+        builder.build().as_slice().to_vec()
+    };
+
+    let wire_1k = build_bytes_vec(1_024);
+    let wire_2k = build_bytes_vec(2_048);
+
+    // Borrowed iter() on CKB BytesVec: must scale linearly (not O(n^2)).
+    let (cur_1k, calls_1k) = counting_cursor(wire_1k.clone(), usize::MAX);
+    let vec_1k = lazy_blockchain::BytesVec::from(cur_1k);
+    assert_eq!(vec_1k.iter().count(), 1_024);
+    let iter_1k = calls_1k.get();
+
+    let (cur_2k, calls_2k) = counting_cursor(wire_2k.clone(), usize::MAX);
+    let vec_2k = lazy_blockchain::BytesVec::from(cur_2k);
+    assert_eq!(vec_2k.iter().count(), 2_048);
+    let iter_2k = calls_2k.get();
+
+    assert!(
+        iter_2k <= iter_1k * 2 + 64,
+        "borrowed DynVec::iter() grew super-linearly: 1k={iter_1k}, 2k={iter_2k}"
+    );
+    assert!(
+        iter_2k < 5_000,
+        "borrowed DynVec::iter() read count unexpectedly high: {iter_2k}"
+    );
+
+    // Consuming into_iter() on CKB BytesVec: must also scale linearly.
+    let (cur_1k, calls_1k) = counting_cursor(wire_1k.clone(), usize::MAX);
+    assert_eq!(
+        lazy_blockchain::BytesVec::from(cur_1k).into_iter().count(),
+        1_024
+    );
+    let into_1k = calls_1k.get();
+
+    let (cur_2k, calls_2k) = counting_cursor(wire_2k.clone(), usize::MAX);
+    assert_eq!(
+        lazy_blockchain::BytesVec::from(cur_2k).into_iter().count(),
+        2_048
+    );
+    let into_2k = calls_2k.get();
+
+    assert!(
+        into_2k <= into_1k * 2 + 64,
+        "consuming DynVec::into_iter() grew super-linearly: 1k={into_1k}, 2k={into_2k}"
+    );
+    assert_eq!(into_1k, iter_1k);
+    assert_eq!(into_2k, iter_2k);
+
+    // Manual indexed get(i) loop and verify(false) also scale linearly.
+    let (cur_1k, calls_1k) = counting_cursor(wire_1k.clone(), usize::MAX);
+    let v1 = lazy_blockchain::BytesVec::from(cur_1k);
+    for i in 0..v1.len().unwrap() {
+        assert_eq!(v1.get(i).unwrap().size, 2);
+    }
+    let get_1k = calls_1k.get();
+
+    let (cur_2k, calls_2k) = counting_cursor(wire_2k.clone(), usize::MAX);
+    let v2 = lazy_blockchain::BytesVec::from(cur_2k);
+    for i in 0..v2.len().unwrap() {
+        assert_eq!(v2.get(i).unwrap().size, 2);
+    }
+    let get_2k = calls_2k.get();
+    assert!(
+        get_2k <= get_1k * 2 + 64,
+        "DynVec::get() loop grew super-linearly: 1k={get_1k}, 2k={get_2k}"
+    );
+
+    // Short reads (3-byte chunks) also succeed through BytesVec::iter() and verify().
+    let small_wire = build_bytes_vec(12);
+    let small = lazy_blockchain::BytesVec::from(short_cursor(small_wire, 3));
+    small.verify(false).unwrap();
+    let decoded: Vec<_> = small
+        .iter()
+        .map(|cur| cur.read_array::<2>().unwrap())
+        .collect();
+    assert_eq!(decoded.len(), 12);
+    assert_eq!(decoded[0], [0, 0]);
+    assert_eq!(decoded[11], [11, 0]);
+
+    // FixVec iteration (Values) also scales linearly without header cache thrashing.
+    let build_values = |n: usize| -> Vec<u8> {
+        let mut wire = Vec::with_capacity(4 + n * 8);
+        wire.extend_from_slice(&(n as u32).to_le_bytes());
+        for i in 0..n {
+            wire.extend_from_slice(&(i as u64).to_be_bytes());
+        }
+        wire
+    };
+    let (fcur_1k, fcalls_1k) = counting_cursor(build_values(1_024), usize::MAX);
+    assert_eq!(schema::Values::from(fcur_1k).into_iter().count(), 1_024);
+    let f1 = fcalls_1k.get();
+    let (fcur_2k, fcalls_2k) = counting_cursor(build_values(2_048), usize::MAX);
+    assert_eq!(schema::Values::from(fcur_2k).into_iter().count(), 2_048);
+    let f2 = fcalls_2k.get();
+    assert!(
+        f2 <= f1 * 2 + 16,
+        "FixVec::into_iter() grew super-linearly: 1k={f1}, 2k={f2}"
+    );
+    assert!(f2 <= 2_100, "FixVec::into_iter() thrashed cache: {f2}");
+}
+
+#[test]
+fn cross_module_unannotated_child_verification_retries_short_reads() {
+    use cross_mod_packed::{plain_child, plain_leaf, plain_root};
+    use molecule::prelude::{Builder as _, Entity as _};
+
+    let leaf = plain_leaf::PlainLeaf::new_builder()
+        .tag(7u8)
+        .data(
+            plain_leaf::PlainBytes::new_builder()
+                .extend([0x11u8, 0x22, 0x33].into_iter().map(Into::into))
+                .build(),
+        )
+        .build();
+    let list = plain_child::PlainLeafVec::new_builder()
+        .push(leaf.clone())
+        .build();
+    let opt = plain_child::OptPlainLeaf::new_builder()
+        .set(Some(leaf.clone()))
+        .build();
+    let plain_u = plain_child::PlainUnion::new_builder()
+        .set(leaf.clone())
+        .build();
+    let child = plain_child::PlainChild::new_builder()
+        .a(9u8)
+        .leaf(leaf)
+        .list(list.clone())
+        .opt(opt.clone())
+        .u(plain_u.clone())
+        .build();
+    let pair = plain_child::PlainPair::new_builder().a(1u8).b(2u8).build();
+    let pair_vec = plain_child::PlainPairVec::new_builder().push(pair).build();
+    let opt_pair_vec = plain_child::OptPlainPairVec::new_builder()
+        .set(Some(pair_vec.clone()))
+        .build();
+    let opt_u = plain_child::OptPlainUnion::new_builder()
+        .set(Some(plain_u.clone()))
+        .build();
+    let wrap = plain_root::LocalWrap::new_builder()
+        .set(plain_u.clone())
+        .build();
+    let union_vec = plain_root::PlainUnionVec::new_builder()
+        .push(plain_u.clone())
+        .push(
+            plain_child::PlainUnion::new_builder()
+                .set(molecule::prelude::Byte::new(5))
+                .build(),
+        )
+        .build();
+    let root = plain_root::PlainRoot::new_builder()
+        .amount(plain_root::RootAmt::from_u64(0xdead_beef_cafe_babe))
+        .child(child.clone())
+        .list(list.clone())
+        .u(plain_u.clone())
+        .opt(opt.clone())
+        .wrap(wrap)
+        .build();
+
+    let root_bytes = root.as_slice().to_vec();
+    for chunk in [1usize, 3, usize::MAX] {
+        let lazy_root =
+            cross_mod_lazy::plain_root::PlainRoot::from(short_cursor(root_bytes.clone(), chunk));
+        lazy_root.verify(false).unwrap();
+        lazy_root.verify(true).unwrap();
+        assert_eq!(lazy_root.amount_value().unwrap(), 0xdead_beef_cafe_babe);
+        // Decoding an imported unannotated Union field directly via getter retries short reads.
+        assert!(matches!(
+            lazy_root.u().unwrap(),
+            cross_mod_lazy::plain_child::PlainUnion::PlainLeaf(_)
+        ));
+        // DynVec of imported unannotated Union retries short reads in get(), iter(), verify().
+        let lazy_uvec = cross_mod_lazy::plain_root::PlainUnionVec::from(short_cursor(
+            union_vec.as_slice().to_vec(),
+            chunk,
+        ));
+        lazy_uvec.verify(false).unwrap();
+        assert!(matches!(
+            lazy_uvec.get(1).unwrap(),
+            cross_mod_lazy::plain_child::PlainUnion::Byte(5)
+        ));
+        assert_eq!(lazy_uvec.iter().count(), 2);
+
+        // Union in annotated root holding imported unannotated Table / Option / DynVec / FixVec / Union
+        for (variant_id, payload) in [
+            (1u32, child.as_slice()),
+            (2u32, opt.as_slice()),
+            (3u32, list.as_slice()),
+            (4u32, pair_vec.as_slice()),
+            (5u32, opt_pair_vec.as_slice()),
+            (6u32, plain_u.as_slice()),
+            (7u32, opt_u.as_slice()),
+        ] {
+            let wire = [variant_id.to_le_bytes().as_slice(), payload].concat();
+            let u = cross_mod_lazy::plain_root::PlainRootUnion::try_from(short_cursor(wire, chunk))
+                .unwrap();
+            u.verify(false).unwrap();
+            u.verify(true).unwrap();
+        }
+    }
+
+    // Extra field inside the imported child table must fail strict verify(false) and pass verify(true)
+    // even under 1-byte and 3-byte short reads.
+    let mut compat_leaf = [22u32, 16, 17, 21].map(u32::to_le_bytes).concat();
+    compat_leaf.push(7u8); // tag (1 byte at 16..17)
+    compat_leaf.extend_from_slice(&0u32.to_le_bytes()); // data = empty PlainBytes (4 bytes at 17..21)
+    compat_leaf.push(0xff); // extra field (1 byte at 21..22)
+    let compat_opt = plain_child::OptPlainLeaf::new_unchecked(compat_leaf.into());
+    let compat_root = root.clone().as_builder().opt(compat_opt).build();
+    for chunk in [1usize, 3] {
+        let lazy_compat = cross_mod_lazy::plain_root::PlainRoot::from(short_cursor(
+            compat_root.as_slice().to_vec(),
+            chunk,
+        ));
+        assert!(lazy_compat.verify(false).is_err());
+        lazy_compat.verify(true).unwrap();
+    }
+
+    // Corrupt PlainBytes inside 2-hop imported PlainLeaf must fail verify even on 1-byte short reads.
+    let bad_leaf_bytes = [15u32, 12, 13]
+        .map(u32::to_le_bytes)
+        .concat()
+        .into_iter()
+        .chain([7u8, 0x01, 0x02]) // 2-byte truncated PlainBytes header
+        .collect::<Vec<_>>();
+    let bad_opt = plain_child::OptPlainLeaf::new_unchecked(bad_leaf_bytes.into());
+    let bad_root = root.as_builder().opt(bad_opt).build();
+    for chunk in [1usize, 3] {
+        let lazy_bad = cross_mod_lazy::plain_root::PlainRoot::from(short_cursor(
+            bad_root.as_slice().to_vec(),
+            chunk,
+        ));
+        assert!(lazy_bad.verify(false).is_err());
+        assert!(lazy_bad.verify(true).is_err());
+    }
 }

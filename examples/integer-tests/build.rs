@@ -181,6 +181,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             .output_dir(out.join("packed"))
             .run()?;
     }
+    Compiler::new()
+        .input_schema_file("schemas/blockchain.mol")
+        .generate_code(Language::RustLazyReader)
+        .output_dir(out.join("lazy"))
+        .run()?;
     legacy_codegen::Compiler::new()
         .input_schema_file(&blockchain)
         .generate_code(legacy_codegen::Language::Rust)
@@ -228,6 +233,37 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "table ShadowT { as_slice: byte, ok: Ok, err: Err, cur: Cursor, }\n",
                 "table Combined { def: DefVal, leaf: LeafAmt, rate: FeeRate, opt_row: OptFeeRow, local_row: fee_row, cases: CaseFields, }\n",
                 "union MixedUnion { LeafAmt, FeeRate, OptFeeRow, }\n",
+            ),
+        ),
+        (
+            "plain_leaf",
+            "vector PlainBytes <byte>; table PlainLeaf { tag: byte, data: PlainBytes, }",
+        ),
+        (
+            "plain_child",
+            concat!(
+                "import plain_leaf;\n",
+                "struct PlainPair { a: byte, b: byte, }\n",
+                "vector PlainPairVec <PlainPair>;\n",
+                "option OptPlainPairVec (PlainPairVec);\n",
+                "vector PlainLeafVec <PlainLeaf>;\n",
+                "option OptPlainLeaf (PlainLeaf);\n",
+                "union PlainUnion { PlainLeaf, byte, }\n",
+                "option OptPlainUnion (PlainUnion);\n",
+                "table PlainChild { a: byte, leaf: PlainLeaf, list: PlainLeafVec, opt: OptPlainLeaf, u: PlainUnion, }\n",
+                "table PlainUnused { x: byte, }\n",
+            ),
+        ),
+        (
+            "plain_root",
+            concat!(
+                "import plain_child;\n",
+                "integer RootAmt = u64le;\n",
+                "option UnusedOpt (PlainChild);\n",
+                "vector PlainUnionVec <PlainUnion>;\n",
+                "union LocalWrap { PlainUnion, PlainPairVec, }\n",
+                "table PlainRoot { amount: RootAmt, child: PlainChild, list: PlainLeafVec, u: PlainUnion, opt: OptPlainLeaf, wrap: LocalWrap, }\n",
+                "union PlainRootUnion { RootAmt, PlainChild, OptPlainLeaf, PlainLeafVec, PlainPairVec, OptPlainPairVec, PlainUnion, OptPlainUnion, }\n",
             ),
         ),
     ];

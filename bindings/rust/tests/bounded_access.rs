@@ -442,6 +442,16 @@ fn access_error_converts_into_lazy_error_and_exact_helpers_retry_short_reads() {
     ));
     assert_eq!(dyn_cur.dynvec_item_exact(2, 0).unwrap().size, 0);
     assert_eq!(dyn_cur.dynvec_item_exact(2, 1).unwrap().size, 4);
+    assert_eq!(dyn_cur.dynvec_get_exact(0).unwrap().size, 0);
+    assert_eq!(dyn_cur.dynvec_get_exact(1).unwrap().size, 4);
+    assert!(matches!(
+        dyn_cur.dynvec_get_exact(2),
+        Err(AccessError::Read(Error::OutOfBound(2, 2)))
+    ));
+    assert!(matches!(
+        empty_dyn.dynvec_get_exact(0),
+        Err(AccessError::Read(Error::OutOfBound(0, 0)))
+    ));
     assert!(matches!(
         dyn_cur.dynvec_item_exact(2, 2),
         Err(AccessError::Read(Error::OutOfBound(2, 2)))
