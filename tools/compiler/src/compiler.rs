@@ -74,7 +74,7 @@ pub(crate) mod config {
             .arg(
                 clap::Arg::new("plugin-timeout")
                     .long("plugin-timeout")
-                    .help("Timeout in seconds for plugin generation with semantic extensions.")
+                    .help("Timeout in seconds for plugin probing and IR v2 generation.")
                     .default_value("60")
                     .value_parser(clap::value_parser!(u64).range(1..)),
             )

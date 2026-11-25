@@ -19,7 +19,23 @@ fn destination(path: &Path) -> io::Result<PathBuf> {
     for _ in 0..=40 {
         match fs::symlink_metadata(&path) {
             Ok(meta) if meta.is_symlink() => {
-                path = path.with_file_name(fs::read_link(&path)?);
+                let target = fs::read_link(&path)?;
+                #[cfg(windows)]
+                {
+                    path = if target.is_absolute() {
+                        target
+                    } else {
+                        let parent = path
+                            .parent()
+                            .filter(|p| !p.as_os_str().is_empty())
+                            .unwrap_or_else(|| Path::new("."));
+                        crate::utils::join_relative(&parent.canonicalize()?, &target)
+                    };
+                }
+                #[cfg(not(windows))]
+                {
+                    path = path.with_file_name(target);
+                }
             }
             Ok(meta) if meta.is_file() => return Ok(path),
             Ok(_) => return Err(io::Error::other("output is not a regular file")),
@@ -270,16 +286,18 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     }
     loop {
         let suffix = NEXT.fetch_add(1, Ordering::Relaxed);
-        let tmp = path.with_file_name(format!(".molecule-{}-{suffix}.tmp", std::process::id()));
-        let mut file = match options.open(&tmp) {
+        // Declare `tmp` before `file` so on early errors the file handle closes
+        // before `Temporary::drop` unlinks it (required on Windows FAT32/exFAT/SMB).
+        let mut tmp = Temporary {
+            path: path.with_file_name(format!(".molecule-{}-{suffix}.tmp", std::process::id())),
+            pending: false,
+        };
+        let mut file = match options.open(&tmp.path) {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(error),
         };
-        let mut tmp = Temporary {
-            path: tmp,
-            pending: true,
-        };
+        tmp.pending = true;
         // Install the original ACL before any content appears in a staging file
         // that may have inherited broader access from its directory.
         #[cfg(unix)]

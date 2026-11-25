@@ -135,14 +135,17 @@ pub(super) fn copy_acl(src: &File, dst: &File) -> io::Result<()> {
     const PC_ACL_NFS4: i32 = 17; // <sys/unistd.h>
     #[cfg(target_os = "freebsd")]
     const PC_ACL_NFS4: i32 = libc::_PC_ACL_NFS4;
+    const ACL_TYPE_NFS4: u32 = 0x0000_0004; // <sys/acl.h>
     extern "C" {
         fn acl_get_fd(fd: i32) -> *mut c_void;
         fn acl_set_fd(fd: i32, acl: *mut c_void) -> i32;
+        fn acl_get_fd_np(fd: i32, acl_type: u32) -> *mut c_void;
+        fn acl_set_fd_np(fd: i32, acl: *mut c_void, acl_type: u32) -> i32;
         fn acl_free(acl: *mut c_void) -> i32;
     }
-    for kind in [PC_ACL_NFS4, libc::_PC_ACL_EXTENDED] {
-        // SAFETY: the queried fd stays open. acl_set_fd copies the ACL into
-        // the kernel. The allocation returned by acl_get_fd is freed once.
+    for (kind, nfs4) in [(PC_ACL_NFS4, true), (libc::_PC_ACL_EXTENDED, false)] {
+        // SAFETY: the queried fd stays open. acl_set_fd(_np) copies the ACL into
+        // the kernel. The allocation returned by acl_get_fd(_np) is freed once.
         unsafe {
             match libc::fpathconf(src.as_raw_fd(), kind) {
                 -1 => {
@@ -153,11 +156,19 @@ pub(super) fn copy_acl(src: &File, dst: &File) -> io::Result<()> {
                 }
                 0 => (),
                 _ => {
-                    let acl = acl_get_fd(src.as_raw_fd());
+                    let acl = if nfs4 {
+                        acl_get_fd_np(src.as_raw_fd(), ACL_TYPE_NFS4)
+                    } else {
+                        acl_get_fd(src.as_raw_fd())
+                    };
                     if acl.is_null() {
                         return Err(io::Error::last_os_error());
                     }
-                    let result = acl_set_fd(dst.as_raw_fd(), acl);
+                    let result = if nfs4 {
+                        acl_set_fd_np(dst.as_raw_fd(), acl, ACL_TYPE_NFS4)
+                    } else {
+                        acl_set_fd(dst.as_raw_fd(), acl)
+                    };
                     let err = (result != 0).then(io::Error::last_os_error);
                     acl_free(acl);
                     return err.map_or(Ok(()), Err);

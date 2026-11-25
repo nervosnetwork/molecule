@@ -183,12 +183,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             .generate_code(Language::Rust)
             .output_dir(out.join("packed"))
             .run()?;
+        Compiler::new()
+            .input_schema_file(format!("schemas/{name}.mol"))
+            .generate_code(Language::RustLazyReader)
+            .output_dir(out.join("lazy"))
+            .run()?;
     }
-    Compiler::new()
-        .input_schema_file("schemas/blockchain.mol")
-        .generate_code(Language::RustLazyReader)
-        .output_dir(out.join("lazy"))
-        .run()?;
     legacy_codegen::Compiler::new()
         .input_schema_file(&blockchain)
         .generate_code(legacy_codegen::Language::Rust)

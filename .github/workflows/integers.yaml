@@ -1,5 +1,8 @@
 name: Explicit integers
 on: [push, pull_request]
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -10,6 +13,9 @@ jobs:
           toolchain: 1.95.0
           target: riscv64imac-unknown-none-elf
       - run: make ci-prepare
+      - run: cargo test --manifest-path bindings/rust/Cargo.toml --no-default-features
+      - run: cargo test --manifest-path bindings/rust/Cargo.toml --no-default-features --features bytes_vec
+      - run: cargo test --manifest-path tools/codegen/Cargo.toml --features schema-extensions
       - run: cargo test --manifest-path tools/codegen/Cargo.toml --all-features
       - run: cargo test --locked --manifest-path tools/compiler/Cargo.toml
       - run: cargo test --locked --manifest-path examples/integer-tests/Cargo.toml
@@ -24,4 +30,5 @@ jobs:
         with:
           toolchain: 1.95.0
       - run: Copy-Item tools/compiler/Cargo.lock tools/codegen/Cargo.lock
-      - run: cargo test --manifest-path tools/codegen/Cargo.toml --all-features --test output
+      - run: cargo test --manifest-path tools/codegen/Cargo.toml --all-features
+      - run: cargo check --locked --manifest-path tools/compiler/Cargo.toml --tests

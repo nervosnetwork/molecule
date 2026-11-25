@@ -46,6 +46,18 @@ pub mod protocols {
     include!(concat!(env!("OUT_DIR"), "/packed/protocols.rs"));
 }
 #[allow(clippy::all)]
+pub mod lazy_ckb {
+    pub mod blockchain {
+        include!(concat!(env!("OUT_DIR"), "/lazy/blockchain.rs"));
+    }
+    pub mod extensions {
+        include!(concat!(env!("OUT_DIR"), "/lazy/extensions.rs"));
+    }
+    pub mod protocols {
+        include!(concat!(env!("OUT_DIR"), "/lazy/protocols.rs"));
+    }
+}
+#[allow(clippy::all)]
 pub mod old_blockchain {
     include!(concat!(env!("OUT_DIR"), "/legacy/blockchain.rs"));
 }

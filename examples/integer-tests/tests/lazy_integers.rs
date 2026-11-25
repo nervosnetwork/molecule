@@ -10,10 +10,7 @@ pub mod schema {
     include!(concat!(env!("OUT_DIR"), "/lazy/lazy_names.rs"));
 }
 
-#[allow(clippy::all)]
-pub mod lazy_blockchain {
-    include!(concat!(env!("OUT_DIR"), "/lazy/blockchain.rs"));
-}
+use molecule_integer_tests::lazy_ckb::blockchain as lazy_blockchain;
 
 #[allow(clippy::all)]
 pub mod packed_blockchain {
