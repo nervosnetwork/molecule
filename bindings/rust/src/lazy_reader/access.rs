@@ -29,6 +29,24 @@ impl From<Error> for AccessError {
     }
 }
 
+impl From<AccessError> for Error {
+    fn from(error: AccessError) -> Self {
+        match error {
+            AccessError::Read(error) => error,
+            AccessError::Bounds { offset, len, size } => {
+                Self::OutOfBound(offset.saturating_add(len), size)
+            }
+            AccessError::Overflow => Self::Overflow,
+            AccessError::NoProgress {
+                completed,
+                required,
+            } => Self::Read(completed, required),
+            AccessError::InvalidRead { reported, capacity } => Self::Read(reported, capacity),
+            AccessError::BorrowConflict => Self::Common,
+        }
+    }
+}
+
 impl fmt::Display for AccessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

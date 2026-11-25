@@ -119,6 +119,7 @@ impl LazyReaderGenerator for ast::Struct {
 impl LazyReaderGenerator for ast::FixVec {
     fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
+        let is_integer = tc.is_integer();
         generate_rust_common_array(
             output,
             self.name(),
@@ -131,11 +132,16 @@ impl LazyReaderGenerator for ast::FixVec {
 
         let name = ident_name(self.name(), "");
         let item_size = self.item_size();
+        let verify_expr = if is_integer {
+            quote!(self.cursor.fixvec_len_exact(#item_size)?;)
+        } else {
+            quote!(self.cursor.verify_fixvec(#item_size)?;)
+        };
 
         let q = quote! {
             impl #name {
                 pub fn verify(&self, _compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                    self.cursor.verify_fixvec(#item_size)?;
+                    #verify_expr
                     ::core::result::Result::Ok(())
                 }
             }
@@ -246,17 +252,28 @@ fn generate_rust_common_array<W: io::Write>(
              }
         };
         writeln!(output, "{}", q)?;
-    } else if fixvec.is_some() {
+    } else if let Some(fv) = fixvec {
+        let len_expr = if tc.is_integer() {
+            let size = fv.item_size();
+            quote!(::core::result::Result::Ok(self.cursor.fixvec_len_exact(#size)?))
+        } else {
+            quote!(self.cursor.fixvec_length())
+        };
         let q = quote! {
             impl #name {
-                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { self.cursor.fixvec_length() }
+                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { #len_expr }
             }
         };
         writeln!(output, "{}", q)?;
     } else {
+        let len_expr = if tc.is_integer() {
+            quote!(::core::result::Result::Ok(self.cursor.dynvec_len_exact()?))
+        } else {
+            quote!(self.cursor.dynvec_length())
+        };
         let q = quote! {
             impl #name {
-                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { self.cursor.dynvec_length() }
+                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { #len_expr }
             }
         };
         writeln!(output, "{}", q)?;
@@ -275,10 +292,21 @@ fn generate_rust_common_array_impl<W: io::Write>(
 ) -> io::Result<()> {
     let slice_by = if let Some(fv) = fixvec {
         let size = fv.item_size();
-        quote! { fixvec_slice_by_index(#size, index) }
+        if tc.is_integer() {
+            quote! { fixvec_item_exact(#size, index) }
+        } else {
+            quote! { fixvec_slice_by_index(#size, index) }
+        }
     } else if let Some(arr) = array {
-        let index = arr.item_size();
-        quote! { slice_by_offset(#index*index, #index) }
+        let size = arr.item_size();
+        if tc.is_integer() {
+            let count = arr.item_count();
+            quote! { array_item_exact(#count, #size, index) }
+        } else {
+            quote! { slice_by_offset(#size * index, #size) }
+        }
+    } else if tc.is_integer() {
+        quote! { table_field_exact(0, index) }
     } else {
         quote! { dynvec_slice_by_index(index) }
     };
@@ -382,8 +410,17 @@ fn generate_rust_common_table<W: io::Write>(
         }
     };
     writeln!(output, "{}", q)?;
+    let field_count = fields.len();
     for (index, field) in fields.iter().enumerate() {
-        generate_rust_common_table_impl(output, ast, plain_name, field, index, field_sizes)?;
+        generate_rust_common_table_impl(
+            output,
+            ast,
+            plain_name,
+            field,
+            index,
+            field_count,
+            field_sizes,
+        )?;
     }
     Ok(())
 }
@@ -394,10 +431,11 @@ fn generate_rust_common_table_impl<W: io::Write>(
     plain_name: &str,
     field: &FieldDecl,
     index: usize,
+    field_count: usize,
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
     let (transformed_name, tc) = cursor_type(field.typ(), ast, false);
-    let slice_by = generate_rust_slice_by(index, &field_sizes);
+    let slice_by = generate_rust_slice_by(index, field_count, &field_sizes, tc.is_integer());
     let value = tc.expression();
     let name = ident_name(plain_name, "");
     let field_name = field_name(field.name());
@@ -462,6 +500,14 @@ enum CursorValue {
 }
 
 impl CursorValue {
+    fn is_integer(&self) -> bool {
+        match self {
+            Self::Integer(_) => true,
+            Self::Optional(inner) => inner.is_integer(),
+            _ => false,
+        }
+    }
+
     // Byte and Bytes lose their framing during conversion. Only payloads that
     // retain a generated reader still have wire data to verify.
     fn verify_union_value(&self) -> TokenStream {
@@ -493,12 +539,7 @@ impl CursorValue {
             }),
             Self::Integer(spec) => {
                 let width = spec.byte_width();
-                let value =
-                    integers::decode(*spec, quote!(::core::convert::TryInto::try_into(cur)?));
-                quote!({
-                    cur.verify_fixed_size(#width)?;
-                    #value
-                })
+                integers::decode(*spec, quote!(cur.read_array::<#width>()?))
             }
             Self::Optional(inner) => {
                 let value = inner.expression();
@@ -542,15 +583,30 @@ fn cursor_type(typ: &TopDecl, ast: &Ast, union_payload: bool) -> (TokenStream, C
     }
 }
 
-fn generate_rust_slice_by(index: usize, fields_sizes: &Option<&[usize]>) -> TokenStream {
+fn generate_rust_slice_by(
+    index: usize,
+    field_count: usize,
+    fields_sizes: &Option<&[usize]>,
+    exact: bool,
+) -> TokenStream {
     if let Some(fs) = fields_sizes {
         let size = fs[index];
         let mut offset = 0;
         for i in (0..index).rev() {
             offset += fs[i];
         }
+        if exact {
+            quote! {
+                slice_exact(#offset, #size)
+            }
+        } else {
+            quote! {
+                slice_by_offset(#offset, #size)
+            }
+        }
+    } else if exact {
         quote! {
-            slice_by_offset(#offset, #size)
+            table_field_exact(#field_count, #index)
         }
     } else {
         quote! {

@@ -361,3 +361,134 @@ fn lazy_union_decodes_and_verifies_nested_payloads() {
     assert_eq!(rate.try_to_u32().unwrap(), 1);
     assert!(decode(4, &[1, 0]).unwrap().verify(false).is_err());
 }
+
+struct ShortSource {
+    bytes: Vec<u8>,
+    chunk: usize,
+}
+
+impl molecule::lazy_reader::Read for ShortSource {
+    fn read(
+        &self,
+        output: &mut [u8],
+        offset: usize,
+    ) -> Result<usize, molecule::lazy_reader::Error> {
+        let remaining = self
+            .bytes
+            .get(offset..)
+            .ok_or(molecule::lazy_reader::Error::OutOfBound(
+                offset,
+                self.bytes.len(),
+            ))?;
+        let count = remaining.len().min(output.len()).min(self.chunk);
+        output[..count].copy_from_slice(&remaining[..count]);
+        Ok(count)
+    }
+}
+
+fn short_cursor(bytes: Vec<u8>, chunk: usize) -> Cursor {
+    Cursor::new(bytes.len(), Box::new(ShortSource { bytes, chunk }))
+}
+
+#[test]
+fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
+    let a = 0x0102_0304_0506_0708u64.to_be_bytes();
+    let b = 0x1122_3344_5566_7788u64.to_be_bytes();
+
+    for chunk in [1usize, 3] {
+        // FixVec of annotated Uint64: get(), len(), iter(), into_iter(), verify(), get_value()
+        let vec_wire = [2u32.to_le_bytes().as_slice(), &a, &b].concat();
+        let values = schema::Values::from(short_cursor(vec_wire.clone(), chunk));
+        values.verify(false).unwrap();
+        assert_eq!(values.len().unwrap(), 2);
+        assert_eq!(values.get(0).unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(values.get(1).unwrap(), 0x1122_3344_5566_7788);
+        assert_eq!(values.get_value(0).unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(values.get_value(1).unwrap(), 0x1122_3344_5566_7788);
+        assert!(values.get(2).is_err());
+        assert_eq!(
+            values.iter().collect::<Vec<_>>(),
+            vec![0x0102_0304_0506_0708, 0x1122_3344_5566_7788]
+        );
+        assert_eq!(
+            values.into_iter().collect::<Vec<_>>(),
+            vec![0x0102_0304_0506_0708, 0x1122_3344_5566_7788]
+        );
+
+        let empty_values = schema::Values::from(short_cursor(0u32.to_le_bytes().to_vec(), chunk));
+        empty_values.verify(false).unwrap();
+        assert_eq!(empty_values.len().unwrap(), 0);
+        assert!(empty_values.get(0).is_err());
+        assert!(empty_values.into_iter().next().is_none());
+
+        let truncated_values =
+            schema::Values::from(short_cursor(vec_wire[..vec_wire.len() - 1].to_vec(), chunk));
+        assert!(truncated_values.verify(false).is_err());
+        assert!(truncated_values.len().is_err());
+        assert!(truncated_values.get(0).is_err());
+
+        // Array of annotated Uint64
+        let pair = schema::Pair::from(short_cursor([a, b].concat(), chunk));
+        assert_eq!(pair.get(0).unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(pair.get(1).unwrap(), 0x1122_3344_5566_7788);
+        assert_eq!(pair.get_value(1).unwrap(), 0x1122_3344_5566_7788);
+        assert!(pair.get(2).is_err());
+        assert!(pair.get(usize::MAX).is_err());
+
+        // Struct with annotated Uint64
+        let fixed = schema::Fixed::from(short_cursor(a.to_vec(), chunk));
+        assert_eq!(fixed.amount().unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(fixed.amount_value().unwrap(), 0x0102_0304_0506_0708);
+
+        // Table with annotated Uint64 and nested optional Uint64 (including extra compatible field)
+        for port in [None, Some(b)] {
+            let end = 20 + port.map_or(0, |_| 8);
+            let mut wire = [end as u32, 12, 20].map(u32::to_le_bytes).concat();
+            wire.extend_from_slice(&a);
+            if let Some(bytes) = port {
+                wire.extend_from_slice(&bytes);
+            }
+            let invoice = schema::Invoice::from(short_cursor(wire, chunk));
+            assert_eq!(invoice.amount().unwrap(), 0x0102_0304_0506_0708);
+            assert_eq!(invoice.amount_value().unwrap(), 0x0102_0304_0506_0708);
+            assert_eq!(
+                invoice.port().unwrap(),
+                port.map(|_| Some(0x1122_3344_5566_7788))
+            );
+        }
+
+        let mut compat_wire = [34u32, 16, 24, 32].map(u32::to_le_bytes).concat();
+        compat_wire.extend_from_slice(&a);
+        compat_wire.extend_from_slice(&b);
+        compat_wire.extend_from_slice(&[0xaa, 0xbb]);
+        let compat_invoice = schema::Invoice::from(short_cursor(compat_wire, chunk));
+        assert_eq!(compat_invoice.amount().unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(
+            compat_invoice.port().unwrap(),
+            Some(Some(0x1122_3344_5566_7788))
+        );
+
+        // DynVec of optional annotated Uint64: [None, Some(b)]
+        let mut dyn_wire = [20u32, 12, 12].map(u32::to_le_bytes).concat();
+        dyn_wire.extend_from_slice(&b);
+        let maybe_list = schema::MaybeList::from(short_cursor(dyn_wire, chunk));
+        assert_eq!(maybe_list.len().unwrap(), 2);
+        assert_eq!(maybe_list.get(0).unwrap(), None);
+        assert_eq!(maybe_list.get(1).unwrap(), Some(0x1122_3344_5566_7788));
+        assert!(maybe_list.get(2).is_err());
+        assert_eq!(
+            maybe_list.into_iter().collect::<Vec<_>>(),
+            vec![None, Some(0x1122_3344_5566_7788)]
+        );
+    }
+
+    // Zero-progress source returns an error instead of looping forever.
+    let stalled = schema::Values::from(short_cursor(
+        [1u32.to_le_bytes().as_slice(), &a].concat(),
+        0,
+    ));
+    assert!(matches!(
+        stalled.get(0),
+        Err(molecule::lazy_reader::Error::Read(0, 4))
+    ));
+}

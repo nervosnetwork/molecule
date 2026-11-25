@@ -1,12 +1,8 @@
 use super::{AccessError, Cursor, Error, NUMBER_SIZE};
 
 impl Cursor {
-    /// Validate the offset table and retain the selected field in the same pass.
-    pub fn table_field_exact(
-        &self,
-        minimum_fields: usize,
-        index: usize,
-    ) -> Result<Self, AccessError> {
+    /// Validate a dynamic-vector or table header and return the item count.
+    pub fn dynvec_len_exact(&self) -> Result<usize, AccessError> {
         if self.size < NUMBER_SIZE {
             return Err(Error::Header(NUMBER_SIZE, self.size).into());
         }
@@ -15,12 +11,7 @@ impl Cursor {
             return Err(Error::TotalSize(size, self.size).into());
         }
         if size == NUMBER_SIZE {
-            return Err(if minimum_fields == 0 {
-                Error::OutOfBound(index, 0)
-            } else {
-                Error::FieldCount(0)
-            }
-            .into());
+            return Ok(0);
         }
         if size < NUMBER_SIZE * 2 {
             return Err(Error::Header(NUMBER_SIZE * 2, size).into());
@@ -32,10 +23,29 @@ impl Cursor {
         if first > size {
             return Err(Error::Header(first, size).into());
         }
-        let count = first / NUMBER_SIZE - 1;
+        Ok(first / NUMBER_SIZE - 1)
+    }
+
+    /// Validate the offset table and retain the selected field in the same pass.
+    pub fn table_field_exact(
+        &self,
+        minimum_fields: usize,
+        index: usize,
+    ) -> Result<Self, AccessError> {
+        let count = self.dynvec_len_exact()?;
+        if count == 0 {
+            return Err(if minimum_fields == 0 {
+                Error::OutOfBound(index, 0)
+            } else {
+                Error::FieldCount(0)
+            }
+            .into());
+        }
         if count < minimum_fields {
             return Err(Error::FieldCount(count).into());
         }
+        let size = self.size;
+        let first = (count + 1) * NUMBER_SIZE;
 
         let mut field = None;
         let mut start = first;
@@ -68,8 +78,8 @@ impl Cursor {
         self.slice_exact(field.start, field.len())
     }
 
-    /// Validate a fixed-vector header and total length, then return the selected item.
-    pub fn fixvec_item_exact(&self, item_size: usize, index: usize) -> Result<Self, AccessError> {
+    /// Validate a fixed-vector header and total length, returning the item count.
+    pub fn fixvec_len_exact(&self, item_size: usize) -> Result<usize, AccessError> {
         if item_size == 0 {
             return Err(Error::Data.into());
         }
@@ -84,10 +94,33 @@ impl Cursor {
         if total != self.size {
             return Err(Error::TotalSize(total, self.size).into());
         }
+        Ok(count)
+    }
+
+    /// Validate a fixed-vector header and total length, then return the selected item.
+    pub fn fixvec_item_exact(&self, item_size: usize, index: usize) -> Result<Self, AccessError> {
+        let count = self.fixvec_len_exact(item_size)?;
         if index >= count {
             return Err(Error::OutOfBound(index, count).into());
         }
-        // `total == self.size` already ruled out overflow for any `index < count`.
+        // `fixvec_len_exact` already ruled out overflow for any `index < count`.
         self.slice_exact(NUMBER_SIZE + index * item_size, item_size)
+    }
+
+    /// Validate a fixed-array total length and index, then return the selected item.
+    pub fn array_item_exact(
+        &self,
+        count: usize,
+        item_size: usize,
+        index: usize,
+    ) -> Result<Self, AccessError> {
+        let total = count.checked_mul(item_size).ok_or(AccessError::Overflow)?;
+        if self.size != total {
+            return Err(Error::TotalSize(total, self.size).into());
+        }
+        if index >= count {
+            return Err(Error::OutOfBound(index, count).into());
+        }
+        self.slice_exact(index * item_size, item_size)
     }
 }

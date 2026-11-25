@@ -330,3 +330,78 @@ fn legacy_read_at_rejects_overflow_and_impossible_read_counts() {
         Err(Error::Read(_, _))
     ));
 }
+
+#[test]
+fn access_error_converts_into_lazy_error_and_exact_helpers_retry_short_reads() {
+    assert!(matches!(
+        Error::from(AccessError::Read(Error::TotalSize(8, 3))),
+        Error::TotalSize(8, 3)
+    ));
+    assert!(matches!(
+        Error::from(AccessError::Bounds {
+            offset: 4,
+            len: 8,
+            size: 10
+        }),
+        Error::OutOfBound(12, 10)
+    ));
+    assert!(matches!(
+        Error::from(AccessError::Overflow),
+        Error::Overflow
+    ));
+    assert!(matches!(
+        Error::from(AccessError::NoProgress {
+            completed: 2,
+            required: 8
+        }),
+        Error::Read(2, 8)
+    ));
+    assert!(matches!(
+        Error::from(AccessError::InvalidRead {
+            reported: 9,
+            capacity: 8
+        }),
+        Error::Read(9, 8)
+    ));
+    assert!(matches!(
+        Error::from(AccessError::BorrowConflict),
+        Error::Common
+    ));
+
+    let pair_wire = [10u64, 20].map(u64::to_be_bytes).concat();
+    let (pair, _) = cursor(pair_wire, 3);
+    assert_eq!(
+        pair.array_item_exact(2, 8, 1)
+            .unwrap()
+            .read_array::<8>()
+            .unwrap(),
+        20u64.to_be_bytes()
+    );
+    assert!(matches!(
+        pair.array_item_exact(2, 8, 2),
+        Err(AccessError::Read(Error::OutOfBound(2, 2)))
+    ));
+    assert!(matches!(
+        pair.array_item_exact(3, 8, 0),
+        Err(AccessError::Read(Error::TotalSize(24, 16)))
+    ));
+    assert!(matches!(
+        pair.array_item_exact(usize::MAX, 2, 0),
+        Err(AccessError::Overflow)
+    ));
+
+    let vec_wire = [
+        2u32.to_le_bytes().as_slice(),
+        &10u64.to_be_bytes(),
+        &20u64.to_be_bytes(),
+    ]
+    .concat();
+    let (vec_cur, _) = cursor(vec_wire, 3);
+    assert_eq!(vec_cur.fixvec_len_exact(8).unwrap(), 2);
+
+    let (empty_dyn, _) = cursor(4u32.to_le_bytes().to_vec(), 3);
+    assert_eq!(empty_dyn.dynvec_len_exact().unwrap(), 0);
+    let dyn_wire = [16u32, 12, 12, 16].map(u32::to_le_bytes).concat();
+    let (dyn_cur, _) = cursor(dyn_wire, 3);
+    assert_eq!(dyn_cur.dynvec_len_exact().unwrap(), 2);
+}
