@@ -22,6 +22,12 @@ fn lazy_type_path(typ: &TopDecl, ast: &Ast) -> TokenStream {
 impl LazyReaderGenerator for ast::Union {
     fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let name = ident_name(self.name(), "");
+        let exact = !ast.integers().is_empty();
+        let unpack = if exact {
+            quote!(cur.union_unpack_exact()?)
+        } else {
+            quote!(cur.union_unpack()?)
+        };
         let mut variants = Vec::new();
         let mut decode = Vec::new();
         let mut verify = Vec::new();
@@ -31,7 +37,7 @@ impl LazyReaderGenerator for ast::Union {
             let id = item.id();
             let (native, value) = cursor_type(typ, ast, true);
             let check = value.verify_union_value();
-            let value = value.expression();
+            let value = value.expression(exact);
             variants.push(quote!(#variant(#native)));
             decode.push(quote!(#id => ::core::result::Result::Ok(Self::#variant(#value))));
             verify.push(quote!(Self::#variant(_value) => #check));
@@ -44,7 +50,7 @@ impl LazyReaderGenerator for ast::Union {
                 impl ::core::convert::TryFrom<molecule::lazy_reader::Cursor> for #name {
                     type Error = molecule::lazy_reader::Error;
                     fn try_from(cur: molecule::lazy_reader::Cursor) -> ::core::result::Result<Self, molecule::lazy_reader::Error> {
-                        let item = cur.union_unpack()?;
+                        let item = #unpack;
                         let cur = item.cursor;
                         match item.item_id {
                             #(#decode,)*
@@ -62,17 +68,26 @@ impl LazyReaderGenerator for ast::Union {
     }
 }
 
+enum SequenceKind {
+    Array { count: usize, item_size: usize },
+    FixVec { item_size: usize },
+    DynVec,
+}
+
 impl LazyReaderGenerator for ast::Array {
     fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
+        let exact = !ast.integers().is_empty();
         generate_rust_common_array(
             output,
             self.name(),
             transformed_name,
             tc,
-            Some(self),
-            None,
-            None,
+            exact,
+            SequenceKind::Array {
+                count: self.item_count(),
+                item_size: self.item_size(),
+            },
         )?;
         let total_size = self.item_count() * self.item_size();
         let name = ident_name(self.name(), "");
@@ -119,20 +134,19 @@ impl LazyReaderGenerator for ast::Struct {
 impl LazyReaderGenerator for ast::FixVec {
     fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
-        let is_integer = tc.is_integer();
+        let exact = !ast.integers().is_empty();
+        let item_size = self.item_size();
         generate_rust_common_array(
             output,
             self.name(),
             transformed_name,
             tc,
-            None,
-            Some(self),
-            None,
+            exact,
+            SequenceKind::FixVec { item_size },
         )?;
 
         let name = ident_name(self.name(), "");
-        let item_size = self.item_size();
-        let verify_expr = if is_integer {
+        let verify_expr = if exact {
             quote!(self.cursor.fixvec_len_exact(#item_size)?;)
         } else {
             quote!(self.cursor.verify_fixvec(#item_size)?;)
@@ -154,33 +168,55 @@ impl LazyReaderGenerator for ast::FixVec {
 impl LazyReaderGenerator for ast::DynVec {
     fn gen_rust<W: io::Write>(&self, output: &mut W, ast: &ast::Ast) -> io::Result<()> {
         let (transformed_name, tc) = cursor_type(self.item().typ(), ast, false);
+        let item_typ = self.item().typ().as_ref();
+        let exact = !ast.integers().is_empty();
         generate_rust_common_array(
             output,
             self.name(),
             transformed_name,
             tc,
-            None,
-            None,
-            Some(self),
+            exact,
+            SequenceKind::DynVec,
         )?;
 
-        let item_typ = self.item().typ().as_ref();
-        let verify_item =
-            verify_cursor(item_typ, quote!(self.cursor.dynvec_slice_by_index(i)?), ast);
         let val_compatible = if verify_uses_compatible(item_typ) {
             quote!(compatible)
         } else {
             quote!(_compatible)
+        };
+        let verify_body = if exact {
+            let verify_item = verify_cursor(
+                item_typ,
+                quote!(self.cursor.dynvec_item_exact(count, i)?),
+                ast,
+                true,
+            );
+            quote! {
+                let count = self.cursor.verify_dynvec_exact()?;
+                for i in 0..count {
+                    #verify_item
+                }
+            }
+        } else {
+            let verify_item = verify_cursor(
+                item_typ,
+                quote!(self.cursor.dynvec_slice_by_index(i)?),
+                ast,
+                false,
+            );
+            quote! {
+                self.cursor.verify_dynvec()?;
+                for i in 0..self.len()? {
+                    #verify_item
+                }
+            }
         };
 
         let name = ident_name(self.name(), "");
         let q = quote! {
             impl #name {
                 pub fn verify(&self, #val_compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                    self.cursor.verify_dynvec()?;
-                    for i in 0..self.len()? {
-                        #verify_item
-                    }
+                    #verify_body
                     ::core::result::Result::Ok(())
                 }
             }
@@ -195,20 +231,44 @@ impl LazyReaderGenerator for ast::Table {
         generate_rust_common_table(output, ast, self.name(), self.fields(), None)?;
         let field_count = self.fields().len();
         let name = ident_name(self.name(), "");
+        let exact = !ast.integers().is_empty();
 
-        let verify_fields = self.fields().iter().enumerate().map(|(index, f)| {
-            verify_cursor(
-                f.typ().as_ref(),
-                quote!(self.cursor.table_slice_by_index(#index)?),
-                ast,
-            )
-        });
+        let verify_body = if exact {
+            if self.fields().is_empty() {
+                quote!(self.cursor.verify_table_exact(0, compatible)?;)
+            } else {
+                let verify_fields = self.fields().iter().enumerate().map(|(index, f)| {
+                    verify_cursor(
+                        f.typ().as_ref(),
+                        quote!(self.cursor.dynvec_item_exact(count, #index)?),
+                        ast,
+                        true,
+                    )
+                });
+                quote! {
+                    let count = self.cursor.verify_table_exact(#field_count, compatible)?;
+                    #( #verify_fields )*
+                }
+            }
+        } else {
+            let verify_fields = self.fields().iter().enumerate().map(|(index, f)| {
+                verify_cursor(
+                    f.typ().as_ref(),
+                    quote!(self.cursor.table_slice_by_index(#index)?),
+                    ast,
+                    false,
+                )
+            });
+            quote! {
+                self.cursor.verify_table(#field_count, compatible)?;
+                #( #verify_fields )*
+            }
+        };
 
         let q = quote! {
             impl #name {
                 pub fn verify(&self, compatible: bool) -> ::core::result::Result<(), molecule::lazy_reader::Error> {
-                    self.cursor.verify_table(#field_count, compatible)?;
-                    #( #verify_fields )*
+                    #verify_body
                     ::core::result::Result::Ok(())
                 }
             }
@@ -223,9 +283,8 @@ fn generate_rust_common_array<W: io::Write>(
     plain_name: &str,
     type_name: TokenStream,
     tc: CursorValue,
-    array: Option<&ast::Array>,
-    fixvec: Option<&ast::FixVec>,
-    _dynvec: Option<&ast::DynVec>,
+    exact: bool,
+    kind: SequenceKind,
 ) -> io::Result<()> {
     let name = ident_name(plain_name, "");
     let q = quote! {
@@ -243,42 +302,34 @@ fn generate_rust_common_array<W: io::Write>(
 
     writeln!(output, "{}", q)?;
 
-    // len
-    if let Some(arr) = array {
-        let item_count = Literal::usize_unsuffixed(arr.item_count());
-        let q = quote! {
-            impl #name {
-                pub fn len(&self) -> usize { #item_count }
-             }
-        };
-        writeln!(output, "{}", q)?;
-    } else if let Some(fv) = fixvec {
-        let len_expr = if tc.is_integer() {
-            let size = fv.item_size();
-            quote!(::core::result::Result::Ok(self.cursor.fixvec_len_exact(#size)?))
-        } else {
-            quote!(self.cursor.fixvec_length())
-        };
-        let q = quote! {
-            impl #name {
-                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { #len_expr }
+    let len_impl = match (&kind, exact) {
+        (SequenceKind::Array { count, .. }, _) => {
+            let item_count = Literal::usize_unsuffixed(*count);
+            quote!(pub fn len(&self) -> usize { #item_count })
+        }
+        (SequenceKind::FixVec { item_size }, true) => quote! {
+            pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> {
+                ::core::result::Result::Ok(self.cursor.fixvec_len_exact(#item_size)?)
             }
-        };
-        writeln!(output, "{}", q)?;
-    } else {
-        let len_expr = if tc.is_integer() {
-            quote!(::core::result::Result::Ok(self.cursor.dynvec_len_exact()?))
-        } else {
-            quote!(self.cursor.dynvec_length())
-        };
-        let q = quote! {
-            impl #name {
-                pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> { #len_expr }
+        },
+        (SequenceKind::FixVec { .. }, false) => quote! {
+            pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> {
+                self.cursor.fixvec_length()
             }
-        };
-        writeln!(output, "{}", q)?;
-    }
-    generate_rust_common_array_impl(output, plain_name, type_name, tc, array, fixvec)?;
+        },
+        (SequenceKind::DynVec, true) => quote! {
+            pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> {
+                ::core::result::Result::Ok(self.cursor.dynvec_len_exact()?)
+            }
+        },
+        (SequenceKind::DynVec, false) => quote! {
+            pub fn len(&self) -> ::core::result::Result<usize, molecule::lazy_reader::Error> {
+                self.cursor.dynvec_length()
+            }
+        },
+    };
+    writeln!(output, "{}", quote!(impl #name { #len_impl }))?;
+    generate_rust_common_array_impl(output, plain_name, type_name, tc, exact, kind)?;
     Ok(())
 }
 
@@ -287,30 +338,24 @@ fn generate_rust_common_array_impl<W: io::Write>(
     plain_name: &str,
     item_name: TokenStream,
     tc: CursorValue,
-    array: Option<&Array>,
-    fixvec: Option<&FixVec>,
+    exact: bool,
+    kind: SequenceKind,
 ) -> io::Result<()> {
-    let slice_by = if let Some(fv) = fixvec {
-        let size = fv.item_size();
-        if tc.is_integer() {
-            quote! { fixvec_item_exact(#size, index) }
-        } else {
-            quote! { fixvec_slice_by_index(#size, index) }
+    let slice_by = match (&kind, exact) {
+        (SequenceKind::FixVec { item_size }, true) => quote!(fixvec_item_exact(#item_size, index)),
+        (SequenceKind::FixVec { item_size }, false) => {
+            quote!(fixvec_slice_by_index(#item_size, index))
         }
-    } else if let Some(arr) = array {
-        let size = arr.item_size();
-        if tc.is_integer() {
-            let count = arr.item_count();
-            quote! { array_item_exact(#count, #size, index) }
-        } else {
-            quote! { slice_by_offset(#size * index, #size) }
+        (SequenceKind::Array { count, item_size }, true) => {
+            quote!(array_item_exact(#count, #item_size, index))
         }
-    } else if tc.is_integer() {
-        quote! { table_field_exact(0, index) }
-    } else {
-        quote! { dynvec_slice_by_index(index) }
+        (SequenceKind::Array { item_size, .. }, false) => {
+            quote!(slice_by_offset(#item_size * index, #item_size))
+        }
+        (SequenceKind::DynVec, true) => quote!(table_field_exact(0, index)),
+        (SequenceKind::DynVec, false) => quote!(dynvec_slice_by_index(index)),
     };
-    let value = tc.expression();
+    let value = tc.expression(exact);
     let name = ident_name(plain_name, "");
     let iterator_name = ident_name(plain_name, "Iterator");
     let iterator_ref_name = ident_name(plain_name, "IteratorRef");
@@ -324,7 +369,7 @@ fn generate_rust_common_array_impl<W: io::Write>(
     };
     writeln!(output, "{}", q)?;
 
-    if array.is_some() {
+    if matches!(kind, SequenceKind::Array { .. }) {
         return Ok(());
     }
     let q = quote! {
@@ -435,8 +480,9 @@ fn generate_rust_common_table_impl<W: io::Write>(
     field_sizes: Option<&[usize]>,
 ) -> io::Result<()> {
     let (transformed_name, tc) = cursor_type(field.typ(), ast, false);
-    let slice_by = generate_rust_slice_by(index, field_count, &field_sizes, tc.is_integer());
-    let value = tc.expression();
+    let exact = !ast.integers().is_empty();
+    let slice_by = generate_rust_slice_by(index, field_count, field_sizes, exact);
+    let value = tc.expression(exact);
     let name = ident_name(plain_name, "");
     let field_name = field_name(field.name());
     let q = quote! {
@@ -495,19 +541,12 @@ enum CursorValue {
     Into,
     TryInto,
     Bytes,
+    FixedBytes(usize),
     Integer(IntegerSpec),
     Optional(Box<Self>),
 }
 
 impl CursorValue {
-    fn is_integer(&self) -> bool {
-        match self {
-            Self::Integer(_) => true,
-            Self::Optional(inner) => inner.is_integer(),
-            _ => false,
-        }
-    }
-
     // Byte and Bytes lose their framing during conversion. Only payloads that
     // retain a generated reader still have wire data to verify.
     fn verify_union_value(&self) -> TokenStream {
@@ -520,29 +559,34 @@ impl CursorValue {
                     ::core::option::Option::None => ::core::result::Result::Ok(()),
                 })
             }
-            Self::Byte | Self::Bytes | Self::Integer(_) => quote!(::core::result::Result::Ok(())),
+            Self::Byte | Self::Bytes | Self::FixedBytes(_) | Self::Integer(_) => {
+                quote!(::core::result::Result::Ok(()))
+            }
         }
     }
 
-    fn expression(&self) -> TokenStream {
+    fn expression(&self, exact: bool) -> TokenStream {
         match self {
+            Self::Byte if exact => quote!(cur.read_array::<1>()?[0]),
             Self::Byte => quote!({
                 cur.verify_fixed_size(1)?;
                 ::core::convert::TryInto::try_into(cur)?
             }),
             Self::Into => quote!(::core::convert::Into::into(cur)),
             Self::TryInto => quote!(::core::convert::TryInto::try_into(cur)?),
+            Self::Bytes if exact => quote!(cur.fixvec_raw_bytes_exact()?),
             Self::Bytes => quote!({
                 let raw = cur.convert_to_rawbytes()?;
                 cur.verify_fixed_size(molecule::lazy_reader::NUMBER_SIZE + raw.size)?;
                 raw
             }),
+            Self::FixedBytes(width) => quote!(cur.read_array::<#width>()?),
             Self::Integer(spec) => {
                 let width = spec.byte_width();
                 integers::decode(*spec, quote!(cur.read_array::<#width>()?))
             }
             Self::Optional(inner) => {
-                let value = inner.expression();
+                let value = inner.expression(exact);
                 quote!(if cur.option_is_none() { ::core::option::Option::None } else { ::core::option::Option::Some(#value) })
             }
         }
@@ -550,19 +594,26 @@ impl CursorValue {
 }
 
 fn cursor_type(typ: &TopDecl, ast: &Ast, union_payload: bool) -> (TokenStream, CursorValue) {
+    let exact = !ast.integers().is_empty();
     match typ {
         TopDecl::Array(array) if !union_payload => {
             if let Some(legacy) = legacy_integer(typ.name()).filter(|legacy| {
                 array.item().typ().is_byte() && array.item_count() == legacy.byte_width()
             }) {
-                let value = ast
-                    .integer(typ.name())
-                    .copied()
-                    .map_or(CursorValue::TryInto, CursorValue::Integer);
+                let value = match (ast.integer(typ.name()).copied(), exact) {
+                    (Some(spec), _) => CursorValue::Integer(spec),
+                    (None, true) => CursorValue::Integer(legacy),
+                    (None, false) => CursorValue::TryInto,
+                };
                 (integers::native(legacy), value)
             } else if array.item().typ().is_byte() {
                 let width = array.item_count();
-                (quote!([u8; #width]), CursorValue::TryInto)
+                let value = if exact {
+                    CursorValue::FixedBytes(width)
+                } else {
+                    CursorValue::TryInto
+                };
+                (quote!([u8; #width]), value)
             } else {
                 (lazy_type_path(typ, ast), CursorValue::Into)
             }
@@ -586,32 +637,23 @@ fn cursor_type(typ: &TopDecl, ast: &Ast, union_payload: bool) -> (TokenStream, C
 fn generate_rust_slice_by(
     index: usize,
     field_count: usize,
-    fields_sizes: &Option<&[usize]>,
+    field_sizes: Option<&[usize]>,
     exact: bool,
 ) -> TokenStream {
-    if let Some(fs) = fields_sizes {
-        let size = fs[index];
-        let mut offset = 0;
-        for i in (0..index).rev() {
-            offset += fs[i];
+    match (field_sizes, exact) {
+        (Some(fs), true) => {
+            let total: usize = fs.iter().sum();
+            let offset: usize = fs[..index].iter().sum();
+            let size = fs[index];
+            quote!(fixed_field_exact(#total, #offset, #size))
         }
-        if exact {
-            quote! {
-                slice_exact(#offset, #size)
-            }
-        } else {
-            quote! {
-                slice_by_offset(#offset, #size)
-            }
+        (Some(fs), false) => {
+            let offset: usize = fs[..index].iter().sum();
+            let size = fs[index];
+            quote!(slice_by_offset(#offset, #size))
         }
-    } else if exact {
-        quote! {
-            table_field_exact(#field_count, #index)
-        }
-    } else {
-        quote! {
-            table_slice_by_index(#index)
-        }
+        (None, true) => quote!(table_field_exact(#field_count, #index)),
+        (None, false) => quote!(table_slice_by_index(#index)),
     }
 }
 
@@ -625,11 +667,11 @@ fn verify_uses_compatible(typ: &TopDecl) -> bool {
     }
 }
 
-fn verify_cursor(typ: &TopDecl, cur: TokenStream, ast: &Ast) -> TokenStream {
+fn verify_cursor(typ: &TopDecl, cur: TokenStream, ast: &Ast, exact: bool) -> TokenStream {
     match typ {
         TopDecl::Primitive(_) => quote!((#cur).verify_fixed_size(1)?;),
         TopDecl::Option_(v) => {
-            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), ast);
+            let inner = verify_cursor(v.item().typ().as_ref(), quote!(val), ast, exact);
             quote!({
                 let val = #cur;
                 if !val.option_is_none() {
@@ -651,7 +693,11 @@ fn verify_cursor(typ: &TopDecl, cur: TokenStream, ast: &Ast) -> TokenStream {
         }
         TopDecl::FixVec(v) => {
             let item_size = v.item_size();
-            quote!((#cur).verify_fixvec(#item_size)?;)
+            if exact {
+                quote!((#cur).fixvec_len_exact(#item_size)?;)
+            } else {
+                quote!((#cur).verify_fixvec(#item_size)?;)
+            }
         }
         TopDecl::DynVec(_) | TopDecl::Table(_) => {
             let type_path = lazy_type_path(typ, ast);

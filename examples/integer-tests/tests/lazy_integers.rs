@@ -373,13 +373,13 @@ impl molecule::lazy_reader::Read for ShortSource {
         output: &mut [u8],
         offset: usize,
     ) -> Result<usize, molecule::lazy_reader::Error> {
-        let remaining = self
-            .bytes
-            .get(offset..)
-            .ok_or(molecule::lazy_reader::Error::OutOfBound(
-                offset,
-                self.bytes.len(),
-            ))?;
+        let remaining =
+            self.bytes
+                .get(offset..)
+                .ok_or(molecule::lazy_reader::Error::OutOfBound(
+                    offset,
+                    self.bytes.len(),
+                ))?;
         let count = remaining.len().min(output.len()).min(self.chunk);
         output[..count].copy_from_slice(&remaining[..count]);
         Ok(count)
@@ -435,10 +435,35 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
         assert!(pair.get(2).is_err());
         assert!(pair.get(usize::MAX).is_err());
 
-        // Struct with annotated Uint64
+        // Multi-field Struct with annotated Uint64 at non-zero offset + exact total-size checks
         let fixed = schema::Fixed::from(short_cursor(a.to_vec(), chunk));
+        fixed.verify(false).unwrap();
         assert_eq!(fixed.amount().unwrap(), 0x0102_0304_0506_0708);
         assert_eq!(fixed.amount_value().unwrap(), 0x0102_0304_0506_0708);
+        assert!(schema::Fixed::from(short_cursor(a[..7].to_vec(), chunk))
+            .amount()
+            .is_err());
+        assert!(
+            schema::Fixed::from(short_cursor([a.as_slice(), &[0]].concat(), chunk))
+                .amount()
+                .is_err()
+        );
+
+        let two = schema::TwoAmounts::from(short_cursor([a, b].concat(), chunk));
+        two.verify(false).unwrap();
+        assert_eq!(two.first().unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(two.second().unwrap(), 0x1122_3344_5566_7788);
+        assert_eq!(two.first_value().unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(two.second_value().unwrap(), 0x1122_3344_5566_7788);
+        assert!(schema::TwoAmounts::from(short_cursor(a.to_vec(), chunk))
+            .first()
+            .is_err());
+        assert!(schema::TwoAmounts::from(short_cursor(
+            [a.as_slice(), b.as_slice(), &[0]].concat(),
+            chunk
+        ))
+        .first()
+        .is_err());
 
         // Table with annotated Uint64 and nested optional Uint64 (including extra compatible field)
         for port in [None, Some(b)] {
@@ -449,6 +474,7 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
                 wire.extend_from_slice(&bytes);
             }
             let invoice = schema::Invoice::from(short_cursor(wire, chunk));
+            invoice.verify(false).unwrap();
             assert_eq!(invoice.amount().unwrap(), 0x0102_0304_0506_0708);
             assert_eq!(invoice.amount_value().unwrap(), 0x0102_0304_0506_0708);
             assert_eq!(
@@ -462,16 +488,30 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
         compat_wire.extend_from_slice(&b);
         compat_wire.extend_from_slice(&[0xaa, 0xbb]);
         let compat_invoice = schema::Invoice::from(short_cursor(compat_wire, chunk));
+        assert!(compat_invoice.verify(false).is_err());
+        compat_invoice.verify(true).unwrap();
         assert_eq!(compat_invoice.amount().unwrap(), 0x0102_0304_0506_0708);
         assert_eq!(
             compat_invoice.port().unwrap(),
             Some(Some(0x1122_3344_5566_7788))
         );
 
-        // DynVec of optional annotated Uint64: [None, Some(b)]
+        let one_field_wire = [16u32.to_le_bytes().as_slice(), &8u32.to_le_bytes(), &a].concat();
+        let short_invoice = schema::Invoice::from(short_cursor(one_field_wire, chunk));
+        assert!(matches!(
+            short_invoice.verify(true),
+            Err(molecule::lazy_reader::Error::FieldCount(1))
+        ));
+        assert!(matches!(
+            short_invoice.amount(),
+            Err(molecule::lazy_reader::Error::FieldCount(1))
+        ));
+
+        // DynVec of optional annotated Uint64: [None, Some(b)], empty, corrupt offsets, bad payload
         let mut dyn_wire = [20u32, 12, 12].map(u32::to_le_bytes).concat();
         dyn_wire.extend_from_slice(&b);
         let maybe_list = schema::MaybeList::from(short_cursor(dyn_wire, chunk));
+        maybe_list.verify(false).unwrap();
         assert_eq!(maybe_list.len().unwrap(), 2);
         assert_eq!(maybe_list.get(0).unwrap(), None);
         assert_eq!(maybe_list.get(1).unwrap(), Some(0x1122_3344_5566_7788));
@@ -480,6 +520,111 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
             maybe_list.into_iter().collect::<Vec<_>>(),
             vec![None, Some(0x1122_3344_5566_7788)]
         );
+
+        let empty_maybe = schema::MaybeList::from(short_cursor(4u32.to_le_bytes().to_vec(), chunk));
+        empty_maybe.verify(false).unwrap();
+        assert_eq!(empty_maybe.len().unwrap(), 0);
+        assert!(empty_maybe.get(0).is_err());
+
+        let corrupt_maybe = schema::MaybeList::from(short_cursor(
+            [16u32, 12, 99, 0].map(u32::to_le_bytes).concat(),
+            chunk,
+        ));
+        assert!(corrupt_maybe.verify(false).is_err());
+        assert!(corrupt_maybe.get(0).is_err());
+
+        let bad_payload_maybe = schema::MaybeList::from(short_cursor(
+            [13u32, 12, 12]
+                .map(u32::to_le_bytes)
+                .concat()
+                .into_iter()
+                .chain([0x42])
+                .collect(),
+            chunk,
+        ));
+        assert!(bad_payload_maybe.verify(false).is_err());
+        assert!(bad_payload_maybe.get(1).is_err());
+
+        // Custom-named annotated integer containers (Amounts, Order, VecHolder) + Union
+        let amounts = schema::Amounts::from(short_cursor(vec_wire.clone(), chunk));
+        amounts.verify(false).unwrap();
+        assert_eq!(amounts.len().unwrap(), 2);
+        assert_eq!(amounts.get(0).unwrap(), a);
+        assert_eq!(amounts.get_value(1).unwrap(), 0x1122_3344_5566_7788);
+
+        let order_wire = [28u32, 12, 20]
+            .map(u32::to_le_bytes)
+            .concat()
+            .into_iter()
+            .chain(a)
+            .chain(b)
+            .collect::<Vec<_>>();
+        let order = schema::Order::from(short_cursor(order_wire, chunk));
+        order.verify(false).unwrap();
+        assert_eq!(order.amount().unwrap(), a);
+        assert_eq!(order.amount_value().unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(order.tip().unwrap(), Some(b));
+        assert_eq!(order.tip_value().unwrap(), Some(0x1122_3344_5566_7788));
+
+        let holder_wire = [8u32 + vec_wire.len() as u32, 8]
+            .map(u32::to_le_bytes)
+            .concat()
+            .into_iter()
+            .chain(vec_wire.iter().copied())
+            .collect::<Vec<_>>();
+        let holder = schema::VecHolder::from(short_cursor(holder_wire, chunk));
+        holder.verify(false).unwrap();
+        assert_eq!(
+            holder.amounts().unwrap().get_value(0).unwrap(),
+            0x0102_0304_0506_0708
+        );
+
+        let union_wire = [
+            0u32.to_le_bytes().as_slice(),
+            &0x0102_0304_0506_0708u64.to_le_bytes(),
+        ]
+        .concat();
+        let mixed =
+            reg_lazy::consumer::MixedUnion::try_from(short_cursor(union_wire, chunk)).unwrap();
+        mixed.verify(false).unwrap();
+        let reg_lazy::consumer::MixedUnion::LeafAmt(leaf) = mixed else {
+            panic!("wrong variant")
+        };
+        assert_eq!(leaf.try_to_u64().unwrap(), 0x0102_0304_0506_0708);
+
+        // Mixed integer + non-integer child Table / Union / Bytes in an annotated schema
+        let payload_bytes = [
+            1u32.to_le_bytes().as_slice(),
+            &2u32.to_le_bytes(),
+            &[0x33, 0x44],
+        ]
+        .concat();
+        let reg_lazy::consumer::Payload::OptBytes(Some(raw)) =
+            reg_lazy::consumer::Payload::try_from(short_cursor(payload_bytes, chunk)).unwrap()
+        else {
+            panic!("wrong variant")
+        };
+        assert_eq!(raw.read_array::<2>().unwrap(), [0x33, 0x44]);
+
+        let payload_inner = [
+            3u32.to_le_bytes().as_slice(),
+            &0u32.to_le_bytes(),
+            &4u32.to_le_bytes(),
+        ]
+        .concat();
+        let nested =
+            reg_lazy::consumer::Payload::try_from(short_cursor(payload_inner, chunk)).unwrap();
+        nested.verify(false).unwrap();
+
+        // Empty table in an annotated schema (0 fields) verifies strictly and compatibly on short reads
+        let empty_opt = schema::Option::from(short_cursor(4u32.to_le_bytes().to_vec(), chunk));
+        empty_opt.verify(false).unwrap();
+        let extra_opt = schema::Option::from(short_cursor(
+            [8u32, 8].map(u32::to_le_bytes).concat(),
+            chunk,
+        ));
+        assert!(extra_opt.verify(false).is_err());
+        extra_opt.verify(true).unwrap();
     }
 
     // Zero-progress source returns an error instead of looping forever.
@@ -490,5 +635,16 @@ fn annotated_lazy_integer_getters_retry_short_reads_in_every_container() {
     assert!(matches!(
         stalled.get(0),
         Err(molecule::lazy_reader::Error::Read(0, 4))
+    ));
+
+    // Re-entrant mutable borrow fails gracefully without panicking.
+    let borrowed = schema::Values::from(short_cursor(
+        [1u32.to_le_bytes().as_slice(), &a].concat(),
+        3,
+    ));
+    let _guard = borrowed.cursor.data_source.borrow_mut();
+    assert!(matches!(
+        borrowed.get(0),
+        Err(molecule::lazy_reader::Error::Common)
     ));
 }

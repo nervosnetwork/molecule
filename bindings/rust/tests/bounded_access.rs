@@ -389,6 +389,29 @@ fn access_error_converts_into_lazy_error_and_exact_helpers_retry_short_reads() {
         pair.array_item_exact(usize::MAX, 2, 0),
         Err(AccessError::Overflow)
     ));
+    assert!(matches!(
+        pair.array_item_exact(2, 0, 0),
+        Err(AccessError::Read(Error::Data))
+    ));
+    assert_eq!(
+        pair.fixed_field_exact(16, 8, 8)
+            .unwrap()
+            .read_array::<8>()
+            .unwrap(),
+        20u64.to_be_bytes()
+    );
+    assert!(matches!(
+        pair.fixed_field_exact(15, 0, 8),
+        Err(AccessError::Read(Error::TotalSize(15, 16)))
+    ));
+    assert!(matches!(
+        pair.fixed_field_exact(16, 12, 8),
+        Err(AccessError::Bounds {
+            offset: 12,
+            len: 8,
+            size: 16
+        })
+    ));
 
     let vec_wire = [
         2u32.to_le_bytes().as_slice(),
@@ -401,7 +424,59 @@ fn access_error_converts_into_lazy_error_and_exact_helpers_retry_short_reads() {
 
     let (empty_dyn, _) = cursor(4u32.to_le_bytes().to_vec(), 3);
     assert_eq!(empty_dyn.dynvec_len_exact().unwrap(), 0);
+    assert_eq!(empty_dyn.verify_dynvec_exact().unwrap(), 0);
+    assert_eq!(empty_dyn.verify_table_exact(0, false).unwrap(), 0);
+    assert!(matches!(
+        empty_dyn.verify_table_exact(1, true),
+        Err(AccessError::Read(Error::FieldCount(0)))
+    ));
     let dyn_wire = [16u32, 12, 12, 16].map(u32::to_le_bytes).concat();
     let (dyn_cur, _) = cursor(dyn_wire, 3);
     assert_eq!(dyn_cur.dynvec_len_exact().unwrap(), 2);
+    assert_eq!(dyn_cur.verify_dynvec_exact().unwrap(), 2);
+    assert_eq!(dyn_cur.verify_table_exact(2, false).unwrap(), 2);
+    assert_eq!(dyn_cur.verify_table_exact(1, true).unwrap(), 2);
+    assert!(matches!(
+        dyn_cur.verify_table_exact(1, false),
+        Err(AccessError::Read(Error::FieldCount(2)))
+    ));
+    assert_eq!(dyn_cur.dynvec_item_exact(2, 0).unwrap().size, 0);
+    assert_eq!(dyn_cur.dynvec_item_exact(2, 1).unwrap().size, 4);
+    assert!(matches!(
+        dyn_cur.dynvec_item_exact(2, 2),
+        Err(AccessError::Read(Error::OutOfBound(2, 2)))
+    ));
+    let bad_start = [12u32, 8, 12].map(u32::to_le_bytes).concat();
+    let (bad_cur, _) = cursor(bad_start, 3);
+    assert!(matches!(
+        bad_cur.dynvec_item_exact(2, 0),
+        Err(AccessError::Read(Error::Offset))
+    ));
+
+    let union_wire = [7u32.to_le_bytes().as_slice(), &[0xaa, 0xbb]].concat();
+    let (union_cur, _) = cursor(union_wire, 3);
+    let unpacked = union_cur.union_unpack_exact().unwrap();
+    assert_eq!(unpacked.item_id, 7);
+    assert_eq!(unpacked.cursor.read_array::<2>().unwrap(), [0xaa, 0xbb]);
+    let (short_union, _) = cursor(vec![1, 2, 3], 2);
+    assert!(matches!(
+        short_union.union_unpack_exact(),
+        Err(AccessError::Read(Error::Header(4, 3)))
+    ));
+
+    let raw_bytes_wire = [3u32.to_le_bytes().as_slice(), &[9, 8, 7]].concat();
+    let (raw_cur, _) = cursor(raw_bytes_wire, 3);
+    assert_eq!(
+        raw_cur
+            .fixvec_raw_bytes_exact()
+            .unwrap()
+            .read_array::<3>()
+            .unwrap(),
+        [9, 8, 7]
+    );
+    let (bad_raw, _) = cursor([0u32.to_le_bytes().as_slice(), &[9]].concat(), 2);
+    assert!(matches!(
+        bad_raw.fixvec_raw_bytes_exact(),
+        Err(AccessError::Read(Error::TotalSize(4, 5)))
+    ));
 }

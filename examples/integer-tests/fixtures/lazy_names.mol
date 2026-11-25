@@ -5,6 +5,7 @@ option Maybe (Uint64);
 option Nested (Maybe);
 vector MaybeList <Maybe>;
 struct Fixed { amount: Uint64, }
+struct TwoAmounts { first: Uint64, second: Uint64, }
 table Invoice { amount: Uint64, port: Nested, }
 
 table Option {}
