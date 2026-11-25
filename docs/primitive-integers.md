@@ -5,8 +5,9 @@ numeric meaning to an existing declaration without changing its wire layout,
 default bytes, verifier, Reader/Entity identity, or existing conversion traits.
 Unannotated arrays (including `Byte32`) remain opaque. Names never imply an integer.
 
-Supported values are unsigned 8/16/32/64/128/256 bits and signed 8/16/32/64/128 bits,
-with explicit little or big endian order. Signed values use two's complement.
+Supported values are unsigned and two's-complement signed 8/16/32/64/128-bit
+integers. Multi-byte types default to little-endian and accept an explicit `be`
+suffix for big-endian.
 Only a direct `array T [byte; N]` with the exact width may be annotated.
 
 ## Enable the extension
@@ -14,11 +15,14 @@ Only a direct `array T [byte; N]` with the exact width may be annotated.
 New schemas can declare a named integer directly.
 
 ```molecule
+integer Count = u64;
 integer Amount = u64be;
 ```
 
-Use `u` or `i`, the width in bits and an `le` or `be` suffix. Single-byte
-`u8` and `i8` also accept the suffix-free spelling, equivalent to little endian.
+Use bare `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, `i64`, `u128`, `i128`
+for single-byte and little-endian integers, or add `be` (`u16be`, `i16be`,
+`u32be`, `i32be`, `u64be`, `i64be`, `u128be`, `i128be`) for multi-byte
+big-endian integers.
 The compiler lowers the declaration to a byte array and the same integer
 specification used by metadata. Imports carry this meaning automatically.
 
@@ -99,11 +103,10 @@ length once (returning `IntegerError`), then yields native values from borrowed
 fixed-width chunks (`ExactSizeIterator + DoubleEndedIterator`). Reading a prefix
 requires no collection or full payload scan.
 
-Widths through 128 use Rust scalars. `molecule::integer::Uint256` holds 32 bytes,
-has `ZERO`/`MAX` constants, numeric `Ord`, `const fn` LE/BE byte and `u64`/`u128`
-conversions (`From`/`TryFrom`), hex formatting, and checked narrowing to u128/u64.
-It is a value type, not a native memory layout or arithmetic library. Both
-`IntegerError` and `AccessError` are `#[non_exhaustive]`.
+All supported widths (8 through 128 bits) map directly to native Rust integer
+primitives (`u8`–`u128`, `i8`–`i128`). Wider values such as 256-bit integers
+remain opaque byte arrays (`array Uint256 [byte; 32];`) for dedicated crates to
+wrap. Both `IntegerError` and `AccessError` are `#[non_exhaustive]`.
 
 The separate lazy backend adds the same `try_to_*` decoding method, using the
 shared bounded Cursor reader (reading only the exact requested header and field
@@ -132,12 +135,11 @@ The wire buffer may be unaligned. A reader's result pointer must refer to a
 writable object aligned for its native type. Null pointers, size mismatches
 and out-of-range scalar inputs return an error before changing the destination.
 
-Values through 64 bits use standard C integer types. Wider values use
-`mol_uint128_t`, `mol_int128_t`, and `mol_uint256_t`, with least-significant limbs
-first (`mol_uint128_compare`, `mol_int128_compare`, `mol_uint256_compare`,
-`mol_uint256_from_u64`/`u128`, and checked narrowing to u128/u64). Signed 128
-uses two's complement limbs. Use the accessors to encode these structs in schema
-byte order. They require no compiler-specific `__int128`. The numeric runtime
+Values through 64 bits use standard C integer types. 128-bit values use
+`mol_uint128_t` and `mol_int128_t`, with least-significant limbs first
+(`mol_uint128_compare`, `mol_int128_compare`). Signed 128 uses two's complement
+limbs. Use the accessors to encode these structs in schema byte order. They
+require no compiler-specific `__int128`. The numeric runtime
 include uses a separate filename extension and include guard so generated schema
 headers can use the name `molecule_integer.h`, including through imports.
 Current plain and annotated headers for the same layout work in either order.
@@ -178,9 +180,10 @@ and migration between equivalent sidecar and native declarations. Compare
 
 Before sending extended IR, the CLI asks the explicitly selected local plugin for
 `--capabilities`. Protocol 1 advertises `ir_versions`, `formats`, `features`,
-`api_flavor`, and exact `integers` specifications. A plugin without matching
-capabilities is rejected; there is no silent byte-array fallback. The bundled
-Rust, lazy Rust and C plugins support all 22 specifications.
+`api_flavor`, and exact canonical `integers` specifications (single-byte specs
+canonicalize to `byte_order: "little"` in IR v2 and capabilities). A plugin
+without matching capabilities is rejected; there is no silent byte-array
+fallback. The bundled Rust, lazy Rust and C plugins support all 18 specifications.
 
 Capability negotiation is bounded to 5 seconds and 64 KiB. Generation defaults
 to 60 seconds (`--plugin-timeout`), 64 MiB stdout and 64 KiB stderr. Input/output
@@ -194,7 +197,7 @@ runtimes gain no dependencies or unsafe code.
 
 ## Validation
 
-`examples/integer-tests` uses 486 pinned valid vectors, covering all widths,
+`examples/integer-tests` uses 402 pinned valid vectors, covering all widths,
 signedness and orders. It compares numeric meaning and fixed wire bytes through
 Rust, lazy Rust, C and the published 0.9.2 wire API; it also checks alignments 0–7,
 N−1/N/N+1 lengths, 1/3-byte source reads, range failures, CKB fixtures/hashes,
@@ -211,6 +214,6 @@ The legacy `blockchain.mol` fixture comes from CKB commit
 `95fd03933ce2a396b84aed12caaa0f984165cd6c` (MIT).
 
 The three CKB schemas under `examples/integer-tests/schemas` are taken from
-CKB commit `0b0b3e50d8c6fb0a5dab1b79ffcc569d38be14cd`. Seven fixed arrays
+CKB commit `0b0b3e50d8c6fb0a5dab1b79ffcc569d38be14cd`. Six fixed arrays
 have native integer declarations. The external Rust test uses each schema's
 public names, including the discovery port, repeated fees and ordered keys.

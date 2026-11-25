@@ -20,11 +20,16 @@ impl Capabilities {
     pub fn builtin(language: Language, format: super::Format) -> Self {
         let mut integers = Vec::new();
         for (bits, signed) in IntegerSpec::SUPPORTED_KINDS {
-            for byte_order in [ByteOrder::Little, ByteOrder::Big] {
+            integers.push(IntegerSpec {
+                bits,
+                signed,
+                byte_order: ByteOrder::Little,
+            });
+            if bits > 8 {
                 integers.push(IntegerSpec {
                     bits,
                     signed,
-                    byte_order,
+                    byte_order: ByteOrder::Big,
                 });
             }
         }
@@ -67,9 +72,10 @@ impl Capabilities {
             return Err("E_PLUGIN_CAPABILITY: plugin does not support logical-integer-v1".into());
         }
         for (name, spec) in ast.integers() {
-            if !self.integers.contains(spec) {
+            let canonical = spec.canonical();
+            if !self.integers.contains(&canonical) {
                 return Err(format!(
-                    "E_PLUGIN_CAPABILITY: plugin cannot represent {name}: {spec:?}"
+                    "E_PLUGIN_CAPABILITY: plugin cannot represent {name}: {canonical:?}"
                 ));
             }
         }

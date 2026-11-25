@@ -8,7 +8,7 @@ fn read_only_output_survives_a_failed_replacement_without_staging_files() {
     let dir = tempfile::tempdir().unwrap();
     let schema = dir.path().join("types.mol");
     let output = dir.path().join("types.rs");
-    fs::write(&schema, "integer Word = u16le;").unwrap();
+    fs::write(&schema, "integer Word = u16;").unwrap();
     fs::write(&output, "original").unwrap();
     let original = fs::metadata(&output).unwrap().permissions();
     let mut readonly = original.clone();
@@ -45,7 +45,7 @@ fn overwriting_preserves_output_permissions() {
     let output = dir.path().join("types.rs");
     for (source, mode, sidecar) in [
         ("array Word [byte; 2];", 0o200, false),
-        ("integer Word = u16le;", 0o600, false),
+        ("integer Word = u16;", 0o600, false),
         #[cfg(feature = "schema-extensions")]
         ("array Word [byte; 2];", 0o600, true),
     ] {
@@ -352,7 +352,7 @@ fn replacing_output_preserves_visible_attributes_and_acl() {
     let dir = tempfile::tempdir().unwrap();
     let schema = dir.path().join("types.mol");
     let output = dir.path().join("types.rs");
-    fs::write(&schema, "integer Word = u16le;").unwrap();
+    fs::write(&schema, "integer Word = u16;").unwrap();
     let mut compiler = Compiler::new();
     compiler
         .input_schema_file(&schema)
@@ -425,7 +425,7 @@ fn replacing_output_preserves_visible_attributes_and_acl() {
     };
 
     let before = src.metadata().unwrap();
-    fs::write(&schema, "integer Word = u32le;").unwrap();
+    fs::write(&schema, "integer Word = u32;").unwrap();
     compiler.run().unwrap();
     let replaced = fs::File::open(&output).unwrap();
     let after = replaced.metadata().unwrap();

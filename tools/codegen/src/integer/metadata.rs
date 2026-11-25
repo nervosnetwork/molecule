@@ -104,12 +104,25 @@ impl MetadataFile {
                         module.id
                     ));
                 }
-                Ok(LogicalInteger {
-                    schema: module.id.clone(),
-                    name: entry.name,
+                let spec = IntegerSpec {
                     bits: entry.bits,
                     signed: entry.signed,
                     byte_order: entry.byte_order,
+                }
+                .canonical();
+                spec.validate().map_err(|error| {
+                    format!(
+                        "{error}: {}: integers[{index}]: {}",
+                        path.display(),
+                        entry.name
+                    )
+                })?;
+                Ok(LogicalInteger {
+                    schema: module.id.clone(),
+                    name: entry.name,
+                    bits: spec.bits,
+                    signed: spec.signed,
+                    byte_order: spec.byte_order,
                 })
             })
             .collect()
@@ -189,7 +202,7 @@ pub(crate) fn bind(
                 return Err(format!("E_INT_DUPLICATE: {location}: {}", decl.name));
             }
         };
-        let spec = decl.spec();
+        let spec = decl.spec().canonical();
         spec.validate()
             .map_err(|error| format!("{error}: {location}: {}", decl.name))?;
         let typ = ast

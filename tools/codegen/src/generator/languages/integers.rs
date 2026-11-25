@@ -8,12 +8,8 @@ use quote::{format_ident, quote};
 use std::io;
 
 pub(super) fn native(spec: IntegerSpec) -> TokenStream {
-    if spec.bits == 256 {
-        quote!(molecule::integer::Uint256)
-    } else {
-        let name = format_ident!("{}{}", if spec.signed { "i" } else { "u" }, spec.bits);
-        quote!(#name)
-    }
+    let name = format_ident!("{}{}", if spec.signed { "i" } else { "u" }, spec.bits);
+    quote!(#name)
 }
 
 fn decoder(spec: IntegerSpec) -> TokenStream {

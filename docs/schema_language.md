@@ -36,14 +36,15 @@ There is only one built-in primitive type: `byte`.
 A named integer declares the numeric interpretation of a fixed byte array.
 
 ```molecule
-integer Uint32 = u32le;
+integer Uint32 = u32;
 integer BeUint32 = u32be;
 array Byte32 [byte; 32];
 ```
 
-Multi-byte values specify little or big endian order. The generated scalar
-methods and migration path for deployed schemas are documented in
-[Explicit integer semantics](primitive-integers.md).
+Bare types (`u8`–`u128`, `i8`–`i128`) default to little-endian; multi-byte
+big-endian types use the `be` suffix (`u16be`–`u128be`, `i16be`–`i128be`). The
+generated scalar methods and migration path for deployed schemas are documented
+in [Explicit integer semantics](primitive-integers.md).
 
 ##### Composite Types
 

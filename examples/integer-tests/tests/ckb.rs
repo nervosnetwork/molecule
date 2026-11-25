@@ -1,4 +1,4 @@
-use molecule::{integer::Uint256 as Value256, prelude::*};
+use molecule::prelude::*;
 use molecule_integer_tests::{blockchain, extensions, protocols};
 
 #[test]
@@ -19,10 +19,9 @@ fn ckb_schema_consumers_keep_names_and_wire_values() {
             .unwrap(),
         u128::MAX
     );
-    let wide = Value256::from_be_bytes([0x81; 32]);
     assert_eq!(
-        blockchain::Uint256::from_u256(wide).try_to_u256().unwrap(),
-        wide
+        blockchain::Uint256::from([0x81; 32]).as_slice(),
+        &[0x81; 32]
     );
     assert_eq!(
         extensions::BeUint64::from_u64(256).as_slice(),

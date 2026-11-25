@@ -106,7 +106,7 @@ fn missing_schema_and_import_report_the_missing_path() {
 fn invalid_layouts_return_diagnostics_with_and_without_integers() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("root.mol");
-    for prefix in ["", "integer Amount = u64le;"] {
+    for prefix in ["", "integer Amount = u64;"] {
         for (schema, names) in [
             ("table Order { price: Pric, }", &["Order", "Pric"][..]),
             ("option A (B); option B (A);", &["A", "B"]),
@@ -250,7 +250,7 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
             "E_RUST_FIELD_COLLISION",
         ),
         (
-            "integer Rate = u64le; table IntT { feeRate: Rate, fee_rate: Rate, }",
+            "integer Rate = u64; table IntT { feeRate: Rate, fee_rate: Rate, }",
             "E_RUST_FIELD_COLLISION",
         ),
         (
@@ -314,12 +314,12 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
     let mod_dir = tempfile::tempdir().unwrap();
     fs::write(
         mod_dir.path().join("mod_a.mol"),
-        "integer feeRate = u32le; table A { x: feeRate, }",
+        "integer feeRate = u32; table A { x: feeRate, }",
     )
     .unwrap();
     fs::write(
         mod_dir.path().join("mod_b.mol"),
-        "integer fee_rate = u64le; table B { y: fee_rate, }",
+        "integer fee_rate = u64; table B { y: fee_rate, }",
     )
     .unwrap();
     let combined = mod_dir.path().join("combined.mol");
@@ -341,7 +341,7 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
     let opt_schema = dir.path().join("custom_option.mol");
     fs::write(
         &opt_schema,
-        "table Option {} integer Amount = u64le; option AmountOpt (Amount);",
+        "table Option {} integer Amount = u64; option AmountOpt (Amount);",
     )
     .unwrap();
     Compiler::new()
@@ -425,7 +425,7 @@ fn rust_and_lazy_generators_reject_colliding_snake_case_field_names() {
     let c_b = dir.path().join("cb");
     fs::create_dir_all(&c_a).unwrap();
     fs::create_dir_all(&c_b).unwrap();
-    fs::write(c_a.join("base.mol"), "integer AInt = u32le;").unwrap();
+    fs::write(c_a.join("base.mol"), "integer AInt = u32;").unwrap();
     fs::write(c_b.join("base.mol"), "integer BInt = u64be;").unwrap();
     let out_a = out.path().join("ca");
     let out_b = out.path().join("cb");

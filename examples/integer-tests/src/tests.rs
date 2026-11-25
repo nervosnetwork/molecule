@@ -1,6 +1,5 @@
 use super::{blockchain, lazy, legacy, old_blockchain, packed};
 use molecule::{
-    integer::Uint256,
     lazy_reader::{Cursor, Error, Read},
     prelude::*,
 };
@@ -22,23 +21,8 @@ fn hex(input: &str) -> Vec<u8> {
         .collect()
 }
 
-// Decimal conversion is an independent test oracle, not a production text API.
-fn decimal_u256(input: &str) -> Uint256 {
-    let mut bytes = [0; 32];
-    for digit in input.bytes() {
-        let mut carry = (digit - b'0') as u16;
-        for byte in &mut bytes {
-            carry += u16::from(*byte) * 10;
-            *byte = carry as u8;
-            carry >>= 8;
-        }
-        assert_eq!(carry, 0);
-    }
-    Uint256::from_le_bytes(bytes)
-}
-
 impl Case {
-    fn limbs(&self) -> [u64; 4] {
+    fn limbs(&self) -> [u64; 2] {
         let mut bytes = self.bytes.clone();
         if self.order == "big" {
             bytes.reverse();
@@ -48,7 +32,7 @@ impl Case {
         } else {
             0
         };
-        bytes.resize(32, fill);
+        bytes.resize(16, fill);
         core::array::from_fn(|index| {
             u64::from_le_bytes(bytes[index * 8..index * 8 + 8].try_into().unwrap())
         })
@@ -208,7 +192,7 @@ fn fixed_vectors_match_rust_c_lazy_and_published_wire_api() {
     let cases: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/vectors.json")).unwrap();
     let cases = cases.as_array().unwrap();
-    assert_eq!(cases.len(), 486);
+    assert_eq!(cases.len(), 402);
     for case in cases {
         check(&Case {
             bits: case["bits"].as_u64().unwrap() as u16,
@@ -218,22 +202,6 @@ fn fixed_vectors_match_rust_c_lazy_and_published_wire_api() {
             bytes: hex(case["hex"].as_str().unwrap()),
         });
     }
-}
-
-#[test]
-fn unsigned_256_has_numeric_order_and_checked_narrowing() {
-    assert!(Uint256::from_u64(255) < Uint256::from_u64(256));
-    assert_eq!(
-        Uint256::from_u128(u128::MAX).try_to_u128().unwrap(),
-        u128::MAX
-    );
-    assert_eq!(Uint256::from_u64(u64::MAX).try_to_u64().unwrap(), u64::MAX);
-    assert!(Uint256::from_u128(u128::MAX).try_to_u64().is_err());
-    assert!(Uint256::from_be_bytes([255; 32]).try_to_u128().is_err());
-    assert_eq!(
-        decimal_u256("340282366920938463463374607431768211455"),
-        Uint256::from_u128(u128::MAX)
-    );
 }
 
 #[test]

@@ -44,29 +44,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     let mut switches = String::new();
     let mut tag = 0;
-    for bits in [8u16, 16, 32, 64, 128, 256] {
+    for bits in [8u16, 16, 32, 64, 128] {
+        let orders: &[(&str, &str)] = if bits == 8 {
+            &[("little", "")]
+        } else {
+            &[("little", "Le"), ("big", "Be")]
+        };
         for signed in [false, true] {
-            if signed && bits == 256 {
-                continue;
-            }
-            for (order, suffix) in [("little", "Le"), ("big", "Be")] {
+            for &(order, suffix) in orders {
                 let native = format!("{}{bits}", if signed { "i" } else { "u" });
                 let name = format!("{}{bits}{suffix}", if signed { "I" } else { "U" });
+                let literal = if order == "big" {
+                    format!("{native}be")
+                } else {
+                    native.clone()
+                };
                 let width = bits / 8;
                 schema.push_str(&format!("array {name} [byte; {width}];\n"));
-                native_schema.push_str(&format!(
-                    "integer {name} = {native}{};\n",
-                    suffix.to_ascii_lowercase()
-                ));
+                native_schema.push_str(&format!("integer {name} = {literal};\n"));
                 entries.push(json!({"type":name,"bits":bits,"signed":signed,"byte_order":order}));
                 let vector = format!("vector {name}List <{name}>;\n");
                 schema.push_str(&vector);
                 native_schema.push_str(&vector);
-                let value = if bits == 256 {
-                    "decimal_u256(&case.value)".to_owned()
-                } else {
-                    format!("case.value.parse::<{native}>().unwrap()")
-                };
+                let value = format!("case.value.parse::<{native}>().unwrap()");
                 cases.push_str(&format!("({bits}, {signed}, {order:?}) => {{ let value = {value}; check_scalar!(case, {name}, {name}Reader, {name}List, from_{native}, try_to_{native}, value, {tag}, {width}); }},\n"));
                 let (ctyp, read_compare) = if bits > 64 {
                     let typ = format!("mol_{}int{bits}_t", if signed { "" } else { "u" });
@@ -196,14 +196,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         .run()?;
 
     let reg_schemas: &[(&str, &str)] = &[
-        ("common/defs", "integer DefVal = u32le;"),
-        ("leaf", "integer LeafAmt = u64le;"),
+        ("common/defs", "integer DefVal = u32;"),
+        ("leaf", "integer LeafAmt = u64;"),
         ("mid", "import leaf; table Mid { a: LeafAmt, }"),
-        ("mod_a", "integer FeeRate = u32le;"),
+        ("mod_a", "integer FeeRate = u32;"),
         ("mod_b", "integer fee_rate = u32be;"),
         (
             "imp_row",
-            "integer RowLe = u16le; struct FeeRow { v: RowLe, } option OptFeeRow (FeeRow);",
+            "integer RowLe = u16; struct FeeRow { v: RowLe, } option OptFeeRow (FeeRow);",
         ),
         (
             "consumer",
@@ -227,7 +227,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "struct ShadowS { as_slice: byte, build: byte, }\n",
                 "table Reader {} table Entity {} table Builder {}\n",
                 "struct Value { as_builder: byte, into: byte, } vector Values <Value>; option MaybeValue (Value);\n",
-                "integer T = u16le; struct Row { default: T, } array Rows [Row; 2]; vector Amounts <T>;\n",
+                "integer T = u16; struct Row { default: T, } array Rows [Row; 2]; vector Amounts <T>;\n",
                 "struct Rates { little: FeeRate, big: fee_rate, }\n",
                 "vector Bytes <byte>; option OptBytes (Bytes); option OptByte (byte);\n",
                 "option OptRate (FeeRate); option NestedRate (OptRate);\n",
@@ -261,7 +261,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "plain_root",
             concat!(
                 "import plain_child;\n",
-                "integer RootAmt = u64le;\n",
+                "integer RootAmt = u64;\n",
                 "option UnusedOpt (PlainChild);\n",
                 "vector PlainUnionVec <PlainUnion>;\n",
                 "union LocalWrap { PlainUnion, PlainPairVec, }\n",
@@ -276,7 +276,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         (
             "pkg_root",
-            "import pkg/outer;\ninteger RootAmt = u64le;\ntable PublicRoot { amount: RootAmt, outer: PublicOuter, }\n",
+            "import pkg/outer;\ninteger RootAmt = u64;\ntable PublicRoot { amount: RootAmt, outer: PublicOuter, }\n",
         ),
     ];
     for &(rel, src) in reg_schemas {
@@ -303,7 +303,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "invoice",
             "import molecule_integer; integer Uint64 = u64be; struct Charge { tag: Tag, amount: Uint64, }",
         ),
-        ("a/base", "integer ABaseVal = u32le;"),
+        ("a/base", "integer ABaseVal = u32;"),
         ("b/base", "integer BBaseVal = u64be;"),
         ("b/bridge", "import base; struct BDetail { amount: BBaseVal, }"),
         (
@@ -342,11 +342,11 @@ int check_c(unsigned int tag, const uint8_t *data, unsigned int len,
 }}
 int narrow_i8_c(int64_t value, uint8_t *out) {{
     mol_seg_t output = {{out, 1}};
-    return MolBuilder_I8Be_write_value(value, &output);
+    return MolBuilder_I8_write_value(value, &output);
 }}
 int narrow_u8_c(uint64_t value, uint8_t *out) {{
     mol_seg_t output = {{out, 1}};
-    return MolBuilder_U8Le_write_value(value, &output);
+    return MolBuilder_U8_write_value(value, &output);
 }}
 int check_c_imports_and_case_fields(void) {{
     uint8_t a_bytes[4] = {{0x01, 0x02, 0x03, 0x04}};
@@ -416,7 +416,7 @@ int check_c_imports_and_case_fields(void) {{
             .run()?;
         let wide = out.join("wide");
         fs::create_dir_all(&wide)?;
-        fs::write(&plain, "integer Amount = u32le;")?;
+        fs::write(&plain, "integer Amount = u32;")?;
         Compiler::new()
             .input_schema_file(&plain)
             .generate_code(Language::C)

@@ -21,7 +21,7 @@ table Pong {
 
 vector NodeVec <Node>;
 vector Node2Vec <Node2>;
-integer Uint16 = u16le;
+integer Uint16 = u16;
 option PortOpt (Uint16);
 
 // discovery 0.0.1

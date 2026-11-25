@@ -1,5 +1,5 @@
 use crate::{lazy, packed};
-use molecule::{integer::Uint256, lazy_reader::Cursor, prelude::*};
+use molecule::{lazy_reader::Cursor, prelude::*};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
     cell::Cell,
@@ -67,10 +67,12 @@ fn numeric_vector_construction_allocates_only_its_wire_buffer() {
 }
 
 #[test]
-fn scalar_container_and_u256_reads_allocate_nothing() {
+fn scalar_and_container_reads_allocate_nothing() {
     let bytes = 123u64.to_be_bytes();
     let reader = packed::U64BeReader::new_unchecked(&bytes);
     let lazy = lazy::U64Be::from(Cursor::from(vec![0, 0, 0, 0, 0, 0, 0, 123]));
+    let wide_bytes = u128::MAX.to_be_bytes();
+    let wide_reader = packed::U128BeReader::new_unchecked(&wide_bytes);
     let port = crate::protocols::PortOptReader::new_unchecked(&[0, 1]);
     let fees =
         crate::extensions::Uint64VecReader::new_unchecked(&[1, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0]);
@@ -78,15 +80,9 @@ fn scalar_container_and_u256_reads_allocate_nothing() {
     for _ in 0..1000 {
         assert_eq!(black_box(reader).try_to_u64().unwrap(), 123);
         assert_eq!(black_box(&lazy).try_to_u64().unwrap(), 123);
+        assert_eq!(black_box(wide_reader).try_to_u128().unwrap(), u128::MAX);
         assert_eq!(black_box(port).try_value().unwrap(), Some(256));
         assert_eq!(black_box(fees).try_values().unwrap().next(), Some(123));
-        let value = Uint256::from_u128(black_box(u128::MAX));
-        assert_eq!(
-            Uint256::from_be_bytes(value.to_be_bytes())
-                .try_to_u128()
-                .unwrap(),
-            u128::MAX
-        );
     }
     let allocations = ALLOCATIONS.with(|count| count.replace(None).unwrap());
     assert_eq!(allocations, 0);

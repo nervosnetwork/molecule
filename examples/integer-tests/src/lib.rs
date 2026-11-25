@@ -1,10 +1,16 @@
 #![no_std]
 
 #[allow(clippy::all)]
-/// Numeric access is opt-in; an unannotated byte array remains opaque.
+/// Numeric access is opt-in; unannotated byte arrays (including `Byte32` and `Uint256`) remain opaque.
 /// ```compile_fail
+/// use molecule::prelude::*;
 /// use molecule_integer_tests::packed::Byte32;
-/// let _ = Byte32::from_u256(molecule::integer::Uint256::default());
+/// let _ = Byte32::default().as_reader().try_as_wire_bytes();
+/// ```
+/// ```compile_fail
+/// use molecule::prelude::*;
+/// use molecule_integer_tests::blockchain::Uint256;
+/// let _ = Uint256::default().as_reader().try_as_wire_bytes();
 /// ```
 /// The decoded iterator borrows the wire buffer and can outlive its reader.
 /// ```edition2024

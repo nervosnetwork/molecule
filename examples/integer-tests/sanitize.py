@@ -10,12 +10,17 @@ crate = Path(__file__).resolve().parent
 build = subprocess.run(["cargo", "test", "--locked", "--no-run", "--message-format=json"], cwd=crate, check=True, text=True, stdout=subprocess.PIPE)
 outputs = [json.loads(line) for line in build.stdout.splitlines() if line.startswith("{")]
 out = next(Path(item["out_dir"]) for item in outputs if item.get("reason") == "build-script-executed" and "molecule-integer-tests" in item["package_id"])
-specs = [(bits, signed, order) for bits in [8,16,32,64,128,256] for signed in [False,True] if not (bits == 256 and signed) for order in ["little","big"]]
+specs = [
+    (bits, signed, order)
+    for bits in [8, 16, 32, 64, 128]
+    for signed in [False, True]
+    for order in (["little"] if bits == 8 else ["little", "big"])
+]
 calls = []
 for case in json.loads((crate / "fixtures/vectors.json").read_text()):
     tag = specs.index((case["bits"], case["signed"], case["byte_order"]))
-    value = int(case["value"]) % (1 << 256)
-    limbs = ",".join(f"{(value >> (64*i)) & ((1 << 64)-1)}ULL" for i in range(4))
+    value = int(case["value"]) % (1 << 128)
+    limbs = ",".join(f"{(value >> (64*i)) & ((1 << 64)-1)}ULL" for i in range(2))
     data = ",".join(str(byte) for byte in bytes.fromhex(case["hex"]))
     calls.append(f"{{ const uint8_t data[] = {{{data}}}; const uint64_t limbs[] = {{{limbs}}}; check({tag}, data, sizeof(data), limbs); }}")
 driver = r'''
@@ -51,13 +56,10 @@ int main(void) {
     mol_seg_t amount = MolReader_Charge_get_amount(&charge);
     uint64_t index = 0;
     assert(MolReader_Uint64_read_value(&amount, &index) == MOL_OK && index == 256);
-    mol_uint256_t a=mol_uint256_from_u64(255), b=mol_uint256_from_u64(256);
-    assert(mol_uint256_compare(a,b)<0);
     mol_uint128_t u128_a={{1, 2}}, u128_b={{2, 2}}, u128_c={{0, 3}};
     assert(mol_uint128_compare(u128_a, u128_a)==0);
     assert(mol_uint128_compare(u128_a, u128_b)<0);
     assert(mol_uint128_compare(u128_c, u128_b)>0);
-    assert(mol_uint256_compare(mol_uint256_from_u128(u128_a), mol_uint256_from_u128(u128_b))<0);
     mol_int128_t i128_min={{0, (uint64_t)1 << 63}};
     mol_int128_t i128_neg1={{UINT64_MAX, UINT64_MAX}};
     mol_int128_t i128_zero={{0, 0}};
@@ -67,22 +69,19 @@ int main(void) {
     assert(mol_int128_compare(i128_zero, i128_max)<0);
     assert(mol_int128_compare(i128_max, i128_min)>0);
     assert(mol_int128_compare(i128_neg1, i128_neg1)==0);
-    uint64_t narrowed=123;
-    assert(mol_uint256_to_u64(a,&narrowed)==0 && narrowed==255);
-    b.limbs[1]=1;
-    assert(mol_uint256_to_u64(b,&narrowed)!=0 && narrowed==255);
-    mol_uint128_t wide={{123,456}};
-    b.limbs[2]=1;
-    assert(mol_uint256_to_u128(b,&wide)!=0 && wide.limbs[0]==123 && wide.limbs[1]==456);
-    mol_uint256_t value = {{1, 2, 3, 4}};
+    mol_uint128_t value = {{1, 2}};
     mol_seg_t wire = {(uint8_t *)value.limbs, sizeof value.limbs};
-    assert(mol_integer_write_limbs(value.limbs, 4, false, &wire) == MOL_OK);
-    for (unsigned i = 0; i < 4; ++i) assert(wire.ptr[i * 8 + 7] == 4 - i);
-    assert(MolReader_U256Be_read_value(&wire, NULL) == MOL_ERR_DATA);
-    assert(MolReader_U256Be_read_value(&wire, &value) == MOL_OK);
+    assert(mol_integer_write_limbs(value.limbs, 2, false, &wire) == MOL_OK);
+    for (unsigned i = 0; i < 2; ++i) assert(wire.ptr[i * 8 + 7] == 2 - i);
+    assert(mol_integer_write_limbs(value.limbs, 0, false, &wire) == MOL_ERR_DATA);
+    assert(mol_integer_write_limbs(value.limbs, 3, false, &wire) == MOL_ERR_DATA);
+    assert(mol_integer_read_limbs(&wire, 0, false, value.limbs) == MOL_ERR_DATA);
+    assert(mol_integer_read_limbs(&wire, 3, false, value.limbs) == MOL_ERR_DATA);
+    assert(MolReader_U128Be_read_value(&wire, NULL) == MOL_ERR_DATA);
+    assert(MolReader_U128Be_read_value(&wire, &value) == MOL_OK);
     --wire.size;
-    assert(MolReader_U256Be_read_value(&wire, &value) == MOL_ERR_TOTAL_SIZE);
-    for (unsigned i = 0; i < 4; ++i) assert(value.limbs[i] == i + 1);
+    assert(MolReader_U128Be_read_value(&wire, &value) == MOL_ERR_TOTAL_SIZE);
+    for (unsigned i = 0; i < 2; ++i) assert(value.limbs[i] == i + 1);
     uint8_t guard = 0xa5;
     assert(narrow_i8_c(128, &guard) == MOL_ERR_DATA && guard == 0xa5);
     assert(narrow_i8_c(-129, &guard) == MOL_ERR_DATA && guard == 0xa5);

@@ -2,11 +2,11 @@
 
 // The `UintN` is used to store a `N` bits unsigned integer
 // as a byte array in little endian.
-integer Uint32 = u32le;
-integer Uint64 = u64le;
-integer Uint128 = u128le;
+integer Uint32 = u32;
+integer Uint64 = u64;
+integer Uint128 = u128;
 array Byte32 [byte; 32];
-integer Uint256 = u256le;
+array Uint256 [byte; 32];
 
 vector Bytes <byte>;
 option BytesOpt (Bytes);

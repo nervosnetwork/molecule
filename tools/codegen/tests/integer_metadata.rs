@@ -63,6 +63,7 @@ fn invalid_metadata_never_replaces_existing_output() {
         (annotation("Values", 64, false, "little"), "E_INT_TARGET"),
         (annotation("Nested", 64, false, "little"), "E_INT_TARGET"),
         (annotation("Amount", 32, false, "little"), "E_INT_WIDTH"),
+        (annotation("Byte32", 256, false, "little"), "E_INT_WIDTH"),
         (annotation("Byte32", 256, true, "little"), "E_INT_WIDTH"),
         (annotation("Amount", 63, false, "little"), "E_INT_WIDTH"),
         (annotation("Amount", 64, false, "native"), "E_META_JSON"),
@@ -244,6 +245,14 @@ fn v2_recovery_revalidates_layout_features_and_ownership() {
                 .as_bytes()
         )
         .is_err());
+    // IR v2 recovery also rejects removed 256-bit logical integer specifications.
+    let mut u256_ir = valid.clone();
+    *u256_ir.pointer_mut("/logical_types/0/name").unwrap() = json!("Byte32");
+    *u256_ir.pointer_mut("/logical_types/0/bits").unwrap() = json!(256);
+    assert!(Format::JSON
+        .recover(&serde_json::to_vec(&u256_ir).unwrap())
+        .unwrap_err()
+        .contains("E_INT_WIDTH"));
 }
 
 #[cfg(feature = "compiler-plugin")]
@@ -253,7 +262,23 @@ fn capabilities_reject_inexact_plugins() {
     let (_dir, compiler) = fixture();
     let ast = compiler.parse_ast().unwrap();
     let mut capabilities = Capabilities::builtin(Language::Rust, IntermediateFormat::JSON);
+    assert_eq!(capabilities.integers.len(), 18);
     assert!(capabilities.require(&ast).is_ok());
+    // Built-in capabilities also accept an 8-bit sidecar declaring redundant big-endian order.
+    let flag_dir = TempDir::new().unwrap();
+    fs::write(flag_dir.path().join("flag.mol"), "array Flag [byte; 1];").unwrap();
+    let flag_meta = write_metadata(
+        flag_dir.path(),
+        "flag.mol",
+        "flag.json",
+        json!([annotation("Flag", 8, false, "big")]),
+    );
+    let flag_ast = Compiler::new()
+        .input_schema_file(flag_dir.path().join("flag.mol"))
+        .type_metadata_file(flag_meta)
+        .parse_ast()
+        .unwrap();
+    assert!(capabilities.require(&flag_ast).is_ok());
     capabilities
         .integers
         .retain(|spec| spec.byte_order != ByteOrder::Big);
@@ -342,7 +367,7 @@ fn symlink_imports_use_the_original_spelling_and_hardlinks_share_identity() {
 fn reordering_imports_keeps_the_published_integer_owner() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("root.mol");
-    fs::write(dir.path().join("shared.mol"), "integer Amount = u64le;").unwrap();
+    fs::write(dir.path().join("shared.mol"), "integer Amount = u64;").unwrap();
     for (name, ty) in [("left", "Left"), ("right", "Right")] {
         let folder = dir.path().join(name);
         fs::create_dir(&folder).unwrap();
@@ -420,7 +445,7 @@ fn output_names_preserve_the_complete_schema_stem() {
         ("molecule_integer", Language::C, "h"),
     ] {
         let path = dir.path().join(format!("{name}.mol"));
-        fs::write(&path, "integer Amount = u64le;").unwrap();
+        fs::write(&path, "integer Amount = u64;").unwrap();
         Compiler::new()
             .input_schema_file(path)
             .generate_code(language)
@@ -436,7 +461,7 @@ fn lazy_numeric_names_preserve_their_existing_return_types() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("types.mol");
     let output = dir.path().join("types.rs");
-    for declaration in ["integer Uint64 = i64be;", "integer Int32 = i16le;"] {
+    for declaration in ["integer Uint64 = i64be;", "integer Int32 = i16;"] {
         fs::write(&path, declaration).unwrap();
         fs::write(&output, "existing").unwrap();
         let error = Compiler::new()
@@ -458,17 +483,60 @@ fn native_types_share_the_metadata_width_rule_and_keep_contextual_names() {
     compiler.input_schema_file(&path);
     fs::write(
         &path,
-        "integer integer = i8; array u32le [byte; 4]; struct Word { integer: integer, }",
+        "integer integer = i8; array u32 [byte; 4]; struct Word { integer: integer, }",
     )
     .unwrap();
     let ast = compiler.parse_ast().unwrap();
     assert_eq!(ast.integer("integer").unwrap().bits, 8);
-    assert!(ast.integer("u32le").is_none());
+    assert!(ast.integer("u32").is_none());
+    // Every supported bare LE and multi-byte BE literal parses to the expected spec.
+    for (literal, expected) in [
+        ("u8", (8, false, ByteOrder::Little)),
+        ("i8", (8, true, ByteOrder::Little)),
+        ("u16", (16, false, ByteOrder::Little)),
+        ("i16", (16, true, ByteOrder::Little)),
+        ("u32", (32, false, ByteOrder::Little)),
+        ("i32", (32, true, ByteOrder::Little)),
+        ("u64", (64, false, ByteOrder::Little)),
+        ("i64", (64, true, ByteOrder::Little)),
+        ("u128", (128, false, ByteOrder::Little)),
+        ("i128", (128, true, ByteOrder::Little)),
+        ("u16be", (16, false, ByteOrder::Big)),
+        ("i16be", (16, true, ByteOrder::Big)),
+        ("u32be", (32, false, ByteOrder::Big)),
+        ("i32be", (32, true, ByteOrder::Big)),
+        ("u64be", (64, false, ByteOrder::Big)),
+        ("i64be", (64, true, ByteOrder::Big)),
+        ("u128be", (128, false, ByteOrder::Big)),
+        ("i128be", (128, true, ByteOrder::Big)),
+    ] {
+        fs::write(&path, format!("integer Amount = {literal};")).unwrap();
+        let parsed = compiler.parse_ast().unwrap();
+        let spec = parsed.integer("Amount").unwrap();
+        assert_eq!(
+            (spec.bits, spec.signed, spec.byte_order),
+            expected,
+            "{literal}"
+        );
+    }
     for (literal, diagnostic) in [
-        ("u32", "E_INT_TYPE"),
+        ("u8le", "E_INT_TYPE"),
+        ("i8le", "E_INT_TYPE"),
+        ("u8be", "E_INT_TYPE"),
+        ("i8be", "E_INT_TYPE"),
+        ("u32le", "E_INT_TYPE"),
+        ("u64le", "E_INT_TYPE"),
+        ("u256", "E_INT_WIDTH"),
+        ("u256be", "E_INT_WIDTH"),
         ("i256be", "E_INT_WIDTH"),
-        ("u24le", "E_INT_WIDTH"),
-        ("u032le", "E_INT_TYPE"),
+        ("u24", "E_INT_WIDTH"),
+        ("u24be", "E_INT_WIDTH"),
+        ("u65536", "E_INT_WIDTH"),
+        ("u99999be", "E_INT_WIDTH"),
+        ("u032", "E_INT_TYPE"),
+        ("u032be", "E_INT_TYPE"),
+        ("u", "E_INT_TYPE"),
+        ("ube", "E_INT_TYPE"),
         ("word", "E_INT_TYPE"),
     ] {
         fs::write(&path, format!("integer Amount = {literal};")).unwrap();
@@ -532,11 +600,11 @@ fn published_contract_accepts_migration_and_rejects_drift_before_writing() {
     let before = fs::read(&output).unwrap();
     for (source, error) in [
         ("array Key [byte; 4];", "missing integer Key"),
-        ("integer Key = u32le;", "changed integer Key"),
+        ("integer Key = u32;", "changed integer Key"),
         ("integer Key = i32be;", "changed integer Key"),
         ("integer Key = u64be;", "changed integer Key"),
         (
-            "integer Key = u32be; integer Fee = u64le;",
+            "integer Key = u32be; integer Fee = u64;",
             "added integer Fee",
         ),
     ] {
@@ -591,12 +659,70 @@ fn single_byte_contract_ignores_redundant_byte_order() {
         .type_metadata_file(&meta)
         .parse_ast()
         .unwrap();
+    // Sidecar 8-bit `big` canonicalizes to `little`, matching native `u8` identically.
+    assert_eq!(
+        published.integer("Flag").unwrap().byte_order,
+        ByteOrder::Little
+    );
+    let sidecar_out = dir.path().join("sidecar");
+    let native_out = dir.path().join("native");
+    for (label, lang, ext) in [
+        ("rust", Language::Rust, "rs"),
+        ("lazy", Language::RustLazyReader, "rs"),
+        ("c", Language::C, "h"),
+    ] {
+        let s_dir = sidecar_out.join(label);
+        fs::create_dir_all(&s_dir).unwrap();
+        Compiler::new()
+            .input_schema_file(&root)
+            .type_metadata_file(&meta)
+            .generate_code(lang)
+            .output_dir(&s_dir)
+            .run()
+            .unwrap();
+        let _ = ext;
+    }
     fs::write(&root, "integer Flag = u8;").unwrap();
     let migrated = Compiler::new()
         .input_schema_file(&root)
         .parse_ast()
         .unwrap();
     migrated.check_integer_contract(&published).unwrap();
+    for (label, lang, ext) in [
+        ("rust", Language::Rust, "rs"),
+        ("lazy", Language::RustLazyReader, "rs"),
+        ("c", Language::C, "h"),
+    ] {
+        let n_dir = native_out.join(label);
+        fs::create_dir_all(&n_dir).unwrap();
+        Compiler::new()
+            .input_schema_file(&root)
+            .generate_code(lang)
+            .output_dir(&n_dir)
+            .run()
+            .unwrap();
+        assert_eq!(
+            fs::read(sidecar_out.join(label).join(format!("flag.{ext}"))).unwrap(),
+            fs::read(n_dir.join(format!("flag.{ext}"))).unwrap(),
+            "{lang:?} output drifted after 8-bit sidecar -> native migration"
+        );
+    }
+    // Public `MetadataFile::load` validates widths directly and rejects `u256`.
+    let bad_meta_dir = TempDir::new().unwrap();
+    let bad_schema = bad_meta_dir.path().join("wide.mol");
+    fs::write(&bad_schema, "array Wide [byte; 32];").unwrap();
+    let bad_meta = write_metadata(
+        bad_meta_dir.path(),
+        "wide.mol",
+        "wide.json",
+        json!([annotation("Wide", 256, false, "little")]),
+    );
+    let loaded = LoadedGraph::load(&bad_schema).unwrap();
+    assert!(
+        molecule_codegen::integer::MetadataFile::load(&bad_meta, &loaded)
+            .unwrap_err()
+            .contains("E_INT_WIDTH")
+    );
     // Changing signedness of a single-byte integer is still rejected.
     fs::write(&root, "integer Flag = i8;").unwrap();
     let changed = Compiler::new()

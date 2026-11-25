@@ -28,7 +28,7 @@ pub struct IntegerSpec {
 
 impl IntegerSpec {
     // Width and signedness are shared by validation and plugin capabilities.
-    pub(crate) const SUPPORTED_KINDS: [(u16, bool); 11] = [
+    pub(crate) const SUPPORTED_KINDS: [(u16, bool); 10] = [
         (8, false),
         (8, true),
         (16, false),
@@ -39,7 +39,6 @@ impl IntegerSpec {
         (64, true),
         (128, false),
         (128, true),
-        (256, false),
     ];
 
     pub fn validate(self) -> Result<(), String> {
@@ -58,8 +57,21 @@ impl IntegerSpec {
         usize::from(self.bits) / 8
     }
 
-    /// Single-byte integers have no multi-byte order on the wire, so `u8le` and
-    /// `u8be` (likewise `i8le` and `i8be`) carry identical numeric semantics.
+    /// Normalize single-byte integers to `ByteOrder::Little` so AST, IR v2,
+    /// plugin capabilities, and generated code share one canonical form.
+    pub const fn canonical(self) -> Self {
+        if self.bits == 8 {
+            Self {
+                byte_order: ByteOrder::Little,
+                ..self
+            }
+        } else {
+            self
+        }
+    }
+
+    /// Single-byte integers have no multi-byte order on the wire, so 8-bit
+    /// specifications compare equal regardless of `byte_order`.
     pub fn is_equivalent_to(self, other: Self) -> bool {
         self.bits == other.bits
             && self.signed == other.signed
@@ -72,27 +84,35 @@ impl std::str::FromStr for IntegerSpec {
 
     fn from_str(literal: &str) -> Result<Self, Self::Err> {
         let invalid = || {
-            format!("E_INT_TYPE: invalid integer type {literal:?}; expected e.g. u32le or i64be")
+            format!("E_INT_TYPE: invalid integer type {literal:?}; expected e.g. u8, u32, or i64be")
         };
-        let (number, byte_order) = if let Some(number) = literal.strip_suffix("le") {
-            (number, ByteOrder::Little)
-        } else if let Some(number) = literal.strip_suffix("be") {
+        let (number, byte_order) = if let Some(number) = literal.strip_suffix("be") {
             (number, ByteOrder::Big)
-        } else if matches!(literal, "u8" | "i8") {
-            (literal, ByteOrder::Little)
         } else {
-            return Err(invalid());
+            (literal, ByteOrder::Little)
         };
         let (signed, width) = match number.as_bytes().first() {
             Some(b'u') => (false, &number[1..]),
             Some(b'i') => (true, &number[1..]),
             _ => return Err(invalid()),
         };
-        if width.starts_with('0') || !width.bytes().all(|byte| byte.is_ascii_digit()) {
+        if width.is_empty()
+            || width.starts_with('0')
+            || !width.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(invalid());
+        }
+        let bits: u16 = width.parse().map_err(|_| {
+            format!(
+                "E_INT_WIDTH: unsupported {}{width}",
+                if signed { "i" } else { "u" }
+            )
+        })?;
+        if byte_order == ByteOrder::Big && bits == 8 {
             return Err(invalid());
         }
         let spec = Self {
-            bits: width.parse().map_err(|_| invalid())?,
+            bits,
             signed,
             byte_order,
         };
