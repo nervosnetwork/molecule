@@ -7,7 +7,7 @@ use crate::Number;
 #[macro_export]
 macro_rules! verification_error {
     ($self:ident, $err:ident $(, $args:expr )*) => {
-        Err($crate::error::VerificationError::$err($self::NAME.to_owned() $(, $args )*))
+        ::core::result::Result::Err($crate::error::VerificationError::$err($crate::prelude::ToOwned::to_owned($self::NAME) $(, $args )*))
     }
 }
 

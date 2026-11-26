@@ -31,8 +31,10 @@ extern "C" {
  * This part is not for normal users.
  */
 
-// Test if the host is big endian machine.
-#define is_le()                 ((union { uint16_t i; unsigned char c; }){ .i = 1 }.c)
+static inline bool mol_is_little_endian(void) {
+    const uint16_t one = 1;
+    return *(const unsigned char *)&one == 1;
+}
 
 /*
  * Definitions of types and simple utilities.
@@ -84,7 +86,7 @@ typedef struct {
 MOLECULE_API_DECORATOR mol_num_t mol_unpack_number(const uint8_t *src) {
     uint32_t output = 0;
     uint8_t *dst = (uint8_t*) &output;
-    if (is_le()) {
+    if (mol_is_little_endian()) {
       dst[3] = src[3];
       dst[2] = src[2];
       dst[1] = src[1];
@@ -249,8 +251,6 @@ MOLECULE_API_DECORATOR bool mol_contained_by(const mol_seg_t *part, const mol_se
 /*
  * Undef macros which are internal use only.
  */
-
-#undef is_le
 
 #ifdef __DEFINE_MOLECULE_API_DECORATOR
 #undef MOLECULE_API_DECORATOR
