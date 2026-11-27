@@ -25,12 +25,14 @@ cargo-test:
 ci-msrv:
 	@set -eu; \
 	cargo clean; \
+	cargo build --package molecule-codegen --verbose; \
 	cargo build $(foreach pkg,$(RUST_PROD_PKGS),--package $(pkg)) --verbose; \
 	git diff --exit-code Cargo.lock
 
 ci-crates:
 	@set -eu; \
 	cargo clean; \
+	cargo test --package molecule-codegen --verbose; \
 	cargo test --verbose; \
 	git diff --exit-code Cargo.lock
 

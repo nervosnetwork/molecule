@@ -6,6 +6,7 @@ edition = "2018"
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 codegen.workspace = true

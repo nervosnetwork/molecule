@@ -41,10 +41,10 @@ debug:
 test: test-rust test-rust-no-std test-c test-cpp test-mixed test-import
 
 test-rust:
-	@cargo test --all
+	@cargo test
 
 test-rust-no-std:
-	@cargo test --all --no-default-features
+	@cargo test --no-default-features
 
 test-c: tmpdir ${TARGET_TMP_DIR}/test-build-default ${BIN_GEN_C_TESTS} ${BINS_C_TESTS}
 	@${TARGET_TMP_DIR}/test-build-default
