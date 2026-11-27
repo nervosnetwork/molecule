@@ -82,6 +82,10 @@ use core::cell::RefCell;
 use core::cmp::min;
 use core::convert::{From, TryFrom};
 
+mod access;
+pub use access::AccessError;
+mod full;
+
 #[derive(Debug)]
 pub enum Error {
     Common,
@@ -158,27 +162,53 @@ impl DataSource {
         if read_len == 0 {
             return Ok(0);
         }
+        let end = offset.checked_add(read_len).ok_or(Error::Overflow)?;
         // Read directly if the requested length is larger than maximum cache size
         if read_len > self.cache.len() {
-            return self.reader.read(&mut buf[..read_len], offset);
+            let mut completed = 0;
+            while completed < read_len {
+                let pos = offset.checked_add(completed).ok_or(Error::Overflow)?;
+                let remaining = read_len - completed;
+                let count = self.reader.read(&mut buf[completed..read_len], pos)?;
+                if count > remaining {
+                    return Err(Error::Read(count, remaining));
+                }
+                if count == 0 {
+                    return Err(Error::Read(completed, read_len));
+                }
+                completed += count;
+            }
+            return Ok(completed);
         }
         // Check if the requested data is in cache
-        if offset >= self.cache_start_point
-            && offset + read_len <= self.cache_start_point + self.cache_actual_size
-        {
-            let read_point = offset - self.cache_start_point;
-            buf[..read_len].copy_from_slice(&self.cache[read_point..(read_point + read_len)]);
-            return Ok(read_len);
+        if self.cache_actual_size <= self.cache.len() && offset >= self.cache_start_point {
+            if let Some(cache_end) = self.cache_start_point.checked_add(self.cache_actual_size) {
+                if end <= cache_end {
+                    let read_point = offset - self.cache_start_point;
+                    buf[..read_len]
+                        .copy_from_slice(&self.cache[read_point..(read_point + read_len)]);
+                    return Ok(read_len);
+                }
+            }
         }
         // Cache miss, read from reader and update cache
         // A failed read may modify the buffer, invalidating the previous cache.
         self.cache_actual_size = 0;
-        let read_actual_size = self.reader.read(&mut self.cache[..], offset)?;
-        self.cache_start_point = offset;
-        self.cache_actual_size = read_actual_size;
-        if read_actual_size < read_len {
-            return Err(Error::Read(read_actual_size, read_len));
+        let mut completed = 0;
+        while completed < read_len {
+            let pos = offset.checked_add(completed).ok_or(Error::Overflow)?;
+            let remaining = self.cache.len() - completed;
+            let count = self.reader.read(&mut self.cache[completed..], pos)?;
+            if count > remaining {
+                return Err(Error::Read(count, remaining));
+            }
+            if count == 0 {
+                return Err(Error::Read(completed, read_len));
+            }
+            completed += count;
         }
+        self.cache_start_point = offset;
+        self.cache_actual_size = completed;
         buf[..read_len].copy_from_slice(&self.cache[0..read_len]);
         Ok(read_len)
     }
