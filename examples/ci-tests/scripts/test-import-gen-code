@@ -48,6 +48,8 @@ edition = "2018"
 
 [dependencies]
 molecule = { path = "../../../../../../bindings/rust" }
+
+[workspace]
 EOF
 }
 

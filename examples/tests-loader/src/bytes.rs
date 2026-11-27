@@ -25,7 +25,7 @@ impl fmt::Debug for Bytes {
     }
 }
 
-impl<'b> serde::de::Visitor<'b> for BytesVisitor {
+impl serde::de::Visitor<'_> for BytesVisitor {
     type Value = Bytes;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -46,7 +46,7 @@ impl<'b> serde::de::Visitor<'b> for BytesVisitor {
 
         let v_new = &v[2..].replace("_", "").replace("/", "");
         let bytes = v_new.as_bytes();
-        if v_new.len() % 2 != 0 {
+        if !v_new.len().is_multiple_of(2) {
             return Err(E::invalid_value(serde::de::Unexpected::Str(v), &self));
         }
         let mut buffer = vec![0; bytes.len() >> 1];

@@ -1,11 +1,11 @@
 [package]
 name = "molecule-codegen"
-version = "0.9.2"
-authors = ["Nervos Core Dev <dev@nervos.org>"]
+version.workspace = true
+authors.workspace = true
 edition = "2021"
 description = "Code generator for molecule."
-homepage = "https://github.com/nervosnetwork/molecule"
-repository = "https://github.com/nervosnetwork/molecule"
+homepage.workspace = true
+repository.workspace = true
 keywords = ["molecule", "code-generation", "serialization"]
 categories = [
     "parser-implementations",
@@ -13,24 +13,24 @@ categories = [
     "encoding",
     "data-structures",
 ]
-license = "MIT"
+license.workspace = true
 
 [dependencies]
-molecule = { version = "=0.9.2", path = "../../bindings/rust", default-features = false }
-property = "0.3.3"
-pest = "2.5.7"
-pest_derive = "2.5.7"
-quote = "1.0.35"
-proc-macro2 = "1.0.76"
-case = "1.0.0"
-same-file = "1.0.6"
-semver = "0.11.0"
-serde = { version = "1.0.195", features = ["derive", "rc"], optional = true }
-serde_json = { version = "1.0.111", optional = true }
-serde_yaml = { version = "0.9", optional = true }
+molecule.workspace = true
+property.workspace = true
+pest.workspace = true
+pest_derive.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+case.workspace = true
+same-file.workspace = true
+semver.workspace = true
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
 
 [dev-dependencies]
-tempfile = "=3.6.0"
+tempfile.workspace = true
 
 [features]
 default = []
