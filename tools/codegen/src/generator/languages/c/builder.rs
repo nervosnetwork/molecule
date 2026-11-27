@@ -35,8 +35,7 @@ pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
         Ok(())
     }
 
-    fn gen_default<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        let default_content = self.default_content();
+    fn gen_default<W: io::Write>(&self, writer: &mut W, default_content: &[u8]) -> io::Result<()> {
         let constant_name = format!(
             "{} const uint8_t {}[{}]",
             self.api_decorator(),
@@ -45,7 +44,7 @@ pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
         );
         write!(writer, "{:64} =  {{", constant_name)?;
         if default_content.len() > 4 {
-            for (index, byte) in default_content.into_iter().enumerate() {
+            for (index, &byte) in default_content.iter().enumerate() {
                 if index % 12 == 0 {
                     writeln!(writer)?;
                     write!(writer, "{:4}", "")?;
@@ -61,7 +60,7 @@ pub(super) trait GenBuilder: IdentPrefix + DefaultContent {
             writeln!(writer)?;
         } else {
             let mut not_first = false;
-            for byte in default_content.into_iter() {
+            for &byte in default_content {
                 if not_first {
                     write!(writer, ", ")?;
                 } else {

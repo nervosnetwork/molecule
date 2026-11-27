@@ -14,6 +14,7 @@ Another serialization system: minimalist and canonicalization.
 - [Schema Language](docs/schema_language.md)
 - [Real-World Examples](docs/real_world_examples.md)
 - [API](docs/molecule_api.md)
+- [Explicit integers](docs/primitive-integers.md)
 
 ## Features
 * `default` — Default features: `std`, utilizes `faster-hex` for hexadecimal operations and enables [bytes] standard features.
@@ -87,6 +88,11 @@ Implementations in other languages are maintained by respective authors.
 The minimum supported version is 1.88.0.
 The current Molecule version is not guaranteed to build on Rust versions earlier than the
 minimum supported version.
+
+For repository development, run `make ci-prepare` before invoking Cargo directly
+for library checks. It initializes missing or stale untracked lockfiles from the
+compiler's tested dependency versions while preserving newer local lockfiles.
+The Makefile's build and test targets perform this step automatically.
 
 ## License
 

@@ -4,49 +4,48 @@ use crate::generator::ident_name;
 use quote::quote;
 use std::io;
 
+use super::rust;
+
 mod generator;
 
 pub(crate) struct Generator;
 
 impl super::LanguageGenerator for Generator {
     fn generate<W: io::Write>(output: &mut W, ast: &ast::Ast) -> io::Result<()> {
-        writeln!(
-            output,
-            r#"
-        extern crate alloc;
-        use molecule::lazy_reader::{{Cursor, Error, NUMBER_SIZE}};
-        use core::convert::TryInto;"#
-        )?;
-
-        for import in ast.imports() {
-            writeln!(output, "use super::{}::*; ", &import.name())?;
-        }
+        rust::utilities::check_names(ast, true)?;
+        generator::check_legacy_integer_types(ast)?;
+        writeln!(output, "extern crate alloc;")?;
+        writeln!(output, "{}", rust::imports(ast, true)?)?;
 
         for decl in ast.major_decls() {
             match decl.as_ref() {
-                ast::TopDecl::Option_(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::Union(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::Array(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::Struct(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::FixVec(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::DynVec(ref i) => i.gen_rust(output)?,
-                ast::TopDecl::Table(ref i) => i.gen_rust(output)?,
+                ast::TopDecl::Option_(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::Union(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::Array(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::Struct(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::FixVec(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::DynVec(ref i) => i.gen_rust(output, ast)?,
+                ast::TopDecl::Table(ref i) => i.gen_rust(output, ast)?,
                 ast::TopDecl::Primitive(_) => unreachable!(),
             };
+        }
+
+        if !ast.integers().is_empty() {
+            writeln!(output, "{}", super::integers::rust(ast, true)?)?;
         }
 
         Ok(())
     }
 }
 
-pub trait LazyReaderGenerator: HasName {
-    fn gen_rust<W: io::Write>(&self, output: &mut W) -> io::Result<()> {
+trait LazyReaderGenerator: HasName {
+    fn gen_rust<W: io::Write>(&self, output: &mut W, _ast: &ast::Ast) -> io::Result<()> {
         let name = ident_name(self.name(), "");
         let q = quote! {
-            pub struct #name { pub cursor : Cursor }
+            pub struct #name { pub cursor : molecule::lazy_reader::Cursor }
 
-            impl From<Cursor> for #name {
-                fn from(cursor: Cursor) -> Self {
+            impl ::core::convert::From<molecule::lazy_reader::Cursor> for #name {
+                fn from(cursor: molecule::lazy_reader::Cursor) -> Self {
                     Self { cursor }
                 }
             }

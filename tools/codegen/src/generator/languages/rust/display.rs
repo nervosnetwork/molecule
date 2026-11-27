@@ -10,7 +10,7 @@ pub(super) trait ImplDisplay {
 
 impl ImplDisplay for ast::Option_ {
     fn impl_display(&self) -> m4::TokenStream {
-        quote!(if let Some(v) = self.to_opt() {
+        quote!(if let ::core::option::Option::Some(v) = self.to_opt() {
             write!(f, "{}(Some({}))", Self::NAME, v)
         } else {
             write!(f, "{}(None)", Self::NAME)

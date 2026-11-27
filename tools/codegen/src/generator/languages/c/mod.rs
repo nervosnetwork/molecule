@@ -1,8 +1,11 @@
-use std::io;
+use std::io::{self, Write as _};
 
 use case::CaseExt;
 
-use crate::{ast, C_API_VERSION_MIN, VERSION};
+use crate::{
+    ast::{self, DefaultContent, HasName},
+    C_API_VERSION_MIN, VERSION,
+};
 
 #[macro_use]
 mod utilities;
@@ -10,52 +13,38 @@ mod utilities;
 mod import;
 
 mod builder;
+mod integers;
 mod reader;
 
-use self::{builder::GenBuilder, import::GenImport, reader::GenReader};
+use self::{builder::GenBuilder, reader::GenReader};
 
 pub(crate) struct Generator;
 
 impl Generator {
-    fn title<W: io::Write>(writer: &mut W, title: &str) -> io::Result<()> {
-        writeln!(writer, "/*")?;
-        writeln!(writer, " * {}", title)?;
-        writeln!(writer, " */")?;
-        writeln!(writer)
-    }
-
-    fn ifndef<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = name.to_snake().to_uppercase();
-        let api_decorator = utilities::API_DECORATOR;
-        w!(o, "#ifndef {}_H                                        ", n);
-        w!(o, "#define {}_H                                        ", n);
-        w!(o, "                                                       ");
-        w!(o, "#ifdef __cplusplus                                     ");
-        w!(o, "extern \"C\" {{                                        ");
-        w!(o, "#endif /* __cplusplus */                               ");
-        w!(o, "                                                       ");
-        w!(o, "#ifndef {}                              ", api_decorator);
-        w!(o, "#define __DEFINE_MOLECULE_API_DECORATOR_{}          ", n);
-        w!(o, "#define {}                              ", api_decorator);
-        w!(o, "#endif /* {} */                         ", api_decorator);
-        Ok(())
-    }
-
-    fn endif<W: io::Write>(o: &mut W, name: &str) -> io::Result<()> {
-        let n = name.to_snake().to_uppercase();
-        let api_decorator = utilities::API_DECORATOR;
-        w!(o, "                                                       ");
-        w!(o, "#ifdef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
-        w!(o, "#undef {}                               ", api_decorator);
-        w!(o, "#undef __DEFINE_MOLECULE_API_DECORATOR_{}           ", n);
-        w!(o, "#endif /* __DEFINE_MOLECULE_API_DECORATOR_{} */     ", n);
-        w!(o, "                                                       ");
-        w!(o, "#ifdef __cplusplus                                     ");
-        w!(o, "}}                                                     ");
-        w!(o, "#endif /* __cplusplus */                               ");
-        w!(o, "                                                       ");
-        w!(o, "#endif /* {}_H */                                   ", n);
-        Ok(())
+    fn guard_name(name: &str, parts: &[&[u8]]) -> String {
+        let mut sanitized: String = name
+            .to_snake()
+            .to_uppercase()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if sanitized.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+            sanitized.insert(0, '_');
+        }
+        // Hash the rendered header body so distinct schemas sharing a filename
+        // (e.g. `a/base.mol` and `b/base.mol`) never collide on one guard macro.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for &byte in parts.iter().flat_map(|part| part.iter()) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{sanitized}_{hash:016X}")
     }
 
     fn define_version<W: io::Write>(o: &mut W) -> io::Result<()> {
@@ -79,45 +68,93 @@ impl super::LanguageGenerator for Generator {
         writeln!(writer)?;
         writeln!(writer, r#"#include "molecule_reader.h""#)?;
         writeln!(writer, r#"#include "molecule_builder.h""#)?;
-        writeln!(writer)?;
-        Self::ifndef(writer, ast.namespace())?;
-        let imports = ast.imports();
-        if !imports.is_empty() {
-            writeln!(writer)?;
-            for import in imports {
-                import.gen_import(writer)?;
-            }
+        if !ast.integers().is_empty() {
+            writeln!(writer, r#"#include "molecule_integer.inc""#)?;
         }
         writeln!(writer)?;
-        Self::title(writer, "Reader APIs")?;
-        for decl in ast.major_decls() {
-            decl.gen_reader_interfaces(writer)?;
-        }
-        writeln!(writer)?;
-        Self::title(writer, "Builder APIs")?;
-        for decl in ast.major_decls() {
-            decl.gen_builder_interfaces(writer)?;
-        }
-        writeln!(writer)?;
-        Self::title(writer, "Default Value")?;
-        writeln!(writer, r#"#define ____ 0x00"#)?;
-        writeln!(writer)?;
-        for decl in ast.major_decls() {
-            decl.gen_default(writer)?;
-        }
-        writeln!(writer)?;
-        writeln!(writer, r#"#undef ____"#)?;
-        writeln!(writer)?;
-        Self::title(writer, "Reader Functions")?;
-        for decl in ast.major_decls() {
-            decl.gen_reader_functions(writer)?;
-        }
-        writeln!(writer)?;
-        Self::title(writer, "Builder Functions")?;
-        for decl in ast.major_decls() {
-            decl.gen_builder_functions(writer)?;
-        }
-        Self::endif(writer, ast.namespace())?;
-        Ok(())
+        let mut imports = Vec::new();
+        import::write_imports(&mut imports, ast)?;
+        let body = wire_api(ast)?;
+        let wire = Self::guard_name(ast.namespace(), &[&body]);
+        // Imported integers matter too: an otherwise identical parent header
+        // must pull in the annotated copy of a dependency.
+        let kinds: Vec<_> = ast
+            .integers()
+            .iter()
+            .map(|(name, &spec)| integers::spec_guard(name, spec))
+            .collect();
+        let guard = Self::guard_name(
+            ast.namespace(),
+            &[wire.as_bytes(), &imports, kinds.join("\n").as_bytes()],
+        );
+        writeln!(writer, "#ifndef {guard}_H\n#define {guard}_H")?;
+        writer.write_all(&imports)?;
+        let decorator = utilities::API_DECORATOR;
+        writeln!(writer, "#ifdef __cplusplus\nextern \"C\" {{\n#endif")?;
+        writeln!(
+            writer,
+            "#ifndef {decorator}\n#define {decorator}\n#define MOL_UNDEF_API_{guard}\n#endif"
+        )?;
+
+        writeln!(writer, "#ifndef MOL_WIRE_{wire}\n#define MOL_WIRE_{wire}")?;
+        writer.write_all(&body)?;
+        writeln!(writer, "#endif /* MOL_WIRE_{wire} */")?;
+
+        integers::generate(writer, ast)?;
+        writeln!(writer, "#ifdef MOL_UNDEF_API_{guard}\n#undef {decorator}\n#undef MOL_UNDEF_API_{guard}\n#endif")?;
+        writeln!(
+            writer,
+            "#ifdef __cplusplus\n}}\n#endif\n#endif /* {guard}_H */"
+        )
     }
+}
+
+fn wire_api(ast: &ast::Ast) -> io::Result<Vec<u8>> {
+    let mut body = Vec::new();
+    let mut functions = Vec::new();
+    writeln!(body, "#define ____ 0x00")?;
+    writeln!(body, "#define MOL_BYTE_OFFSET(expr) MOL_BYTE_OFFSET_I(expr)\n#define MOL_BYTE_OFFSET_I(expr) MOL_BYTE_OFFSET_##expr\n#define MOL_BYTE_OFFSET_mol_builder_set_byte_by_offset(b, off, p) ((off) + 1)\n#define MOL_BYTE_OFFSET_mol_builder_set_by_offset(b, off, p, size) 0")?;
+    for decl in ast.major_decls() {
+        let name = decl.name();
+        // Released headers define this macro for every declaration, but carry
+        // no schema fingerprint. Only reuse layouts their public API proves.
+        writeln!(body, "#ifdef MolBuilder_{name}_clear")?;
+        match decl.as_ref() {
+            ast::TopDecl::Array(array) if array.item().typ().is_byte() => {
+                legacy_byte_array(&mut body, name, array.item_count())?;
+            }
+            _ => writeln!(body, "#error \"cannot verify shared Molecule layout {name}; regenerate the legacy header\"")?,
+        }
+        writeln!(body, "#else")?;
+        decl.gen_reader_interfaces(&mut body)?;
+        decl.gen_builder_interfaces(&mut body)?;
+        decl.gen_default(&mut body, &decl.default_content())?;
+        writeln!(body, "#endif")?;
+
+        // Function bodies can reference declarations later in the schema.
+        decl.gen_reader_functions(&mut functions)?;
+        decl.gen_builder_functions(&mut functions)?;
+    }
+    writeln!(body, "#undef MOL_BYTE_OFFSET_mol_builder_set_by_offset\n#undef MOL_BYTE_OFFSET_mol_builder_set_byte_by_offset\n#undef MOL_BYTE_OFFSET_I\n#undef MOL_BYTE_OFFSET\n#undef ____")?;
+    body.extend(functions);
+    Ok(body)
+}
+
+fn legacy_byte_array(out: &mut Vec<u8>, name: &str, width: usize) -> io::Result<()> {
+    // In 0.9.2 both accessors come from the same field offset. The setter
+    // additionally distinguishes a scalar byte from a one-byte aggregate.
+    // Redeclaring the existing default also checks its bound and permits
+    // several compatible overlays in the same C99 translation unit.
+    writeln!(
+        out,
+        "extern const uint8_t MolDefault_{name}[(sizeof(MolDefault_{name}) == {width}"
+    )?;
+    for i in 0..width {
+        writeln!(
+            out,
+            "    && MOL_BYTE_OFFSET(MolBuilder_{name}_set_nth{i}(0, 0)) == {}",
+            i + 1
+        )?;
+    }
+    writeln!(out, ") ? {width} : -1];")
 }

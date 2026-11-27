@@ -1,0 +1,17 @@
+integer Uint64 = u64be;
+array Pair [Uint64; 2];
+vector Values <Uint64>;
+option Maybe (Uint64);
+option Nested (Maybe);
+vector MaybeList <Maybe>;
+struct Fixed { amount: Uint64, }
+struct TwoAmounts { first: Uint64, second: Uint64, }
+table Invoice { amount: Uint64, port: Nested, }
+
+table Option {}
+integer Amount = u64be;
+array AmountPair [Amount; 2];
+vector Amounts <Amount>;
+option AmountOpt (Amount);
+table Order { amount: Amount, tip: AmountOpt, }
+table VecHolder { amounts: Amounts, }

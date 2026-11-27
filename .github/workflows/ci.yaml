@@ -75,7 +75,7 @@ jobs:
   success:
     name: Success
     if: ${{ success() }}
-    needs: [test-crates, test-examples]
+    needs: [test-msrv, test-crates, test-examples]
     runs-on: ubuntu-latest
     steps:
       - name: Succeed

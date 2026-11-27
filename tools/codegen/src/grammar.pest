@@ -52,6 +52,7 @@ union_decl      =   {
                             ((item_decl | custom_union_item_decl) ~ (brk)*)+ ~
                         "}"
                     }
+integer_decl    =   { "integer" ~ brk+ ~ identifier ~ brk* ~ "=" ~ brk* ~ identifier ~ brk* ~ stmt_end }
 array_decl      =   {
                         "array" ~ (brk)+ ~ identifier ~ (brk)* ~
                         "[" ~ (brk)* ~
@@ -79,7 +80,7 @@ table_decl      =   {
                         "}"
                     }
 decl_stmt       =   _{
-                        option_decl | union_decl | array_decl
+                        option_decl | union_decl | integer_decl | array_decl
                             | struct_decl | vector_decl | table_decl
                     }
 

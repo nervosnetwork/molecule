@@ -34,9 +34,15 @@ path = "src/compiler-rust-lazy-reader.rs"
 [dependencies]
 clap = { version = "4", features = ["cargo", "string"] }
 which = "6"
+# `tracing` is required for Windows builds because process-wrap 8.2.1's `job_object.rs`
+# calls `tracing::debug!` unconditionally without a `#[cfg(feature = "tracing")]` guard.
+process-wrap = { version = "=8.2.1", default-features = false, features = ["std", "process-group", "job-object", "tracing"] }
 molecule-codegen = { version = "=0.9.2", path = "../codegen", features = [
     "compiler-plugin",
 ] }
 
 [badges]
 maintenance = { status = "experimental" }
+
+[dev-dependencies]
+tempfile = "=3.6.0"

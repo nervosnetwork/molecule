@@ -27,10 +27,12 @@ pub(in super::super) trait ImplEntity: HasName {
                     &self.0[..]
                 }
                 fn from_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
-                    #reader::from_slice(slice).map(|reader| reader.to_entity())
+                    <#reader<'_> as molecule::prelude::Reader<'_>>::from_slice(slice)
+                        .map(|reader| <#reader<'_> as molecule::prelude::Reader<'_>>::to_entity(&reader))
                 }
                 fn from_compatible_slice(slice: &[u8]) -> molecule::error::VerificationResult<Self> {
-                    #reader::from_compatible_slice(slice).map(|reader| reader.to_entity())
+                    <#reader<'_> as molecule::prelude::Reader<'_>>::from_compatible_slice(slice)
+                        .map(|reader| <#reader<'_> as molecule::prelude::Reader<'_>>::to_entity(&reader))
                 }
                 fn new_builder() -> Self::Builder {
                     ::core::default::Default::default()
@@ -80,8 +82,8 @@ impl ImplEntity for ast::Struct {
         let fields_func = fields.clone();
         quote!(
             fn as_builder(self) -> Self::Builder {
-                Self::new_builder()
-                    #( .#fields(self.#fields_func()) )*
+                <Self as molecule::prelude::Entity>::new_builder()
+                    #( .#fields(Self::#fields_func(&self)) )*
             }
         )
     }
@@ -91,7 +93,7 @@ impl ImplEntity for ast::FixVec {
     fn impl_entity_internal(&self) -> m4::TokenStream {
         quote!(
             fn as_builder(self) -> Self::Builder {
-                Self::new_builder().extend(self.into_iter())
+                <Self as molecule::prelude::Entity>::new_builder().extend(self.into_iter())
             }
         )
     }
@@ -101,7 +103,7 @@ impl ImplEntity for ast::DynVec {
     fn impl_entity_internal(&self) -> m4::TokenStream {
         quote!(
             fn as_builder(self) -> Self::Builder {
-                Self::new_builder().extend(self.into_iter())
+                <Self as molecule::prelude::Entity>::new_builder().extend(self.into_iter())
             }
         )
     }
@@ -113,8 +115,8 @@ impl ImplEntity for ast::Table {
         let fields_func = fields.clone();
         quote!(
             fn as_builder(self) -> Self::Builder {
-                Self::new_builder()
-                    #( .#fields(self.#fields_func()) )*
+                <Self as molecule::prelude::Entity>::new_builder()
+                    #( .#fields(Self::#fields_func(&self)) )*
             }
         )
     }

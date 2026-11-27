@@ -3,6 +3,7 @@ use std::{convert::TryFrom, fmt, io};
 use crate::ast;
 
 mod c;
+mod integers;
 pub(crate) mod rust;
 mod rust_lazy_reader;
 

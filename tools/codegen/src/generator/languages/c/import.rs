@@ -2,19 +2,16 @@ use std::io;
 
 use crate::ast;
 
-pub(super) trait GenImport {
-    fn gen_import<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
-}
-
-impl GenImport for ast::ImportStmt {
-    fn gen_import<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+pub(super) fn write_imports<W: io::Write>(writer: &mut W, ast: &ast::Ast) -> io::Result<()> {
+    for import in ast.imports() {
         write!(writer, "#include \"")?;
-        for _ in 0..self.path_supers() {
+        for _ in 0..import.path_supers() {
             write!(writer, "../")?;
         }
-        for p in self.paths() {
+        for p in import.paths() {
             write!(writer, "{}/", p)?;
         }
-        writeln!(writer, "{}.h\"", self.name())
+        writeln!(writer, "{}.h\"", import.name())?;
     }
+    Ok(())
 }

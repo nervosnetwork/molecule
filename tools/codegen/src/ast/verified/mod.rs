@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
 use property::Property;
 
@@ -16,6 +19,69 @@ use crate::ast::SyntaxVersion;
 
 type Deps<'a> = HashMap<&'a str, Rc<super::TopDecl>>;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct ModulePath {
+    pub(crate) name: String,
+    pub(crate) paths: Vec<String>,
+    pub(crate) path_supers: usize,
+}
+
+impl ModulePath {
+    pub(crate) fn root() -> Self {
+        Self {
+            name: String::new(),
+            paths: Vec::new(),
+            path_supers: 0,
+        }
+    }
+
+    pub(crate) fn new(name: String, paths: Vec<String>, path_supers: usize) -> Self {
+        Self {
+            name,
+            paths,
+            path_supers,
+        }
+    }
+
+    /// Parse a Molecule `import` path string (e.g. `../common/defs`).
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn from_import_str(raw: &str) -> Option<Self> {
+        let mut path_supers = 0;
+        let mut rest = raw;
+        while let Some(stripped) = rest.strip_prefix("../") {
+            path_supers += 1;
+            rest = stripped;
+        }
+        let mut parts: Vec<String> = rest.split('/').map(str::to_owned).collect();
+        let name = parts.pop()?;
+        if name.is_empty() || parts.iter().any(String::is_empty) {
+            return None;
+        }
+        Some(Self {
+            name,
+            paths: parts,
+            path_supers,
+        })
+    }
+
+    /// Resolve an import edge written inside the module at `self` into a path relative to root.
+    pub(crate) fn resolve_edge(&self, edge: &Self) -> Self {
+        let mut path_supers = self.path_supers;
+        let mut paths = self.paths.clone();
+        for _ in 0..edge.path_supers {
+            if paths.pop().is_none() {
+                path_supers += 1;
+            }
+        }
+        paths.extend(edge.paths.iter().cloned());
+        Self {
+            name: edge.name.clone(),
+            paths,
+            path_supers,
+        }
+    }
+}
+
 #[derive(Debug, Property)]
 #[property(get(public))]
 pub struct Ast {
@@ -23,6 +89,11 @@ pub struct Ast {
     namespace: String,
     imports: Vec<ImportStmt>,
     decls: Vec<Rc<TopDecl>>,
+    integers: BTreeMap<String, crate::integer::IntegerSpec>,
+    #[cfg(feature = "schema-extensions")]
+    source_graph: Option<crate::schema::SchemaGraph>,
+    #[property(skip)]
+    decl_origins: Option<BTreeMap<String, ModulePath>>,
 }
 
 #[derive(Debug, Clone, Property)]
@@ -31,6 +102,12 @@ pub struct ImportStmt {
     name: String,
     paths: Vec<String>,
     path_supers: usize,
+}
+
+impl ImportStmt {
+    pub(crate) fn module_path(&self) -> ModulePath {
+        ModulePath::new(self.name.clone(), self.paths.clone(), self.path_supers)
+    }
 }
 
 #[derive(Debug)]
@@ -133,12 +210,39 @@ pub struct FieldDecl {
 }
 
 impl Ast {
+    pub fn integer(&self, name: &str) -> Option<&crate::integer::IntegerSpec> {
+        self.integers.get(name)
+    }
+
+    #[cfg(feature = "schema-extensions")]
+    pub(crate) fn set_extensions(
+        &mut self,
+        graph: crate::schema::SchemaGraph,
+        integers: BTreeMap<String, crate::integer::IntegerSpec>,
+    ) {
+        self.source_graph = Some(graph);
+        self.integers = integers;
+    }
+
     pub fn major_decls(&self) -> Vec<Rc<TopDecl>> {
         self.decls
             .iter()
             .filter(|d| d.imported_depth() == 0)
             .map(Rc::clone)
             .collect()
+    }
+
+    pub(crate) fn has_decl_origins(&self) -> bool {
+        self.decl_origins.is_some()
+    }
+
+    pub(crate) fn decl_origin(&self, name: &str) -> Option<&ModulePath> {
+        self.decl_origins.as_ref().and_then(|map| map.get(name))
+    }
+
+    #[cfg(feature = "compiler-plugin")]
+    pub(crate) fn set_decl_origins(&mut self, origins: BTreeMap<String, ModulePath>) {
+        self.decl_origins = Some(origins);
     }
 }
 
@@ -162,7 +266,7 @@ impl TopDecl {
         }
     }
 
-    fn imported_depth(&self) -> usize {
+    pub(crate) fn imported_depth(&self) -> usize {
         match self {
             Self::Primitive(_) => usize::MAX,
             Self::Option_(inner) => inner.imported_depth,

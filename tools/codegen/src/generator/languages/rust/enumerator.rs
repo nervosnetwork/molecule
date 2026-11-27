@@ -2,7 +2,8 @@ use proc_macro2 as m4;
 use quote::quote;
 
 use super::utilities::{
-    entity_name, entity_union_name, reader_name, reader_union_name, union_item_name, usize_lit,
+    entity_as_bytes, entity_as_slice, entity_ref, entity_union_name, reader_as_slice, reader_ref,
+    reader_union_name, union_item_name, usize_lit,
 };
 use crate::ast::{self as ast, HasName};
 
@@ -45,8 +46,8 @@ impl GenEnumerator for ast::Union {
                 ),
                  item| {
                     let inner_name = item.typ().name();
-                    let entity_name = entity_name(inner_name);
-                    let reader_name = reader_name(inner_name);
+                    let entity_name = entity_ref(item.typ());
+                    let reader_name = reader_ref(item.typ());
                     let item_name = union_item_name(inner_name);
                     let item_id = usize_lit(item.id());
                     let entity_union_item_path = quote!(#entity_union::#item_name);
@@ -97,8 +98,8 @@ impl GenEnumerator for ast::Union {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #(
-                            #entity_union_item_paths(ref item) => {
-                                write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
+                            #entity_union_item_paths(item) => {
+                                write!(f, "{}::{}({})", Self::NAME, #entity_inners::NAME, item)
                             }
                         )*
                     }
@@ -108,8 +109,8 @@ impl GenEnumerator for ast::Union {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
                         #(
-                            #reader_union_item_paths(ref item) => {
-                                write!(f, "{}::{}({})", Self::NAME, #union_items::NAME, item)
+                            #reader_union_item_paths(item) => {
+                                write!(f, "{}::{}({})", Self::NAME, #entity_inners::NAME, item)
                             }
                         )*
                     }
@@ -119,14 +120,14 @@ impl GenEnumerator for ast::Union {
             impl #entity_union {
                 pub(crate) fn display_inner(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
-                        #( #entity_union_item_paths(ref item) => write!(f, "{}", item), )*
+                        #( #entity_union_item_paths(item) => write!(f, "{}", item), )*
                     }
                 }
             }
             impl<'r> #reader_union<'r> {
                 pub(crate) fn display_inner(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
                     match self {
-                        #( #reader_union_item_paths(ref item) => write!(f, "{}", item), )*
+                        #( #reader_union_item_paths(item) => write!(f, "{}", item), )*
                     }
                 }
             }
@@ -157,18 +158,45 @@ impl GenEnumerator for ast::Union {
                 )
             })
             .collect::<Vec<_>>();
+        let entity_bytes_arms = self
+            .items()
+            .iter()
+            .zip(entity_union_item_paths.iter())
+            .map(|(item, path)| {
+                let expr = entity_as_bytes(item.typ(), quote!(item));
+                quote!(#path(item) => #expr,)
+            })
+            .collect::<Vec<_>>();
+        let entity_slice_arms = self
+            .items()
+            .iter()
+            .zip(entity_union_item_paths.iter())
+            .map(|(item, path)| {
+                let expr = entity_as_slice(item.typ(), quote!(item));
+                quote!(#path(item) => #expr,)
+            })
+            .collect::<Vec<_>>();
+        let reader_slice_arms = self
+            .items()
+            .iter()
+            .zip(reader_union_item_paths.iter())
+            .map(|(item, path)| {
+                let expr = reader_as_slice(item.typ(), quote!(item));
+                quote!(#path(item) => #expr,)
+            })
+            .collect::<Vec<_>>();
         let code_impl_entity_union = {
             quote!(
                 impl #entity_union {
                     pub const NAME: &'static str = #entity_union_string;
                     pub fn as_bytes(&self) -> molecule::bytes::Bytes {
                         match self {
-                            #( #entity_union_item_paths(item) => item.as_bytes(), )*
+                            #( #entity_bytes_arms )*
                         }
                     }
                     pub fn as_slice(&self) -> &[u8] {
                         match self {
-                            #( #entity_union_item_paths(item) => item.as_slice(), )*
+                            #( #entity_slice_arms )*
                         }
                     }
                     pub fn item_id(&self) -> molecule::Number {
@@ -183,7 +211,7 @@ impl GenEnumerator for ast::Union {
                     }
                     pub fn as_reader<'r>(&'r self) -> #reader_union<'r> {
                         match self {
-                            #( #entity_union_item_paths(item) => item.as_reader().into(), )*
+                            #( #entity_union_item_paths(item) => ::core::convert::Into::into(item.as_reader()), )*
                         }
                     }
                 }
@@ -195,7 +223,7 @@ impl GenEnumerator for ast::Union {
                     pub const NAME: &'r str = #reader_union_string;
                     pub fn as_slice(&self) -> &'r [u8] {
                         match self {
-                            #( #reader_union_item_paths(item) => item.as_slice(), )*
+                            #( #reader_slice_arms )*
                         }
                     }
                     pub fn item_id(&self) -> molecule::Number {

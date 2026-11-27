@@ -1,8 +1,10 @@
 use proc_macro2 as m4;
 use quote::quote;
 
-use super::utilities::{entity_iterator_name, entity_name, reader_iterator_name, reader_name};
-use crate::ast::{self as ast, HasName};
+use super::utilities::{
+    entity_iterator_name, entity_name, entity_ref, reader_iterator_name, reader_name, reader_ref,
+};
+use crate::ast;
 
 pub(super) trait GenIterator {
     fn gen_iterator(&self) -> m4::TokenStream;
@@ -10,38 +12,34 @@ pub(super) trait GenIterator {
 
 impl GenIterator for ast::FixVec {
     fn gen_iterator(&self) -> m4::TokenStream {
-        gen_iterator_for_vector(
-            self.name(),
-            self.item().typ().name(),
-            self.item().typ().is_byte(),
-        )
+        gen_iterator_for_vector(self.name(), self.item().typ(), self.item().typ().is_byte())
     }
 }
 
 impl GenIterator for ast::DynVec {
     fn gen_iterator(&self) -> m4::TokenStream {
-        gen_iterator_for_vector(self.name(), self.item().typ().name(), false)
+        gen_iterator_for_vector(self.name(), self.item().typ(), false)
     }
 }
 
-fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_byte: bool) -> m4::TokenStream {
+fn gen_iterator_for_vector(self_name: &str, item: &ast::TopDecl, is_byte: bool) -> m4::TokenStream {
     let entity_iterator = entity_iterator_name(self_name);
     let entity = entity_name(self_name);
-    let entity_inner = entity_name(inner_name);
+    let entity_inner = entity_ref(item);
     let reader_iterator = reader_iterator_name(self_name);
     let reader = reader_name(self_name);
-    let reader_inner = reader_name(inner_name);
+    let reader_inner = reader_ref(item);
     let common_part = quote!(
         pub struct #entity_iterator (#entity, usize, usize);
         impl ::core::iter::Iterator for #entity_iterator {
             type Item = #entity_inner;
-            fn next(&mut self) -> Option<Self::Item> {
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
                 if self.1 >= self.2 {
-                    None
+                    ::core::option::Option::None
                 } else {
                     let ret = self.0.get_unchecked(self.1);
                     self.1 += 1;
-                    Some(ret)
+                    ::core::option::Option::Some(ret)
                 }
             }
         }
@@ -73,13 +71,13 @@ fn gen_iterator_for_vector(self_name: &str, inner_name: &str, is_byte: bool) -> 
             pub struct #reader_iterator<'t, 'r> (&'t #reader<'r>, usize, usize);
             impl<'t: 'r, 'r> ::core::iter::Iterator for #reader_iterator<'t, 'r> {
                 type Item = #reader_inner<'t>;
-                fn next(&mut self) -> Option<Self::Item> {
+                fn next(&mut self) -> ::core::option::Option<Self::Item> {
                     if self.1 >= self.2 {
-                        None
+                        ::core::option::Option::None
                     } else {
                         let ret = self.0.get_unchecked(self.1);
                         self.1 += 1;
-                        Some(ret)
+                        ::core::option::Option::Some(ret)
                     }
                 }
             }
