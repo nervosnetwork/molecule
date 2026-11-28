@@ -3,8 +3,12 @@
 pub mod ast;
 pub(crate) mod compiler;
 pub(crate) mod generator;
+pub mod integer;
 pub(crate) mod parser;
 pub(crate) mod utils;
+
+#[cfg(feature = "schema-extensions")]
+pub mod schema;
 
 #[cfg(feature = "compiler-plugin")]
 pub mod ir;

@@ -28,13 +28,15 @@ semver.workspace = true
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
 
 [features]
 default = []
-compiler-plugin = ["serde", "serde_json", "serde_yaml"]
+schema-extensions = ["serde", "serde_json", "sha2"]
+compiler-plugin = ["schema-extensions", "serde_yaml"]
 
 [badges]
 maintenance = { status = "experimental" }

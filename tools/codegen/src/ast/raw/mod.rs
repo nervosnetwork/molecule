@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 #[cfg(feature = "compiler-plugin")]
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +10,10 @@ pub(crate) struct Ast {
     syntax_version: Option<SyntaxVersion>,
     namespace: String,
     imports: Vec<ImportStmt>,
+    integers: std::collections::BTreeMap<String, crate::integer::IntegerSpec>,
     decls: Vec<TopDecl>,
+    #[property(skip)]
+    pub(crate) decl_origins: std::collections::BTreeMap<String, crate::ast::verified::ModulePath>,
 }
 
 impl Default for SyntaxVersion {
@@ -37,7 +38,6 @@ pub(crate) struct ImportStmt {
     name: String,
     paths: Vec<String>,
     path_supers: usize,
-    imported_base: PathBuf,
     imported_depth: usize,
 }
 
@@ -112,6 +112,18 @@ pub(crate) struct FieldDecl {
 }
 
 impl Ast {
+    pub(crate) fn for_file(path: &std::path::Path) -> Result<Self, String> {
+        let namespace = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|name| crate::utils::valid_namespace(name))
+            .ok_or("E_SCHEMA_SOURCE: invalid file name")?;
+        Ok(Self {
+            namespace: namespace.to_owned(),
+            ..Default::default()
+        })
+    }
+
     pub(crate) fn add_import(&mut self, stmt: ImportStmt) {
         self.imports.push(stmt);
     }

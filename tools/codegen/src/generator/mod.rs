@@ -15,6 +15,8 @@ pub(crate) enum Target {
     Language(Language),
     #[cfg(feature = "compiler-plugin")]
     Intermediate(ir::Format),
+    #[cfg(feature = "compiler-plugin")]
+    WireIntermediate(ir::Format),
 }
 
 #[derive(Debug)]
@@ -28,6 +30,8 @@ impl Target {
             Self::Language(lang) => lang.extension(),
             #[cfg(feature = "compiler-plugin")]
             Self::Intermediate(format) => format.extension(),
+            #[cfg(feature = "compiler-plugin")]
+            Self::WireIntermediate(format) => format.extension(),
         }
     }
 }
@@ -41,7 +45,14 @@ impl Generator {
         match target {
             Target::Language(lang) => lang.generate(writer, &self.ast),
             #[cfg(feature = "compiler-plugin")]
-            Target::Intermediate(format) => format.generate(writer, &self.ast.to_ir()),
+            Target::Intermediate(format) => {
+                let bytes = format
+                    .serialize_ast(&self.ast)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+                writer.write_all(&bytes)
+            }
+            #[cfg(feature = "compiler-plugin")]
+            Target::WireIntermediate(format) => format.generate(writer, &self.ast.to_ir()),
         }
     }
 }

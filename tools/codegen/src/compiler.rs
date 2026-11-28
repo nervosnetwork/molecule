@@ -1,4 +1,4 @@
-use std::{env, ffi, fs, io, io::Write as _, path};
+use std::{env, fs, io, io::Write as _, path};
 
 #[cfg(feature = "compiler-plugin")]
 use std::process;
@@ -11,7 +11,11 @@ use crate::ir;
 pub struct Compiler {
     target: Option<generator::Target>,
     input: Option<Input>,
-    output: Option<Output>,
+    output: Output,
+    #[cfg(feature = "schema-extensions")]
+    type_metadata: Vec<path::PathBuf>,
+    #[cfg(feature = "compiler-plugin")]
+    integer_contract: Option<path::PathBuf>,
 }
 
 pub(crate) enum Input {
@@ -20,11 +24,27 @@ pub(crate) enum Input {
     Intermediate(ir::Format, Vec<u8>),
 }
 
+#[cfg(feature = "compiler-plugin")]
+pub(crate) struct PluginChild(Option<process::Child>);
+
+#[cfg(feature = "compiler-plugin")]
+impl Drop for PluginChild {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            drop(child.stdin.take());
+            if matches!(child.try_wait(), Ok(None)) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+    }
+}
+
 pub(crate) enum Output {
     Directory(path::PathBuf),
     Stdout,
     #[cfg(feature = "compiler-plugin")]
-    PluginProcess(process::Child),
+    PluginProcess(PluginChild),
 }
 
 impl Default for Compiler {
@@ -38,7 +58,11 @@ impl Compiler {
         Self {
             target: None,
             input: None,
-            output: Some(Output::Stdout),
+            output: Output::Stdout,
+            #[cfg(feature = "schema-extensions")]
+            type_metadata: Vec::new(),
+            #[cfg(feature = "compiler-plugin")]
+            integer_contract: None,
         }
     }
 
@@ -53,10 +77,69 @@ impl Compiler {
         self
     }
 
+    #[cfg(feature = "compiler-plugin")]
+    pub fn generate_wire_intermediate(&mut self, format: ir::Format) -> &mut Self {
+        self.target
+            .replace(generator::Target::WireIntermediate(format));
+        self
+    }
+
     pub fn input_schema_file<P: AsRef<path::Path>>(&mut self, path: P) -> &mut Self {
         self.input
             .replace(Input::SchemaFile(path.as_ref().to_path_buf()));
         self
+    }
+
+    /// Add metadata explicitly. Relative schema paths are resolved from this file.
+    #[cfg(feature = "schema-extensions")]
+    pub fn type_metadata_file<P: AsRef<path::Path>>(&mut self, path: P) -> &mut Self {
+        self.type_metadata.push(path.as_ref().to_owned());
+        self
+    }
+
+    /// Require the named integers of a published IR v2 JSON file before generating output.
+    #[cfg(feature = "compiler-plugin")]
+    pub fn integer_contract_file(&mut self, path: impl AsRef<path::Path>) -> &mut Self {
+        self.integer_contract = Some(path.as_ref().to_owned());
+        self
+    }
+
+    /// Parse and validate all configured schema inputs without producing output.
+    pub fn parse_ast(&self) -> Result<crate::ast::Ast, String> {
+        self.parse(false)
+    }
+
+    /// Retain the source graph even for a plain schema when a plugin needs module ownership.
+    #[cfg(feature = "compiler-plugin")]
+    pub fn parse_ast_with_sources(&self) -> Result<crate::ast::Ast, String> {
+        self.parse(true)
+    }
+
+    fn parse(&self, _with_sources: bool) -> Result<crate::ast::Ast, String> {
+        let input = self
+            .input
+            .as_ref()
+            .ok_or("input is not set: schema file or intermediate data")?;
+        let ast = match input {
+            #[cfg(feature = "schema-extensions")]
+            Input::SchemaFile(path) if _with_sources || !self.type_metadata.is_empty() => {
+                crate::schema::LoadedGraph::load(path)?.parse_with_metadata(&self.type_metadata)
+            }
+            Input::SchemaFile(path) => parser::Parser::parse_file(path),
+            #[cfg(feature = "compiler-plugin")]
+            Input::Intermediate(format, data) => {
+                if !self.type_metadata.is_empty() {
+                    return Err("E_META_SCHEMA: metadata sidecars require a schema input; IR carries its own semantics".into());
+                }
+                format.recover(data)
+            }
+        }?;
+        #[cfg(feature = "compiler-plugin")]
+        if let Some(path) = &self.integer_contract {
+            ir::Envelope::check_integer_contract(path, &ast)
+                .map_err(|err| format!("E_INT_CONTRACT: {}: {err}", path.display()))?;
+        }
+        Ok(ast)
     }
 
     #[cfg(feature = "compiler-plugin")]
@@ -71,53 +154,22 @@ impl Compiler {
     }
 
     pub fn output_dir<P: AsRef<path::Path>>(&mut self, path: P) -> &mut Self {
-        self.output
-            .replace(Output::Directory(path.as_ref().to_path_buf()));
+        self.output = Output::Directory(path.as_ref().to_path_buf());
         self
     }
 
     #[cfg(feature = "compiler-plugin")]
     pub fn output_plugin_process(&mut self, child: process::Child) -> &mut Self {
-        self.output.replace(Output::PluginProcess(child));
+        self.output = Output::PluginProcess(PluginChild(Some(child)));
         self
     }
 
     pub fn run(&mut self) -> Result<(), String> {
-        let Self {
-            target,
-            ref input,
-            #[cfg(not(feature = "compiler-plugin"))]
-            ref output,
-            #[cfg(feature = "compiler-plugin")]
-            ref mut output,
-        } = self;
-        let target = target.ok_or("target is not set: generate code or intermediate data")?;
-        let input = input
-            .as_ref()
-            .ok_or("input is not set: schema file or intermediate data")?;
-
-        #[cfg(not(feature = "compiler-plugin"))]
-        let output = output.as_ref().ok_or("output is not set")?;
-        #[cfg(feature = "compiler-plugin")]
-        let output = output.as_mut().ok_or("output is not set")?;
-
-        #[cfg(not(feature = "compiler-plugin"))]
-        let mut file_name = Default::default();
-        #[cfg(feature = "compiler-plugin")]
-        let mut file_name = None;
-
-        let ast = match input {
-            Input::SchemaFile(ref file_path) => {
-                file_path
-                    .as_path()
-                    .file_name()
-                    .and_then(ffi::OsStr::to_str)
-                    .clone_into(&mut file_name);
-                parser::Parser::parse(file_path)
-            }
-            #[cfg(feature = "compiler-plugin")]
-            Input::Intermediate(format, ref data) => format.recover(data)?,
-        };
+        let target = self
+            .target
+            .ok_or("target is not set: generate code or intermediate data")?;
+        let ast = self.parse_ast()?;
+        let namespace = ast.namespace().to_owned();
         let generator = generator::Generator::new(ast);
 
         let mut output_data = Vec::<u8>::new();
@@ -125,42 +177,53 @@ impl Compiler {
             .generate(target, &mut output_data)
             .map_err(|err| format!("failed to write data by generator: {}", err))?;
 
-        match output {
+        match &mut self.output {
             Output::Directory(ref out_dir) => {
-                let file_name = file_name.unwrap();
-                let mut out_file = out_dir.to_owned();
-                out_file.push(file_name);
-                out_file.set_extension(target.extension());
-                let mut file_out = fs::OpenOptions::new()
+                if !crate::utils::valid_namespace(&namespace) {
+                    return Err(format!("E_OUTPUT: invalid output namespace {namespace:?}"));
+                }
+                let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
+                fs::OpenOptions::new()
                     .create(true)
                     .write(true)
                     .truncate(true)
                     .open(&out_file)
-                    .unwrap();
-                file_out.write_all(&output_data).unwrap();
-                file_out.flush().unwrap();
+                    .and_then(|mut file| {
+                        file.write_all(&output_data)?;
+                        file.flush()
+                    })
+                    .map_err(|err| format!("E_OUTPUT: {}: {err}", out_file.display()))?;
             }
             Output::Stdout => {
                 let stdout = io::stdout();
                 let mut stdout_handle = stdout.lock();
-                stdout_handle.write_all(&output_data).unwrap();
-                stdout_handle.flush().unwrap();
+                stdout_handle
+                    .write_all(&output_data)
+                    .and_then(|_| stdout_handle.flush())
+                    .map_err(|err| format!("E_OUTPUT: {err}"))?;
             }
             #[cfg(feature = "compiler-plugin")]
-            Output::PluginProcess(ref mut process) => {
-                {
-                    let child_stdin = process.stdin.as_mut().unwrap();
-                    child_stdin.write_all(&output_data).unwrap();
-                    child_stdin.flush().unwrap();
+            Output::PluginProcess(ref mut plugin) => {
+                let process = plugin
+                    .0
+                    .as_mut()
+                    .ok_or("E_OUTPUT: plugin process already consumed")?;
+                let mut child_stdin = process
+                    .stdin
+                    .take()
+                    .ok_or("E_OUTPUT: plugin process stdin is not piped")?;
+                let written = child_stdin
+                    .write_all(&output_data)
+                    .and_then(|_| child_stdin.flush());
+                drop(child_stdin);
+                let status = process
+                    .wait()
+                    .map_err(|err| format!("E_OUTPUT: failed to wait for plugin: {err}"))?;
+                plugin.0 = None;
+                if !status.success() {
+                    return Err(format!("E_OUTPUT: plugin exited with {status}"));
                 }
-                if let Ok(status) = process.wait() {
-                    if !status.success() {
-                        process::exit(1)
-                    }
-                } else {
-                    eprintln!("Error: failed to execute the plugin");
-                    process::exit(1)
-                }
+                written.map_err(|err| format!("E_OUTPUT: {err}"))?;
             }
         }
 
