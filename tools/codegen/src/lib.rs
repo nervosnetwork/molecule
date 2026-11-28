@@ -3,6 +3,7 @@
 pub mod ast;
 pub(crate) mod compiler;
 pub(crate) mod generator;
+mod output;
 pub(crate) mod parser;
 pub(crate) mod utils;
 

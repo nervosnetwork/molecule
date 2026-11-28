@@ -1,4 +1,4 @@
-use std::{env, ffi, fs, io, io::Write as _, path};
+use std::{env, io, io::Write as _, path};
 
 #[cfg(feature = "compiler-plugin")]
 use std::process;
@@ -101,23 +101,12 @@ impl Compiler {
         #[cfg(feature = "compiler-plugin")]
         let output = output.as_mut().ok_or("output is not set")?;
 
-        #[cfg(not(feature = "compiler-plugin"))]
-        let mut file_name = Default::default();
-        #[cfg(feature = "compiler-plugin")]
-        let mut file_name = None;
-
         let ast = match input {
-            Input::SchemaFile(ref file_path) => {
-                file_path
-                    .as_path()
-                    .file_name()
-                    .and_then(ffi::OsStr::to_str)
-                    .clone_into(&mut file_name);
-                parser::Parser::parse(file_path)
-            }
+            Input::SchemaFile(ref file_path) => parser::Parser::parse(file_path),
             #[cfg(feature = "compiler-plugin")]
             Input::Intermediate(format, ref data) => format.recover(data)?,
         };
+        let namespace = ast.namespace().to_owned();
         let generator = generator::Generator::new(ast);
 
         let mut output_data = Vec::<u8>::new();
@@ -127,24 +116,20 @@ impl Compiler {
 
         match output {
             Output::Directory(ref out_dir) => {
-                let file_name = file_name.unwrap();
-                let mut out_file = out_dir.to_owned();
-                out_file.push(file_name);
-                out_file.set_extension(target.extension());
-                let mut file_out = fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(&out_file)
-                    .unwrap();
-                file_out.write_all(&output_data).unwrap();
-                file_out.flush().unwrap();
+                if !crate::utils::valid_namespace(&namespace) {
+                    return Err(format!("E_OUTPUT: invalid output namespace {namespace:?}"));
+                }
+                let out_file = out_dir.join(format!("{namespace}.{}", target.extension()));
+                crate::output::write_atomic(&out_file, &output_data)
+                    .map_err(|err| format!("E_OUTPUT: {}: {err}", out_file.display()))?;
             }
             Output::Stdout => {
                 let stdout = io::stdout();
                 let mut stdout_handle = stdout.lock();
-                stdout_handle.write_all(&output_data).unwrap();
-                stdout_handle.flush().unwrap();
+                stdout_handle
+                    .write_all(&output_data)
+                    .and_then(|_| stdout_handle.flush())
+                    .map_err(|err| format!("E_OUTPUT: {err}"))?;
             }
             #[cfg(feature = "compiler-plugin")]
             Output::PluginProcess(ref mut process) => {
