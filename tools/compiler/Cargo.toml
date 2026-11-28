@@ -34,7 +34,11 @@ path = "src/compiler-rust-lazy-reader.rs"
 [dependencies]
 clap.workspace = true
 which.workspace = true
+process-wrap.workspace = true
 molecule-codegen = { workspace = true, features = ["compiler-plugin"] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }

@@ -1,236 +1,193 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, VecDeque},
     rc::Rc,
 };
 
 use crate::ir;
 
-trait RecoverFromIr {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl>;
+enum RecoverError<'a> {
+    Unresolved(&'a str),
+    Message(String),
 }
 
-impl RecoverFromIr for ir::Option_ {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            super::Option_ {
-                name,
-                item,
-                imported_depth: self.imported_depth(),
-            }
-            .into()
-        })
-    }
-}
-
-impl RecoverFromIr for ir::Union {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        if self.items().is_empty() {
-            panic!("the union ({}) is empty", self.name());
+fn recover_decl<'a>(
+    decl: &'a ir::TopDecl,
+    deps: &super::Deps,
+    canonical: bool,
+) -> Result<super::TopDecl, RecoverError<'a>> {
+    use RecoverError::{Message, Unresolved};
+    let lookup = |name: &'a str| deps.get(name).ok_or(Unresolved(name));
+    let invalid = || {
+        Message(format!(
+            "E_IR_LAYOUT: invalid fixed size in {}",
+            decl.name()
+        ))
+    };
+    match decl {
+        ir::TopDecl::Option_(inner) => Ok(super::Option_ {
+            name: inner.name().to_owned(),
+            item: super::ItemDecl::new(lookup(inner.item().typ())?),
+            imported_depth: inner.imported_depth(),
         }
-
-        self.items()
-            .iter()
-            .map(|ir_item| {
-                deps.get(ir_item.typ())
-                    .map(|item| super::UnionItemDecl::new(item, ir_item.id()))
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|items| {
-                let name = self.name().to_owned();
-                super::Union {
-                    name,
-                    items,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
-            })
-    }
-}
-
-impl RecoverFromIr for ir::Array {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let item_size = dep.total_size().unwrap_or_else(|| {
-                panic!(
-                    "the item type ({}) of array ({}) doesn't have fixed size",
-                    self.item().typ(),
-                    self.name(),
-                );
-            });
-            if item_size == 0 {
-                panic!("the array ({}) has no size", self.name());
+        .into()),
+        ir::TopDecl::Union(inner) => {
+            if inner.items().is_empty() {
+                return Err(Message(format!("E_IR_UNION: empty union {}", inner.name())));
             }
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            let item_count = self.item_count();
-            super::Array {
-                name,
-                item,
-                item_count,
-                imported_depth: self.imported_depth(),
+            let items = inner
+                .items()
+                .iter()
+                .map(|item| Ok(super::UnionItemDecl::new(lookup(item.typ())?, item.id())))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(super::Union {
+                name: inner.name().to_owned(),
+                items,
+                imported_depth: inner.imported_depth(),
+            }
+            .into())
+        }
+        ir::TopDecl::Array(inner) => {
+            let dep = lookup(inner.item().typ())?;
+            let item_size = dep.total_size().filter(|&s| s != 0).ok_or_else(invalid)?;
+            item_size
+                .checked_mul(inner.item_count())
+                .filter(|&size| size != 0 && u32::try_from(size).is_ok())
+                .ok_or_else(invalid)?;
+            Ok(super::Array {
+                name: inner.name().to_owned(),
+                item: super::ItemDecl::new(dep),
+                item_count: inner.item_count(),
+                imported_depth: inner.imported_depth(),
                 item_size,
             }
-            .into()
-        })
-    }
-}
-
-impl RecoverFromIr for ir::Struct {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        let mut fields = Vec::with_capacity(self.fields().len());
-        let mut field_sizes = Vec::with_capacity(self.fields().len());
-        for ir_field in self.fields() {
-            let field_name = ir_field.name();
-            if let Some(dep) = deps.get(ir_field.typ()) {
-                if let Some(field_size) = dep.total_size() {
-                    field_sizes.push(field_size);
-                } else {
-                    panic!(
-                        "the filed type ({}) in struct ({}) doesn't have fixed size",
-                        field_name,
-                        self.name(),
-                    );
-                }
-                let field = super::FieldDecl::new(field_name, dep);
-                fields.push(field);
-            } else {
-                break;
+            .into())
+        }
+        ir::TopDecl::Struct(inner) => {
+            let mut fields = Vec::with_capacity(inner.fields().len());
+            let mut field_sizes = Vec::with_capacity(inner.fields().len());
+            for ir_field in inner.fields() {
+                let dep = lookup(ir_field.typ())?;
+                let field_size = dep.total_size().ok_or_else(invalid)?;
+                field_sizes.push(field_size);
+                fields.push(super::FieldDecl::new(ir_field.name(), dep));
             }
-        }
-        if fields.len() != self.fields().len() {
-            return None;
-        }
-        if field_sizes.iter().sum::<usize>() == 0 {
-            panic!("the struct ({}) has no size", self.name());
-        }
-        let name = self.name().to_owned();
-        Some(
-            super::Struct {
-                name,
+            let total = field_sizes
+                .iter()
+                .copied()
+                .try_fold(0usize, usize::checked_add)
+                .ok_or_else(invalid)?;
+            if total == 0 || u32::try_from(total).is_err() {
+                return Err(invalid());
+            }
+            Ok(super::Struct {
+                name: inner.name().to_owned(),
                 fields,
-                imported_depth: self.imported_depth(),
+                imported_depth: inner.imported_depth(),
                 field_sizes,
             }
-            .into(),
-        )
-    }
-}
-
-impl RecoverFromIr for ir::FixVec {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            let item_size = dep.total_size().unwrap();
-            super::FixVec {
-                name,
-                item,
-                imported_depth: self.imported_depth(),
+            .into())
+        }
+        ir::TopDecl::FixVec(inner) => {
+            let dep = lookup(inner.item().typ())?;
+            let item_size = dep.total_size().filter(|&s| s != 0).ok_or_else(invalid)?;
+            Ok(super::FixVec {
+                name: inner.name().to_owned(),
+                item: super::ItemDecl::new(dep),
+                imported_depth: inner.imported_depth(),
                 item_size,
             }
-            .into()
-        })
-    }
-}
-
-impl RecoverFromIr for ir::DynVec {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        deps.get(self.item().typ()).map(|dep| {
-            let name = self.name().to_owned();
-            let item = super::ItemDecl::new(dep);
-            super::DynVec {
-                name,
-                item,
-                imported_depth: self.imported_depth(),
+            .into())
+        }
+        ir::TopDecl::DynVec(inner) => {
+            let dep = lookup(inner.item().typ())?;
+            if canonical && dep.total_size().is_some() {
+                return Err(Message(format!(
+                    "E_IR_LAYOUT: {} must be a fixed vector",
+                    inner.name()
+                )));
             }
-            .into()
-        })
-    }
-}
-
-impl RecoverFromIr for ir::Table {
-    fn recover(&self, deps: &super::Deps) -> Option<super::TopDecl> {
-        self.fields()
-            .iter()
-            .map(|ir_field| {
-                let field_name = ir_field.name();
-                deps.get(ir_field.typ())
-                    .map(|dep| super::FieldDecl::new(field_name, dep))
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|fields| {
-                let name = self.name().to_owned();
-                super::Table {
-                    name,
-                    fields,
-                    imported_depth: self.imported_depth(),
-                }
-                .into()
-            })
+            Ok(super::DynVec {
+                name: inner.name().to_owned(),
+                item: super::ItemDecl::new(dep),
+                imported_depth: inner.imported_depth(),
+            }
+            .into())
+        }
+        ir::TopDecl::Table(inner) => {
+            let fields = inner
+                .fields()
+                .iter()
+                .map(|field| Ok(super::FieldDecl::new(field.name(), lookup(field.typ())?)))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(super::Table {
+                name: inner.name().to_owned(),
+                fields,
+                imported_depth: inner.imported_depth(),
+            }
+            .into())
+        }
     }
 }
 
 impl super::Ast {
-    pub(crate) fn recover(ir: ir::Ir) -> Self {
-        let mut decls_idx = HashMap::new();
-        let mut decls_keys = HashSet::new();
-        for decl in ir.decls() {
-            let name = decl.name();
-            if super::TopDecl::new_primitive(name.to_lowercase().as_str()).is_some() {
-                panic!("the name `{}` is reserved", name);
-            }
-            if decls_idx.insert(name, decl).is_some() || !decls_keys.insert(name) {
-                panic!("the name `{}` is used more than once", name);
-            };
-        }
-        let mut decls_result = HashMap::new();
-        decls_result.insert(
+    pub(crate) fn recover(ir: ir::Ir, canonical: bool) -> Result<Self, String> {
+        ir::validate_wire(&ir, canonical)?;
+        let names: BTreeSet<&str> = ir.decls().iter().map(ir::TopDecl::name).collect();
+
+        let mut decls_result = super::Deps::from([(
             "byte",
             Rc::new(super::TopDecl::new_primitive("byte").unwrap()),
-        );
-        loop {
-            if decls_keys.is_empty() {
-                break;
-            }
-            let unrecovered = decls_keys.len();
-            decls_keys.retain(|&name| {
-                let decl_ir = decls_idx.get(name).unwrap();
-                if let Some(decl) = super::TopDecl::recover(decl_ir, &decls_result) {
-                    decls_result.insert(name, Rc::new(decl));
-                    false
-                } else {
-                    true
+        )]);
+        let mut pending: VecDeque<&ir::TopDecl> = ir.decls().iter().collect();
+        let mut deferred = 0;
+        while let Some(decl) = pending.pop_front() {
+            match recover_decl(decl, &decls_result, canonical) {
+                Ok(recovered) => {
+                    decls_result.insert(decl.name(), Rc::new(recovered));
+                    deferred = 0;
                 }
-            });
-            if decls_keys.len() == unrecovered {
-                panic!(
-                    "there are {} types which are unable to be recovered: {:?}",
-                    unrecovered, decls_keys
-                );
+                Err(RecoverError::Unresolved(reference)) => {
+                    if !names.contains(reference) {
+                        return Err(format!(
+                            "E_IR_DEPENDENCY: {} references unknown type {reference}",
+                            decl.name()
+                        ));
+                    }
+                    pending.push_back(decl);
+                    deferred += 1;
+                    if deferred == pending.len() {
+                        return Err(format!(
+                            "E_IR_DEPENDENCY: missing or cyclic references: {:?}",
+                            pending.iter().map(|d| d.name()).collect::<Vec<_>>()
+                        ));
+                    }
+                }
+                Err(RecoverError::Message(message)) => return Err(message),
             }
         }
+
         let namespace = ir.namespace().to_owned();
         let imports = ir
             .imports()
             .iter()
             .map(super::ImportStmt::recover)
             .collect();
-        // remove the primitive types and keep the order
-        let mut decls = Vec::with_capacity(ir.decls().len());
-        for decl in ir.decls() {
-            let result = decls_result.get(decl.name()).unwrap();
-            decls.push(Rc::clone(result));
-        }
-
+        let decls = ir
+            .decls()
+            .iter()
+            .map(|decl| Rc::clone(&decls_result[decl.name()]))
+            .collect();
         let syntax_version = ir.syntax_version().to_owned();
-        Self {
+
+        Ok(Self {
             syntax_version,
             namespace,
             imports,
             decls,
-        }
+            integers: Default::default(),
+            source_graph: None,
+            decl_origins: None,
+        })
     }
 }
 
@@ -240,20 +197,6 @@ impl super::ImportStmt {
             name: ir.name().to_owned(),
             paths: ir.paths().to_owned(),
             path_supers: ir.path_supers(),
-        }
-    }
-}
-
-impl super::TopDecl {
-    fn recover(ir: &ir::TopDecl, deps: &super::Deps) -> Option<Self> {
-        match ir {
-            ir::TopDecl::Option_(inner) => inner.recover(deps),
-            ir::TopDecl::Union(inner) => inner.recover(deps),
-            ir::TopDecl::Array(inner) => inner.recover(deps),
-            ir::TopDecl::Struct(inner) => inner.recover(deps),
-            ir::TopDecl::FixVec(inner) => inner.recover(deps),
-            ir::TopDecl::DynVec(inner) => inner.recover(deps),
-            ir::TopDecl::Table(inner) => inner.recover(deps),
         }
     }
 }

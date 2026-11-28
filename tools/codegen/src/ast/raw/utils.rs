@@ -1,24 +1,41 @@
 use std::collections::HashSet;
-use std::{ffi, fs, io::Read as _, path::Path, str::FromStr};
+#[cfg(any(test, not(feature = "schema-extensions")))]
+use std::{fs, path::Path};
 
-use pest::{error::Error as PestError, iterators::Pairs, Parser as _};
+#[cfg(any(test, not(feature = "schema-extensions")))]
+use pest::Parser as _;
+use pest::{error::Error as PestError, iterators::Pairs};
+#[cfg(any(test, not(feature = "schema-extensions")))]
 use same_file::is_same_file;
 
 use crate::{
     ast::raw as ast,
     ast::raw::CustomUnionItemDecl,
     ast::raw::SyntaxVersion,
-    parser,
+    parser::{self, ParseError},
     utils::{self, PairsUtils as _},
 };
+
+fn invalid(span: pest::Span<'_>, message: impl Into<String>) -> ParseError {
+    Box::new(PestError::new_from_span(
+        pest::error::ErrorVariant::CustomError {
+            message: message.into(),
+        },
+        span,
+    ))
+}
 
 impl utils::PairsUtils for Pairs<'_, parser::Rule> {
     fn next_string(&mut self) -> String {
         self.next().unwrap().as_str().to_owned()
     }
 
-    fn next_usize(&mut self) -> usize {
-        usize::from_str(self.next().unwrap().as_str()).unwrap()
+    fn next_usize(&mut self) -> Result<usize, ParseError> {
+        let number = self.next().unwrap();
+        number
+            .as_str()
+            .parse()
+            .map_err(|_| invalid(number.as_span(), "E_SCHEMA_NUMBER: value exceeds usize"))
     }
 
     fn next_item(&mut self) -> ast::ItemDecl {
@@ -43,49 +60,30 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
         ret
     }
 
-    fn next_custom_union_items(&mut self) -> Vec<CustomUnionItemDecl> {
-        let mut previous_id: Option<usize> = None;
-        let mut ret = Vec::new();
-
-        let mut custom_ids = HashSet::new();
+    fn next_custom_union_items(&mut self) -> Result<Vec<CustomUnionItemDecl>, ParseError> {
+        let mut next = Some(0usize);
+        let mut items = Vec::new();
+        let mut ids = HashSet::new();
         for item in self {
-            match item.as_rule() {
-                parser::Rule::item_decl => {
-                    let mut pair = item.into_inner();
-                    let node = ast::CustomUnionItemDecl {
-                        typ: pair.next_string(),
-                        id: if let Some(pre_id) = previous_id {
-                            pre_id + 1
-                        } else {
-                            0
-                        },
-                    };
-                    pair.next_should_be_none();
-                    ret.push(node);
-                }
-                parser::Rule::custom_union_item_decl => {
-                    let mut pair = item.into_inner();
-                    let node = ast::CustomUnionItemDecl {
-                        typ: pair.next_string(),
-                        id: pair.next_usize(),
-                    };
-                    pair.next_should_be_none();
-                    ret.push(node);
-                }
-                _ => unreachable!(),
+            let span = item.as_span();
+            let mut parts = item.into_inner();
+            let typ = parts.next_string();
+            let id = if parts.peek().is_some() {
+                parts.next_usize()?
+            } else {
+                next.ok_or_else(|| invalid(span, "E_SCHEMA_UNION: implicit ID exceeds usize"))?
+            };
+            if !ids.insert(id) {
+                return Err(invalid(
+                    span,
+                    format!("E_SCHEMA_UNION: duplicate union ID {id}"),
+                ));
             }
-
-            if !custom_ids.insert(ret.last().unwrap().id) {
-                panic!(
-                    "Custom Union Item ID {} is duplicated",
-                    ret.last().unwrap().id
-                );
-            }
-            previous_id = Some(ret.last().unwrap().id);
+            next = id.checked_add(1);
+            items.push(CustomUnionItemDecl { typ, id });
         }
-        // union items should be sorted by custom ID
-        ret.sort_by_key(|item| item.id);
-        ret
+        items.sort_by_key(|item| item.id);
+        Ok(items)
     }
 
     fn next_fields(&mut self) -> Vec<ast::FieldDecl> {
@@ -105,11 +103,7 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
         ret
     }
 
-    fn next_import<P: AsRef<Path>>(
-        &mut self,
-        imported_base: &P,
-        imported_depth: usize,
-    ) -> ast::ImportStmt {
+    fn next_import(&mut self, imported_depth: usize) -> ast::ImportStmt {
         let mut paths = Vec::new();
         let mut path_supers = 0;
         if let Some(inner) = self.next() {
@@ -135,7 +129,6 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
             name: paths.pop().unwrap(),
             paths,
             path_supers,
-            imported_base: imported_base.as_ref().to_path_buf(),
             imported_depth,
         }
     }
@@ -147,85 +140,160 @@ impl utils::PairsUtils for Pairs<'_, parser::Rule> {
     }
 }
 
-impl utils::ParserUtils for parser::Parser {
-    fn preprocess<P: AsRef<Path>>(path: &P) -> Result<ast::Ast, Box<PestError<parser::Rule>>> {
-        let namespace = path
-            .as_ref()
-            .file_stem()
-            .and_then(ffi::OsStr::to_str)
-            .unwrap()
-            .to_owned();
-
-        let mut ast = ast::Ast {
-            namespace,
-            ..Default::default()
-        };
-
-        let mut imported_depth = 0;
-
-        Self::preprocess_single(&mut ast, path, imported_depth)?;
-
-        let mut path_bufs = Vec::new();
-
-        let mut imports = Vec::new();
-
-        while !ast.imports.is_empty() {
-            imported_depth += 1;
-            while !ast.imports.is_empty() {
-                let stmt = ast.imports.remove(0);
-                let mut path_buf = stmt.imported_base().clone();
-                path_buf.pop();
-                for _ in 0..stmt.path_supers() {
-                    path_buf.push("..");
+#[cfg(any(test, not(feature = "schema-extensions")))]
+impl parser::Parser {
+    pub(crate) fn preprocess(path: &Path) -> Result<ast::Ast, String> {
+        use std::collections::VecDeque;
+        fn canonical_parent(path: &Path) -> Result<std::path::PathBuf, String> {
+            let parent = match path.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => Path::new("."),
+            };
+            parent
+                .canonicalize()
+                .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", path.display()))
+        }
+        fn import_rel_path(stmt: &ast::ImportStmt) -> std::path::PathBuf {
+            let mut rel = std::path::PathBuf::new();
+            for _ in 0..stmt.path_supers() {
+                rel.push("..");
+            }
+            rel.extend(stmt.paths());
+            rel.push(stmt.name());
+            rel.set_extension("mol");
+            rel
+        }
+        let mut ast = ast::Ast::for_file(path)?;
+        let mut nodes = vec![(path.to_path_buf(), 0)];
+        let mut node_paths = vec![crate::ast::verified::ModulePath::root()];
+        let mut parent_dirs = vec![vec![canonical_parent(path)?]];
+        let mut alias_queue = VecDeque::<(usize, std::path::PathBuf)>::new();
+        let mut edges = Vec::<Vec<(std::path::PathBuf, usize)>>::new();
+        let mut root_imports = Vec::new();
+        let mut idx = 0;
+        while idx < nodes.len() {
+            let (current, depth) = nodes[idx].clone();
+            let current_dir = canonical_parent(&current)?;
+            let start = ast.imports.len();
+            let decl_start = ast.decls.len();
+            Self::preprocess_single(&mut ast, &current, depth)?;
+            if idx > 0 {
+                for decl in &ast.decls[decl_start..] {
+                    ast.decl_origins
+                        .entry(decl.name().to_owned())
+                        .or_insert_with(|| node_paths[idx].clone());
                 }
-                for p in stmt.paths() {
-                    path_buf.push(p);
+            }
+            let stmts: Vec<_> = ast.imports.drain(start..).collect();
+            let mut outgoing = Vec::new();
+            for stmt in stmts {
+                let rel = import_rel_path(&stmt);
+                let target = crate::utils::join_relative(&current_dir, &rel);
+                let mut target_idx = None;
+                for (i, (existing, _)) in nodes.iter().enumerate() {
+                    if is_same_file(existing, &target).map_err(|error| {
+                        format!("E_SCHEMA_SOURCE: {}: {error}", target.display())
+                    })? {
+                        let target_parent = canonical_parent(&target)?;
+                        if !parent_dirs[i].contains(&target_parent) {
+                            parent_dirs[i].push(target_parent.clone());
+                            alias_queue.push_back((i, target_parent));
+                        }
+                        target_idx = Some(i);
+                        break;
+                    }
                 }
-                path_buf.push(stmt.name());
-                path_buf.set_extension("mol");
-                let path_new = path_buf.as_path();
-                if is_same_file(path, path_new).unwrap() {
-                    panic!("found cyclic dependencies");
+                let target_idx = match target_idx {
+                    Some(i) => i,
+                    None => {
+                        let target_parent = canonical_parent(&target)?;
+                        let i = nodes.len();
+                        let edge = crate::ast::verified::ModulePath::new(
+                            stmt.name().to_owned(),
+                            stmt.paths().to_owned(),
+                            stmt.path_supers(),
+                        );
+                        nodes.push((target, depth + 1));
+                        node_paths.push(node_paths[idx].resolve_edge(&edge));
+                        parent_dirs.push(vec![target_parent]);
+                        i
+                    }
+                };
+                if idx == 0 && !outgoing.iter().any(|(_, id)| *id == target_idx) {
+                    root_imports.push(stmt);
                 }
-
-                if path_bufs
-                    .iter()
-                    .any(|ref path_old| is_same_file(path_old, path_new).unwrap())
-                {
-                    continue;
-                } else {
-                    imports.push(stmt);
-                    Self::preprocess_single(&mut ast, &path_new, imported_depth)?;
-                    path_bufs.push(path_buf);
+                outgoing.push((rel, target_idx));
+            }
+            edges.push(outgoing);
+            idx += 1;
+        }
+        fn check_cycle(
+            node: usize,
+            edges: &[Vec<(std::path::PathBuf, usize)>],
+            nodes: &[(std::path::PathBuf, usize)],
+            state: &mut [u8],
+        ) -> Result<(), String> {
+            state[node] = 1;
+            for &(_, next) in &edges[node] {
+                if state[next] == 1 {
+                    return Err(format!(
+                        "E_SCHEMA_CYCLE: cyclic import {}",
+                        nodes[next].0.display()
+                    ));
+                }
+                if state[next] == 0 {
+                    check_cycle(next, edges, nodes, state)?;
+                }
+            }
+            state[node] = 2;
+            Ok(())
+        }
+        check_cycle(0, &edges, &nodes, &mut vec![0; nodes.len()])?;
+        while let Some((node, alt_dir)) = alias_queue.pop_front() {
+            for (rel, expected_idx) in &edges[node] {
+                let alt_target = crate::utils::join_relative(&alt_dir, rel);
+                if !is_same_file(&alt_target, &nodes[*expected_idx].0).unwrap_or(false) {
+                    return Err(format!(
+                        "E_SCHEMA_SOURCE: {} resolves import {} differently across directories",
+                        nodes[node].0.display(),
+                        rel.display()
+                    ));
+                }
+                let alt_parent = canonical_parent(&alt_target)?;
+                if !parent_dirs[*expected_idx].contains(&alt_parent) {
+                    parent_dirs[*expected_idx].push(alt_parent.clone());
+                    alias_queue.push_back((*expected_idx, alt_parent));
                 }
             }
         }
-
-        ast.imports = imports;
-
+        ast.imports = root_imports;
         Ok(ast)
+    }
+
+    fn preprocess_single(ast: &mut ast::Ast, path: &Path, depth: usize) -> Result<(), String> {
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("E_SCHEMA_SOURCE: {}: {error}", path.display()))?;
+        let pairs = parser::InnerParser::parse(parser::Rule::grammar, &source)
+            .map_err(|error| error.with_path(&path.display().to_string()).to_string())?;
+        Self::append_declarations(ast, depth, pairs)
+            .map_err(|error| error.with_path(&path.display().to_string()).to_string())
     }
 }
 
 impl parser::Parser {
-    fn preprocess_single<P: AsRef<Path>>(
+    pub(crate) fn append_declarations(
         ast: &mut ast::Ast,
-        path: &P,
         imported_depth: usize,
+        mut file_content: Pairs<'_, parser::Rule>,
     ) -> Result<(), Box<PestError<parser::Rule>>> {
-        let buffer = {
-            let mut buffer = String::new();
-            let mut file_in = fs::OpenOptions::new().read(true).open(path).unwrap();
-            file_in.read_to_string(&mut buffer).unwrap();
-            buffer
-        };
-        let mut file_content = parser::InnerParser::parse(parser::Rule::grammar, &buffer)?;
         let grammar = file_content
             .next()
             .unwrap_or_else(|| panic!("grammar should only have one pair"));
         if file_content.peek().is_some() {
             panic!("grammar should only have only one pair");
         }
+        let grammar_span = grammar.as_span();
+        let mut file_version = None;
         let mut eoi = false;
         for pair in grammar.into_inner() {
             if eoi {
@@ -233,24 +301,15 @@ impl parser::Parser {
             }
             match pair.as_rule() {
                 parser::Rule::syntax_version_stmt => {
-                    let mut pair = pair.into_inner();
-                    let syntax_version = SyntaxVersion {
-                        version: pair.next_usize(),
+                    let span = pair.as_span();
+                    let version = SyntaxVersion {
+                        version: pair.into_inner().next_usize()?,
                     };
-                    pair.next_should_be_none();
-                    if ast.syntax_version.is_some() {
-                        // compare ast.syntax_version and syntax_version
-                        // panic if there is a conflict syntax_version
-                        if ast.syntax_version != Some(syntax_version) {
-                            panic!("all schema files' syntax version should be same");
-                        }
-                    } else {
-                        ast.syntax_version = Some(syntax_version);
-                    }
+                    file_version = Some((version, span));
                 }
                 parser::Rule::import_stmt => {
                     let mut pair = pair.into_inner();
-                    let node = pair.next_import(path, imported_depth);
+                    let node = pair.next_import(imported_depth);
                     pair.next_should_be_none();
                     ast.add_import(node);
                 }
@@ -268,18 +327,34 @@ impl parser::Parser {
                     let mut pair = pair.into_inner();
                     let node = ast::UnionDecl {
                         name: pair.next_string(),
-                        items: pair.next_custom_union_items(),
+                        items: pair.next_custom_union_items()?,
                         imported_depth,
                     };
                     pair.next_should_be_none();
                     ast.add_decl(node);
+                }
+                parser::Rule::integer_decl => {
+                    let mut parts = pair.into_inner();
+                    let name = parts.next_string();
+                    let literal = parts.next().unwrap();
+                    let spec = literal
+                        .as_str()
+                        .parse::<crate::integer::IntegerSpec>()
+                        .map_err(|message| invalid(literal.as_span(), message))?;
+                    ast.add_decl(ast::ArrayDecl {
+                        name: name.clone(),
+                        item: ast::ItemDecl { typ: "byte".into() },
+                        item_count: spec.byte_width(),
+                        imported_depth,
+                    });
+                    ast.integers.insert(name, spec);
                 }
                 parser::Rule::array_decl => {
                     let mut pair = pair.into_inner();
                     let node = ast::ArrayDecl {
                         name: pair.next_string(),
                         item: pair.next_item(),
-                        item_count: pair.next_usize(),
+                        item_count: pair.next_usize()?,
                         imported_depth,
                     };
                     pair.next_should_be_none();
@@ -330,21 +405,39 @@ impl parser::Parser {
             panic!("grammar should have only one EOI");
         }
 
-        if ast.syntax_version.is_none() {
-            ast.syntax_version = Some(SyntaxVersion::default());
+        let (version, span) = file_version.unwrap_or((SyntaxVersion::default(), grammar_span));
+        if ast
+            .syntax_version
+            .as_ref()
+            .is_some_and(|previous| *previous != version)
+        {
+            return Err(invalid(
+                span,
+                "E_SCHEMA_SYNTAX: all schema files must have the same syntax version",
+            ));
         }
+        ast.syntax_version = Some(version);
         Ok(())
+    }
+}
+
+#[cfg(feature = "schema-extensions")]
+impl ast::Ast {
+    pub(crate) fn retain_root_imports(&mut self, edges: &[crate::schema::ImportSource]) {
+        let mut seen = HashSet::new();
+        let mut keep = edges.iter().map(|edge| seen.insert(&edge.module));
+        self.imports
+            .retain(|import| import.imported_depth() == 0 && keep.next() == Some(true));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parser, utils, SyntaxVersion};
+    use super::{parser, SyntaxVersion};
     use std::io::Write;
 
     #[test]
     fn test_default_syntax_version_should_be_1_0() {
-        use utils::ParserUtils;
         // get path of  file
         let mut schema_file = tempfile::NamedTempFile::new().unwrap();
         let _ = schema_file.write(b"array uint32 [byte; 4];").unwrap();
@@ -358,7 +451,6 @@ mod tests {
 
     #[test]
     fn test_parse_syntax_version() {
-        use utils::ParserUtils;
         // get path of  file
         let mut schema_file = tempfile::NamedTempFile::new().unwrap();
         let test_version = SyntaxVersion { version: 7 };
@@ -378,8 +470,6 @@ mod tests {
     #[should_panic]
     // if A `syntax = 1` schema file imports a `syntax = 2` schema file, it should panic
     fn test_different_syntax_version_should_panic() {
-        use utils::ParserUtils;
-
         let mut child_schema_file = tempfile::NamedTempFile::new().unwrap();
         child_schema_file
             .write_fmt(format_args!("syntax = 2;"))
